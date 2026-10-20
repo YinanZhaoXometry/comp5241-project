@@ -1,0 +1,53 @@
+---
+title: Architecture source checks and feasibility gates
+created: 2026-10-21
+updated: 2026-10-21
+scope: Evidence notes, not runtime or contractual verification
+---
+
+# Architecture source checks
+
+## Background & purpose
+
+- **Decision boundary:** the [architecture spine](architecture-shared-technical.md) chooses a modular monolith, a separate worker, PostgreSQL, scoped private object storage and isolated code execution. This note records factual checks and unresolved activation gates; it is not a deployment guide or compliance opinion.
+- **Evidence limit:** official documentation and public registry metadata were read on 2026-10-21. No application packages were installed, no starter was run, no accounts/contracts were created and no runtime compatibility, deletion, security or learning outcome was tested. Exact versions are cold-start observations, not permission to ignore later security fixes.
+
+## Activation status and required evidence
+
+- **Node before use:** recheck the security release before use; do not invent a patch version or present 24.22.0 as including the announced fixes.
+- **Private AI processing:** private AI processing remains blocked until actual compatible terms exist; changing product retention would require a separate recorded product decision.
+- **Runtime evidence:** fixed Node patch, actual starter/lockfile, TypeScript/auth/worker compilation, queue transaction rollback, auth revocation and compatible managed PostgreSQL.
+- **Processor evidence:** real model snapshot/endpoint/features, retention exceptions and deletion rights, no-training terms, consent version, locations/subprocessors, logs/caches/backup copies and bounded spend. If unavailable, remain blocked; deterministic fixtures are not a working GenAI demonstration.
+- **Lifecycle evidence:** complete derivative inventory, single-root/multi-parent/late-result deletion races, owner/course/self-history export boundaries, seven-day active purge, thirty-day backup expiry, and ninety-day archived-course expiry. Verify that restores preserve deletions, revoked access, revoked consent, and content withdrawals.
+- **Execution evidence:** extraction/SSRF attacks, runner escape/resource/network attempts, cleanup and offline narration quality/license. Any failure blocks affected activation rather than weakening the requirement.
+- **Product evidence:** exact-version approval denial, threshold/recovery/version invariants, source/rubric verification, accessibility, 120-second honest status, full subject/format breadth and the separate rights-checked seven-day pilot. None has been executed by this architecture work.
+
+## Stack and execution facts
+
+| Source | Verified fact | Architecture consequence |
+| --- | --- | --- |
+| [Next.js installation](https://nextjs.org/docs/app/getting-started/installation) | Official starter offers TypeScript, Tailwind, ESLint, App Router, Turbopack and import alias; Node minimum 20.9; TypeScript minimum 5.1; Next 16 build no longer runs lint | Use official starter, select source directory explicitly, separately run lint; capture actual generated dependency pins at scaffold |
+| [TypeScript 7 announcement](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6-0), [typescript-eslint support policy](https://typescript-eslint.io/users/dependency-versions/#typescript), [TypeScript 6.0.3](https://registry.npmjs.org/typescript/6.0.3) | The TypeScript 7 announcement documents missing compiler-API compatibility for typescript-eslint, whose support policy and observed 8.72.0 peers support TypeScript `>=4.8.4 <6.1.0` | Select published TypeScript 6.0.3 rather than adding two compilers or suppressing lint. Verify full compile/lint integration at G1 |
+| [Node releases](https://nodejs.org/en/about/previous-releases), [24.22.0 release](https://nodejs.org/en/blog/release/v24.22.0), [October 21 bulletin](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases) | Node 24 is LTS; 24.22.0 is the latest verified LTS release; bulletin announces HIGH-severity fixes on or shortly after October 21 without a verified successor patch in the fetched material | Verified LTS baseline only |
+| [PostgreSQL versioning](https://www.postgresql.org/support/versioning/), [Render upgrades](https://render.com/docs/postgresql-upgrading) | 18.6 is current listed supported patch; major 18 support ends November 14, 2030. PostgreSQL 18.6 is the upstream/local baseline; a managed service does not promise a permanently selectable patch | Seed 18.6; verify managed-host availability rather than assuming it. On Render record major 18, observed deployed patch and managed maintenance policy |
+| [Better Auth sessions](https://www.better-auth.com/docs/concepts/session-management), [Next integration](https://www.better-auth.com/docs/integrations/next) | Database sessions and Next integration supported; cookie cache can delay revocation; default GET refresh writes to the database | Disable cookie cache; fresh server validation plus subject/action authorization; `deferSessionRefresh: true` keeps GET read-only and moves refresh to POST |
+| [node-postgres transactions](https://node-postgres.com/features/transactions) | Every SQL statement in a transaction must use the same checked-out client | Application transaction adapter owns one client |
+| [pg-boss requirements](https://pgboss.io/), [transaction adapters](https://pgboss.io/api/adapters) | Node ≥22.12, PostgreSQL ≥13; `Db.executeSql`/`db` option supports queue work in an existing transaction with rollback | Selected declared minima fit; integration must prove atomic enqueue and idempotent retries |
+| [Render Next.js](https://render.com/docs/deploy-nextjs-app), [workers](https://render.com/docs/background-workers) | Dynamic Node web services and separate continuously running background workers supported | Target web/worker topology, not static export or long-running request-bound generation |
+| [Render database backups](https://render.com/docs/postgresql-backups) | Paid database PITR: Hobby three days, Pro+ seven days; logical exports retained seven days; no free-plan recovery | Useful fit evidence, not all-copy deletion/region/contract proof; inventory restores, exports and logs before real use |
+| [S3 presigned upload](https://docs.aws.amazon.com/AmazonS3/latest/userguide/PresignedUrlUploadObject.html), [version deletion](https://docs.aws.amazon.com/AmazonS3/latest/userguide/DeletingObjectVersions.html) | Presigned URLs grant bearer access; a simple delete in a versioned bucket creates a marker, not permanent erasure | Do not issue private presigned GET links; delete every object version/replica if enabled; prove actual provider retention |
+
+- **Registry observations:** public npm `latest` metadata returned Next/create-next-app 16.4.2, React/react-dom 19.3.1, TypeScript 7.0.2, Better Auth 1.7.12, pg 8.23.1, pg-boss 12.38.0 and Zod 4.6.7. Sources include [Next](https://registry.npmjs.org/next/latest), [TypeScript](https://registry.npmjs.org/typescript/latest), [Better Auth](https://registry.npmjs.org/better-auth/latest), [pg-boss](https://registry.npmjs.org/pg-boss/latest) and [Zod](https://registry.npmjs.org/zod/latest). Starter/transitive tooling still requires lockfile verification. Peer ranges and engine minima are not a compilation test.
+
+## Processor retention and activation
+
+- **Anthropic standard retention fails the current gate:** the [organization retention policy](https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data) states API inputs/outputs are normally deleted within 30 days, with longer-retained services, agreed exceptions, misuse and legal exceptions. Flagged content can be retained up to two years and classifier scores up to seven years; feedback data may be retained five years. The product requires active copies purged within seven days and bounded metadata/backups. Do not equate a commercial no-training default with compliant deletion.
+- **ZDR is not an automatic solution:** the [ZDR eligibility article](https://privacy.claude.com/en/articles/8956058-i-have-a-zero-data-retention-agreement-with-anthropic-what-products-does-it-apply-to) requires organization-specific approval and still describes legal/misuse exceptions, classifier retention and model-specific conditions. The model and feature documentation redirected to a region-unavailable page during this check. This check did not verify any model ID, feature eligibility, or contract.
+- **No-training scope:** the [commercial training policy](https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training) says commercial inputs/outputs are not used for training by default, but submitted feedback can be treated differently. No automated feedback/bug submission containing private data is permitted as a shortcut around the processor gate.
+- **Provider SDK exclusion:** Anthropic SDK 0.135.0 was observed, but is not in the selected stack because no eligible model/endpoint has been verified. Installing an SDK is not evidence that the provider meets D5.
+
+## Code execution and narration
+
+- **Runner research is not isolation proof:** [Piston](https://github.com/engineer-man/piston) documents Isolate/namespaces/cgroups, disabled outgoing networking and resource controls, but its deployment examples include privileged-container caveats. It is a research candidate, not a selected validated runtime. The fixed decision is dedicated private runner hosts plus per-job isolation, no egress/secrets and enforced limits; engine/version and malicious-code tests are required before activation.
+- **Browser thread limits:** [Pyodide workers](https://pyodide.org/en/stable/usage/webworker.html) move Python off the UI thread; this alone is not a hostile-code security boundary or proof of memory/network confinement. It is not the selected execution mechanism.
+- **Narration processing:** [Web Speech voices](https://developer.mozilla.org/en-US/docs/Web/API/SpeechSynthesisVoice) can be local or remote; browser/platform availability differs. Browser speech therefore does not guarantee privacy by default. Choose and verify an offline engine/voice/license before activity activation; any remote TTS is another AD-10 processor. Generated audio, captions/transcripts and reduced-motion presentation remain required working outputs, not optional omissions.

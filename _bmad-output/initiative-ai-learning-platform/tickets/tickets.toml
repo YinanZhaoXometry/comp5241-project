@@ -1,0 +1,55 @@
+# Delegated epic plan, 2026-10-21. Table order is delivery order, not an execution instruction.
+# Covers assigns one accountable epic per initiative requirement; consumers verify integrations.
+# Constraints C1–C7 and product policies D1–D8 apply through each epic's References.
+# Shared architecture adopted; epic 1 now has thirteen planned child entries, other epics unrefined.
+# No leaf tickets have been pulled or started; build/activation remains separately gated.
+# Draft id 7 retired after tree validation: pilot/closure is not a horizontal testing epic.
+next_id = 8
+
+[[epic]]
+id = 1
+slug = "epic-private-study-setup"
+title = "Learners privately turn materials into a study plan"
+description = "On the separately authorized deployed web platform, a learner signs in, previews safely extracted private material, confirms a short goal and editable plan, takes or skips a diagnostic, and can export/delete their data. Owns platform setup, initial synthetic role actors, setup-AI/diagnostic adapter with versioned eligible configuration, consent/dispatch/accounting and data-lifecycle contracts consumed by later epics. Instructor-course lifecycle integration is verified by epic 5 before availability."
+covers = ["R2", "R7", "R21", "R22"]
+after = []
+
+[[epic]]
+id = 2
+slug = "epic-grounded-mini-courses"
+title = "Learners study source-backed personalized mini-courses"
+description = "A learner uses epic 1's private material/confirmed plan and setup-AI configuration/consent/dispatch/accounting/lifecycle ports, extending adapters for full mini-course generation and source retrieval with changed-purpose/model eligibility rechecks. Learners study personalized content, attempt recall, inspect supplements/conflicts and request deeper explanations. Supplies versioned objectives, source-linked units and recall activities to assessment/instructor/breadth; no scored completion or instructor publishing here."
+covers = ["R1", "R6", "R8", "R11", "R12"]
+after = [{ epic = 1, needs = "authenticated private material/extraction, confirmed plan, setup-AI adapter/versioned eligibility configuration, consent/dispatch/accounting and derived-data lifecycle contracts; re-gate changed purpose/model" }]
+
+[[epic]]
+id = 3
+slug = "epic-assessment-and-progress"
+title = "Learners pass tests and recover targeted gaps"
+description = "Using epic 2's versioned objectives/content, a learner takes scored tests, receives evidence-linked gap guidance, completes focused recovery without repeating passed sections, and sees whole-mini-course roadmap progress. Owns snapshotted scoring, targeted credit, evidence correction and completion/review-handoff contracts consumed by review, instructor reporting and later activity types."
+covers = ["R10", "R13", "R14", "R20"]
+after = [{ epic = 1, needs = "owner/consent boundaries, persisted plan and lifecycle propagation for learner evidence" }, { epic = 2, needs = "versioned objectives, source-linked units and active-recall activities for valid tests and recovery" }]
+
+[[epic]]
+id = 4
+slug = "epic-spaced-review"
+title = "Learners return for controlled spaced review"
+description = "Using epic 3's completion and unaided-evidence contracts, learners receive an in-app due list and consolidated local-day reminders, complete spaced reviews and control pause/snooze/disable without losing completion. Supplies review scheduling, cancellation and due-state contracts used by instructor-course reminders/reporting."
+covers = ["R15"]
+after = [{ epic = 1, needs = "owner/timezone settings and deletion-driven access/reminder cancellation" }, { epic = 3, needs = "versioned completion, unaided review evidence, pass-mark and preserved-progress contracts" }]
+
+[[epic]]
+id = 5
+slug = "epic-instructor-courses"
+title = "Instructors publish approved courses to enrolled learners"
+description = "Instructors create/edit mini-courses manually or with AI, personally approve exact versions, import/manage verified enrollments, and inspect scoped participation reports. Integrates epic 2 learning, epic 3 assessment and epic 4 review with epic 1 role/privacy/retention controls; approved-bank or pending retests/why/feedback never bypass approval. Supplies the restricted authoring/approval shell used by breadth demonstrations."
+covers = ["R3", "R4", "R5", "R16"]
+after = [{ epic = 1, needs = "authenticated roles, private/personal versus course-owned data, processing consent and archive/export/deletion contracts" }, { epic = 2, needs = "versioned source-linked lesson/generation/explanation contract for draft and published course content" }, { epic = 3, needs = "attempt/rubric/pass-mark snapshots, provisional grades, targeted-credit and evidence/reporting contracts" }, { epic = 4, needs = "course-scoped due states and immediate enrollment-removal reminder cancellation" }]
+
+[[epic]]
+id = 6
+slug = "epic-subject-and-activity-breadth"
+title = "Learners use all required subjects and activity formats"
+description = "Extend the existing learning/assessment shell with functioning content in all three required subject areas, every required activity family and other-domain learner-directed generation; integrate the same breadth with epic 5's restricted instructor authoring/approval path. Personal other-domain learning does not require instructor enrollment or approval. Owns isolated coding/narration integrations and the assignment AI Fluency presentation using functioning project examples. Supplies rights-checked representative fixtures; final pilot/initiative closure remains outside the epic, and each epic owns its integrated tests."
+covers = ["R9", "R17", "R18", "R19"]
+after = [{ epic = 2, needs = "objective/source-linked personalized content and other-domain generation interfaces" }, { epic = 3, needs = "required-activity evidence, rubric/version and completion contracts for new activity families" }, { epic = 5, needs = "restricted authoring/enrollment/exact-version approval path and shared activity/content schema integration" }]

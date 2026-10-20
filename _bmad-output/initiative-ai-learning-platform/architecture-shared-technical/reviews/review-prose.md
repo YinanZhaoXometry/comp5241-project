@@ -1,0 +1,52 @@
+# Source checks — prose findings and disposition
+
+This document exists to help human implementers and reviewers distinguish documented technology fit from the evidence still required before scaffolding or activation.
+
+## Scope and editorial calibration
+
+- **Date and scope:** 2026-10-21. Editorial work applies only to [source checks](../source-checks.md). The only other authored file is this report. The architecture spine, initiative, policies, and earlier reviews remain unchanged. No nested subagents were used.
+- **Method:** followed the requested prose lens and its editorial-common instructions. Resolved defaults specify human readers and the Microsoft Writing Style Guide; no additional review directives were configured. Applied Microsoft's [concise-sentence guidance](https://learn.microsoft.com/en-us/style-guide/word-choice/use-simple-words-concise-sentences) and [style and voice guidance](https://learn.microsoft.com/en-us/style-guide/top-10-tips-style-voice), preserving the document's technical register rather than adding conversational language.
+- **Voice to preserve:** a compact evidence note, not a tutorial or compliance opinion. Retained bold run-in labels, the source/fact/consequence table, imperative gates, technical terminology, exact versions, dated observations, and conditional language where verification is outstanding. Terse table fragments and familiar technical slash notation were not expanded merely for preference.
+- **Prior structure handoff:** read [the source-resolution review](review-source-resolution.md) in this run. Its model is Strategic/Context (Pyramid), supported by a reference table. ST-1 through ST-3 were authorized and applied: move existing blocked-status statements and the checklist immediately after the purpose; collocate compiler and managed-database qualifications with their evidence; separate processor evidence from code execution and narration, moving the unselected SDK into the processor group. ST-4 and ST-5 remain preservation directives. There were no CUT-tagged passages to skip.
+- **Prose boundary:** reviewed the reorganized notes, attaching compiler and database comments to their surviving evidence rows. The findings below quote that structural handoff, not a new review of the spine. Frontmatter, code spans, and structural markup were left unchanged by the prose pass. The user's explicit editing authorization permits applying these otherwise advisory findings.
+
+## Prose findings and disposition
+
+| Pass | Original Text | Revised Text | Changes |
+| --- | --- | --- | --- |
+| prose | **PR-1 — [Lifecycle evidence](../source-checks.md#L21):** “complete derivative inventory, single-root/multi-parent/late-result deletion races, owner/course/self-history export boundaries, seven-day active purge, thirty-day backup expiry and restore suppression of deletions plus revoked access/consent/withdrawn content, ninety-day archived-course expiry.” | “complete derivative inventory, single-root/multi-parent/late-result deletion races, owner/course/self-history export boundaries, seven-day active purge, thirty-day backup expiry, and ninety-day archived-course expiry. Verify that restores preserve deletions, revoked access, revoked consent, and content withdrawals.” | **Applied.** The compressed phrase could read as suppressing deletions rather than preventing a restore from undoing protective state. A separate sentence makes the existing safeguard explicit. All inventory, race, export, and seven-/thirty-/ninety-day obligations remain. |
+| prose | **PR-2 — [Node status](../source-checks.md#L17) and [Node evidence](../source-checks.md#L31):** “recheck the security release before use; do not invent a patch or present 24.22.0 as post-fix.” / “Node 24 is LTS; 24.22.0 is latest verified release;” | “recheck the security release before use; do not invent a patch version or present 24.22.0 as including the announced fixes.” / “Node 24 is LTS; 24.22.0 is the latest verified LTS release;” | **Applied.** One finding covers both expressions of the same distinction: an observed LTS baseline is not a verified security-fixed successor or the newest release across all Node lines. Preserved the dated bulletin, HIGH-severity warning, and before-use recheck; no patch was invented. |
+| prose | **PR-3 — [SDK exclusion](../source-checks.md#L47):** “Anthropic SDK 0.135.0 was observed, but is not in the committed stack because no eligible model/endpoint has been verified.” | “Anthropic SDK 0.135.0 was observed, but is not in the selected stack because no eligible model/endpoint has been verified.” | **Applied.** “Selected” identifies an architecture choice without implying a version-control commit or installed application stack. The SDK remains excluded, and installation still does not establish D5 eligibility. |
+| prose | **PR-4 — [ZDR verification scope](../source-checks.md#L45):** “No model ID, feature eligibility or contract is claimed verified.” | “This check did not verify any model ID, feature eligibility, or contract.” | **Applied.** Replaced an awkward passive construction with a statement scoped to this check. Retained the dated region-unavailable redirect, organization-specific approval, exceptions, and blocked private-processing status. No model, feature, or agreement is approved. |
+| prose | **PR-5 — [Compiler evidence](../source-checks.md#L30):** “TypeScript 7 documents missing compiler-API compatibility for typescript-eslint,” | “The TypeScript 7 announcement documents missing compiler-API compatibility for typescript-eslint,” | **Applied.** Restored the source as the grammatical subject when adapting the original linked bullet into a table row. The official announcement, support-policy and exact-version links, observed peers, selected TypeScript 6.0.3, and G1 compilation/lint caveat remain. |
+| prose | **PR-6 — [Narration privacy qualification](../source-checks.md#L53):** “Therefore browser speech is not the default privacy guarantee.” | “Browser speech therefore does not guarantee privacy by default.” | **Applied.** Removed an awkward noun phrase without changing the local/remote distinction. Offline engine/voice/license verification, the remote-TTS processor gate, and required audio, captions/transcripts, and reduced-motion outputs remain. |
+
+## Exact metrics and preservation checks
+
+- **Counting method:** ran the prescribed word-metrics script on the original notes, the structural handoff, and the final notes. Counts are raw whitespace tokens, including metadata and Markdown/table syntax, not prose-only estimates.
+
+| Stage | Total words |
+| --- | ---: |
+| Original notes | 1,119 |
+| After authorized structure changes, before prose | 1,135 |
+| Final notes | 1,149 |
+
+| Final section | Body words |
+| --- | ---: |
+| Frontmatter/preamble | 21 |
+| Background & purpose | 89 |
+| Activation status and required evidence | 188 |
+| Stack and execution facts | 483 |
+| Processor retention and activation | 198 |
+| Code execution and narration | 141 |
+
+- **Count reconciliation:** final section bodies total 1,120 words; headings account for 29. The top-level title has no body before the first section.
+- **Disposition summary:** all three restructuring recommendations and six prose findings were applied; both preservation directives were honored. No content cuts were recommended or made. Net growth is 30 tokens, or 2.68% of the original: 16 during reorganization and 14 during prose editing. No length target was supplied. Growth buys clearer scanning and protective-state wording without sacrificing facts or caveats.
+- **Preservation checks:** the original and final external-URL multisets match exactly: all 30 URLs retained, with no additions or removals. All original version values remain. Frontmatter and the complete purpose/evidence-boundary section match exactly. The five checklist entries were unchanged during relocation; only the lifecycle entry subsequently received the quoted prose fix. Prose editing did not change the structural handoff's headings or line count.
+- **Caveat checks:** retained the compiler-versus-latest distinction, managed-patch limitation, GET/POST refresh boundary, queue integration tests, no-training-versus-deletion distinction, nonautomatic ZDR, retention exceptions, blocked private AI, feedback prohibition, all-copy deletion qualification, fixture limitation, runner/browser isolation caveats, narration requirements, lifecycle limits, accessibility, breadth, and the separate rights-checked pilot. Final source-note and report links, table shape, editor diagnostics, and protected-file hashes were checked. No application installation, build, runtime test, provisioning, or contract validation was performed.
+
+## Unresolved factual and activation concerns
+
+- **No new factual finding:** this was an editorial pass, not a fresh vendor/source-fit audit. The earlier review's source-fit closure is not expanded into runtime, security, contractual, or release clearance.
+- **Existing blockers remain:** the Node security-fixed successor still requires verification before use. No eligible model/endpoint/features, compatible retention/deletion terms, region/subprocessor arrangement, or actual provider agreement has been established. The earlier region-access limitation remains a dated observation, not proof that documentation is unavailable everywhere.
+- **Other evidence remains outstanding:** G1 compilation/lint/auth/queue/database integration, lifecycle/restore and extraction checks, hostile-code isolation, offline narration, product/accessibility/breadth validation, and the seven-day pilot remain unexecuted. No technology choice or activation requirement was changed by this work.

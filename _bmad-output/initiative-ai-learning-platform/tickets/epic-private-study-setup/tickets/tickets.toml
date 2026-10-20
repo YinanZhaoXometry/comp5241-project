@@ -1,0 +1,164 @@
+# Ordered private-study-setup stories, 2026-10-21; no leaf files or execution plans yet.
+# covers uses THIS epic's R1-R4, not initiative R IDs. Details live in adopted companions.
+# One lane protects shared schema, scoped fixtures and lifecycle evolution.
+# unknown gates the start; hitl identifies actual human work but is not a readiness gate.
+next_id = 14
+
+[[entry]]
+id = 1
+type = "story"
+title = "Private TXT-to-confirmed-plan tracer"
+description = "With the operator's authorized starter/setup and minimal synthetic learner/instructor/admin principals, establish the real web/database/private storage/worker/CI path and one migration owner: sign in, upload one TXT, inspect extraction, choose goal/topic, confirm a Manual one-mini-course plan, reopen it and remove its root. Check runtime security and stack/queue fit before scaffold consumption; no fake AI or full-epic acceptance."
+verify = "Using two local test accounts, A uploads TXT and reopens its explicitly confirmed Manual plan after web/worker restart; B cannot access any direct result; A's root removal denies reuse and removes tracer copies. Queue rollback/duplicate and separate compile/lint/domain/integration/browser checks pass."
+covers = ["R1", "R2", "R3", "R4"]
+after = []
+hitl = true
+risk = "high"
+unknown = "Explicit permission to start application implementation and operator starter/setup is not yet given; this request authorizes planning only. F1 runtime/security/lockfile preflight is the first authorized work, not assumed passed."
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S1 and F1", "UX — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, U0/U1/U2/U4/U5/U8"]
+
+[[entry]]
+id = 2
+type = "story"
+title = "Bounded four-format extraction and explicit preview"
+description = "Extend the tracer's scoped upload/job/lineage interfaces to text-PDF, DOCX, TXT and Markdown with byte/count limits, bounded no-network parsing, extraction warnings, explicit successful-source selection and honest mixed-batch/retry behavior. Record parser/license/resource/hostile-fixture feasibility evidence."
+verify = "Run valid-at-limit and malformed/oversize/eleventh-file/protected/no-text/DOCX-abuse fixtures; inspect per-file previews and explicit mixed-batch selection, prove no parser egress or late deleted-root output, and show honest pending/failure by 120 seconds."
+covers = ["R1", "R3", "R4"]
+after = [1]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S2/F2", "UX — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, U2"]
+
+[[entry]]
+id = 3
+type = "story"
+title = "Consent and fail-closed processor admission"
+description = "Consume selected safe source revisions through versioned disclosure/consent and a server-enforced processor/lineage/budget boundary. Implement decline, configuration change and withdrawal with durable dispatch receipts and synthetic network-spy tests; no live provider eligibility claim."
+verify = "Show an ineligible processor cannot dispatch even with allow=true; decline, changed disclosure, withdrawal and deleted lineage yield zero unauthorized calls, while allowed synthetic operation retries produce one tracked accepted effect and preserve manual work."
+covers = ["R4"]
+after = [2]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S3/F3", "UX — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, U3"]
+
+[[entry]]
+id = 4
+type = "story"
+title = "Short goals, corrected topic and resumable preferences"
+description = "Build the short setup on the safe material/consent route: four goal choices, editable manual topic, only critical follow-ups, optional background/time preferences and changeable valid timezone, with saved-draft and account/session isolation. Automatic candidates remain the separately planned S6 behavior."
+verify = "Complete all four goal routes without universal essays/exam dates; edit/correct, skip optional preferences, refresh/back/resume, reject invalid zones and stale saves, and verify session-expiry recovery plus keyboard/mobile states."
+covers = ["R1", "R2", "R3", "R4"]
+after = [3]
+hitl = false
+risk = "medium"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S4", "UX — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, U0/U1/U4"]
+
+[[entry]]
+id = 5
+type = "story"
+title = "Editable immutable plan and exact confirmation handoff"
+description = "Expand the tracer plan to outcomes, mini-courses/lessons, practice, effort and source coverage/missing explanations; explicitly confirm immutable selected-source/goal/plan revisions, preserve historical versions and expose the authorized exact-revision handoff for epic 2 without starting full generation."
+verify = "Edit and confirm a plan, create an unconfirmed revision in another tab, and prove duplicate confirmation is one receipt while stale/unconfirmed/deleted-source handoffs fail; library labels the confirmed plan as not yet a generated/completed course."
+covers = ["R1", "R3", "R4"]
+after = [4]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S5", "UX — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, U5"]
+
+[[entry]]
+id = 6
+type = "story"
+title = "Policy-compliant AI topic inference and plan drafting"
+description = "An authorized operator verifies an actually eligible processor/model/terms and account/region/budget/operator approval for synthetic-live-test scope, then the first setup adapter produces source-linked topics/plans through existing consent/confirmation. Before full lifecycle/release gates only synthetic non-personal fixtures are allowed; no SDK, mock or checkbox substitutes for eligibility. Epic 2 consumes its versioned configuration/dispatch/accounting ports and re-gates changes."
+verify = "With an eligible separately authorized live configuration and rights-checked synthetic non-personal fixtures only, inspect actual AI candidate topics/draft, correct/edit/confirm it, and demonstrate refusal/withdrawal, unsupported output, quota/timeout and stale-source denial with tracked nonduplicated results."
+covers = ["R2", "R3", "R4"]
+after = [5]
+hitl = true
+risk = "high"
+unknown = "A D5-compatible actual provider/model/endpoint, retention exceptions/deletion/non-training/location proof and account/region/budget/operator authorization for synthetic non-personal external tests are not verified. Standard Anthropic retention does not pass; stay blocked until evidence or explicit upstream revision. Real data/hosted use additionally waits F5/F6."
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S6/F3", "UX — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, U3/U4/U5"]
+
+[[entry]]
+id = 7
+type = "story"
+title = "Optional starting check without completion credit"
+description = "Use the eligible setup generator and confirmed plan to offer or skip 3–5 validated source/objective-linked diagnostic items, withhold per-item answers until submission and persist separate typed setup evidence without course-attempt, recovery or completion semantics."
+verify = "Take, partially leave and skip checks; inspect 3–5 manually checked valid items and no pre-submit answer leakage, retry without duplicate evidence, and confirm Unknown/assistance/history/deletion behavior plus zero completion or recovery credit."
+covers = ["R3", "R4"]
+after = [6]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S7", "UX — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, U6"]
+
+[[entry]]
+id = 8
+type = "story"
+title = "Authenticated consistent personal-setup export"
+description = "Consume the complete setup/diagnostic derivative inventory to create scoped snapshot exports with manifest and at-most-24-hour expiry, durable status and fresh authenticated download; deletion/revocation invalidates pending or ready artifacts."
+verify = "Owner exports originals/extraction/plans/consent/check evidence from a consistent snapshot; another actor and expired/revoked/deleted-root requests cannot download; retry/edits produce no duplicate or mixed snapshot and the artifact is purged on expiry."
+covers = ["R1", "R4"]
+after = [7]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S8/F5", "UX — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, U7"]
+
+[[entry]]
+id = 9
+type = "story"
+title = "Root-scoped deletion and late-work suppression"
+description = "Complete selected-root versus all-personal deletion over setup exports/evidence/provider receipts, immediate protective denial and all-ancestor fences, seven-day active purge and content-free status. Complete withdrawal/in-flight cancellation and later-module lifecycle contract fixtures without claiming those future integrations exist."
+verify = "Delete A with an A+B derivative while unrelated B remains usable; race extraction/AI/check/export/download against deletion and prove immediate denial, no late recommit, complete inventory purge within the deadline and idempotent failure/retry receipts."
+covers = ["R1", "R4"]
+after = [8]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S9/F5", "UX — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, U3/U8"]
+
+[[entry]]
+id = 10
+type = "story"
+title = "Bounded retention and archive contract"
+description = "Extend S9's lifecycle scheduler/registry to enforce export/metadata/active-copy expiry and synthetic ninety-day course-archive notice/export/purge, registering bounded backup/journal classes for new S13. Physical backup/restore is explicitly S13 rather than hidden in this entry."
+verify = "Advance expiry clocks and compare active files/rows with the inventory; expired exports/receipts cannot expose or resurrect data, duplicate expiry jobs are safe, and ninety-day archive notice/export precedes purge. Backup/journal classes are ready for S13, not claimed physically proven."
+covers = ["R4"]
+after = [9]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S10/F5", "UX — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, U8"]
+
+[[entry]]
+id = 13
+type = "story"
+title = "Isolated backup and protective restore"
+description = "Consume S10 retention classes, S9 protective transition/purge interfaces and S1 migration ownership for one local encrypted snapshot and independent bounded journal adapter. Restore synthetic data with session invalidation and fail-closed revocation reconciliation; test schema overlap and record a repeatable timed operator procedure. Managed-host proof remains S12."
+verify = "Restore a local synthetic pre-deletion/pre-revocation snapshot with queued work; before complete journal replay all traffic/jobs/egress stay closed, missing journal stays blocked and old grants remain denied. Verify physical backup/journal expiry, schema compatibility and measured RPO24h/RTO8h targets without claiming managed-provider proof."
+covers = ["R4"]
+after = [10]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S13/F5"]
+
+[[entry]]
+id = 11
+type = "story"
+title = "Refactor sweep"
+description = "Inspect completed-story plans and deferred review findings for cleanup only, preserve all accepted UX/privacy/lifecycle/contract semantics and run unchanged regressions; record a no-op if no cleanup is justified. Unfinished functionality requires a separate planned entry."
+verify = "Compare accepted behaviors and all existing compile/lint/domain/database/browser/denial/lifecycle checks before and after; no checks are weakened or new requirements hidden in cleanup."
+covers = []
+after = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13]
+hitl = false
+risk = "medium"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S11"]
+
+[[entry]]
+id = 12
+type = "story"
+title = "Integrated setup suite and authorized release verification"
+description = "Close the setup journey with integrated allowed/denied/error/accessibility/lifecycle and actual-AI checks. An explicitly authorized operator verifies region/plan/budget/copy inventory, secure account provisioning/recovery, monitoring and measured limits, then deploys/smoke-checks the selected environment only after relevant gates pass. No deployment or paid resources are authorized now."
+verify = "Run the complete four-format manual/eligible-AI plan, skip/take diagnostic, export/delete and protected-restore journeys, with keyboard360px/desktop and failure/race checks; attach actual F1/F2/F3/F5/F6 evidence and separately authorized deployed smoke results. A blocked release cannot be recorded Done."
+covers = ["R1", "R2", "R3", "R4"]
+after = [11]
+hitl = true
+risk = "high"
+unknown = "Actual provisioning/deployment/live-data scope, region/plan/budget, operator responsibilities and managed copy/backup retention evidence need separate approval and verification; current request permits story planning only."
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S12/F6 and downstream handoff", "UX — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, U0-U8 and shared rules"]

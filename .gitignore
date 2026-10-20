@@ -1,0 +1,30 @@
+# Local environments, dependencies and generated output
+.venv/
+venv/
+node_modules/
+.next/
+out/
+dist/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+.DS_Store
+*.log
+
+# Credentials and local-only data
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.local/
+.data/
+
+# Reproducible BMad snapshots and personal configuration
+_bmad/render/
+_bmad/custom/*.user.toml

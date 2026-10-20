@@ -1,0 +1,67 @@
+# Independent adversarial compatibility and product-policy reconciliation
+
+**Date:** 2026-10-21. **Verdict:** compatibility is not yet closed: two material shared-contract ambiguities permit independently implemented consumers to disagree. No explicit relaxation of D4, D5 or planning-only authority was found. This is a document-level review, not runtime, contractual or compliance evidence.
+
+## Scope and method
+
+- **Inputs:** [architecture spine](../architecture-shared-technical.md), [source/feasibility notes](../source-checks.md), [product policies](../../product-policies.md), [initiative](../../initiative-ai-learning-platform.md), [authoritative overview](../../../../project-overview.md), [ordered epic handoffs](../../tickets/tickets.toml), and all six thin epic envelopes: [private setup](../../tickets/epic-private-study-setup/epic-private-study-setup.md), [grounded learning](../../tickets/epic-grounded-mini-courses/epic-grounded-mini-courses.md), [assessment/progress](../../tickets/epic-assessment-and-progress/epic-assessment-and-progress.md), [review](../../tickets/epic-spaced-review/epic-spaced-review.md), [instructor courses](../../tickets/epic-instructor-courses/epic-instructor-courses.md), [breadth](../../tickets/epic-subject-and-activity-breadth/epic-subject-and-activity-breadth.md).
+- **Approach:** construct a producer and consumer that each follow their locally stated obligations, then test whether their shared identities, decisions and lifecycle effects necessarily agree. Distinguish a missing cross-unit decision from an implementation detail or an already-handled attack.
+- **Authority:** the latest delegation permits technical planning only. Older requirements' no-stack-selection wording is not treated as prohibiting the newly delegated planning choice. No implementation, provisioning, account, purchase, external contract, real-data processing, deployment or pilot execution is authorized by this review. No subagents were used.
+
+## F1 — Deletion target and authorization scope are conflated
+
+**Location:** [AD-3 scope identity and AD-4 deletion rules](../architecture-shared-technical.md#L60-L72); [AD-9 job envelope](../architecture-shared-technical.md#L100-L104). Policy obligations: [D5 owner controls, deletion and active retention](../../product-policies.md#L63-L65).
+
+**Trigger:** delete one personal material while the same learner has unrelated active material and queued work.
+
+**Counterexample:** a learner has materials A and B under the same `personal(ownerUserId)` authorization scope; A-only, B-only and A+B derivatives exist. The learner selects A for deletion, not B.
+
+- **Lifecycle unit:** follows AD-4 literally: tombstone that scope and advance its generation. This invalidates B-only reads, jobs and reminders too. With no separate deletion-target identity, every module can reasonably treat every row in that personal scope as scheduled for purge.
+- **Learning/worker unit:** follows material lineage and D5's retention of unrelated active study: remove A and A-dependent derivatives, leave B-only study usable. Its root-specific interpretation cannot be represented consistently by an envelope carrying only the owner scope and its generation. If it keeps that scope live, a generic scope-only admission/commit guard cannot itself distinguish a canceled A job from a valid B job.
+
+These are incompatible readings of the stated contract, not a claim that either can satisfy both readings simultaneously. AD-4 requires multi-parent lineage but does not define whether its tombstone addresses an authorization scope, a selected root, or both. AD-9 does not resolve that distinction. Choosing locks or a physical table layout later cannot settle the deletion meaning for separately built modules.
+
+**Consequence:** unintended loss/revocation of unrelated study, or inconsistent enforcement of immediate use revocation and late-result suppression for the selected material. A mixed A+B derivative also needs one agreed invalidation decision, not module-specific retention interpretations.
+
+**Minimum reconciliation:** distinguish authorization scope from deletion target. Specify the target ID/generation, affected transitive lineage, and the fence identities that dispatch/result-commit checks must validate; explicitly distinguish a selected-material deletion from whole-personal-scope deletion. Decide how A+B derivatives are invalidated without deleting B-only study. All modules must consume that one lifecycle decision. This clarification must preserve immediate access/use/reminder revocation, active-copy purge within seven days, backup expiry within thirty days and restore suppression; it is not permission to weaken those bounds.
+
+**Discriminating check:** enqueue A-only, B-only and A+B work; delete only A while work is in flight. Assert A-dependent access/egress/results are denied and purged on the original deletion deadline, B-only study remains available, and a restored backup cannot revive A-dependent state. Repeat with whole-scope deletion, where B is deliberately included.
+
+## F2 — The applicable review pass policy has no single resolution rule
+
+**Location:** [AD-5 release/policy identity](../architecture-shared-technical.md#L74-L78), [AD-8 attempt and recovery snapshots](../architecture-shared-technical.md#L92-L98), [AD-13 review transitions](../architecture-shared-technical.md#L127-L132). The producer promises an [applicable-mark handoff](../../tickets/epic-assessment-and-progress/epic-assessment-and-progress.md#L32-L34), and the [review consumer depends on it](../../tickets/epic-spaced-review/epic-spaced-review.md#L30-L33). Policies: [D3 attempt integrity](../../product-policies.md#L36-L38), [D6 review pass mark and adaptation](../../product-policies.md#L71-L72).
+
+**Trigger:** the instructor changes the pass mark after completion, before a new review, while the learner remains on the studied release.
+
+**Counterexample:** completion was earned under release V1 and an 80% policy. The instructor subsequently sets 70% for new assessments. A fresh unaided review earns exactly 75%.
+
+- **Assessment producer:** treats the review as a newly started evaluation, snapshots the now-effective 70% policy and returns Pass. This follows the new-attempt interpretation of D3 and leaves the original completion untouched.
+- **Review consumer:** treats epic 3's completion-linked applicable-mark handoff as binding to the studied version, uses its 80% snapshot and records a failed review. This follows version pinning and also leaves the original completion untouched.
+
+Both can use exact arithmetic and immutable snapshots; the disagreement is which policy is applicable, not rounding. AD-8 explicitly fixes the root threshold throughout recovery, but no corresponding rule chooses the policy for a later review. AD-13 assumes a successful/failed result without defining that policy reference or an authoritative finalized result handoff. The general evidence envelope and shared validation library do not decide the missing semantic choice.
+
+**Consequence:** the same response is displayed/reported as passed by one unit and failed by another; one advances to a three-day interval while another resets to next day. Completion can remain monotonic in both implementations, so the existing completion invariant does not catch the incompatibility.
+
+**Minimum reconciliation:** explicitly decide whether a review uses a completion-linked policy or the policy effective at review start, including how this interacts with a pinned release. Identify one authoritative evaluator and a shared finalized review-result contract carrying its policy revision/snapshot, assistance classification and outcome. Review scheduling/reporting must consume that outcome rather than independently select another threshold. Preserve the 80% default, instructor configuration, root-fixed recovery chains and nonrevocable earned completion. This report does not select a new product default on the user's behalf.
+
+**Discriminating check:** complete at 80%, change the applicable course setting to 70%, then review at 75%. Require the assessment result, learner status, next due state and instructor report to agree under the explicitly selected rule. Change the setting again during the review and verify its start snapshot remains fixed; verify an existing recovery chain still uses its root threshold.
+
+## Reconciled boundaries — no additional material finding
+
+| Boundary challenged | Result of the adversarial check |
+| --- | --- |
+| Module ownership and mutation | AD-1 assigns module write authority, not duplicate epic-owned implementations; AD-2 requires one transaction/client and serializes protected mutations against authorization changes. No separate write-authority contradiction identified beyond F1's deletion-target meaning. |
+| Ordinary scoring and targeted recovery | AD-8 separates ordinary overall passing from failed-test recovery, fixes the root threshold, preserves passing groups, rejects unassessed-target credit and retains the original score. A perfect-score recovery requirement or mixed-policy chain would violate explicit text, not be an equally compliant interpretation. |
+| Earned completion | D1/D3/D4 and AD-8 preserve earned passes/awards across review failure, invalid-item findings, withdrawals and policy/version changes; pending/unearned decisions are treated separately. Data deletion is not a promise to retain the deleted evidence forever. |
+| Revision and approval dependencies | AD-5 pins immutable release dependencies; AD-6 requires personally inspected exact AI-visible variants, explicitly including role-play/conversational turns, why responses, narration, feedback and fresh retests. Neither a broad persona approval nor streaming unseen turns is a compliant alternative. An approved script alone does not exempt an unapproved audio variant. |
+| Diagnostic E1/E2 seam | AD-7 explicitly makes the skippable setup diagnostic independent of a published course or assessment attempt, using shared pure answer/evidence contracts; epic accountability is not module creation order. No mandatory dependency cycle found. No automatic reuse of a diagnostic as completion/recovery credit is permitted. Objective-revision reconciliation must not invent equivalence, but mandatory diagnostic-to-generated-objective credit/reuse is not a stated requirement and is not manufactured as a finding. |
+| Late jobs, consent and external copies | AD-2/AD-4 require serialized dispatch fences, pre-egress and pre-commit checks, discard of late results and tracking of already-dispatched provider copies. A Boolean check followed by an unfenced network call is explicitly insufficient. F1 concerns which target is fenced, not the absence of a fence requirement. |
+| D5 and vendor feasibility | Seven-day active purge includes retained provider copies; backups are capped at thirty days and restores replay tombstones. AD-10 and the source notes block private processing where guarantees fail, explicitly reject assuming standard Anthropic retention/ZDR eligibility, and require verification even for a local alternative. Fixtures, a vendor swap or an unsupported local model cannot count as accepted working GenAI or justify weaker retention. |
+| Review timezone and notification state | AD-13 fixes local-calendar interval addition, DST disambiguation direction, recomputation from the same anchor, persisted due state, local-day deduplication plus a 24-hour gap, and notification-only snooze/pause. These close the material timezone-burst and completion-rewrite counterexamples. F2 remains independent of calendar arithmetic. |
+| Shared schemas and format breadth | AD-7/AD-12/AD-15 require common versioned evidence/activity/DTO contracts and forbid format-specific pass awards or executable generated UI. Physical fields/renderers remain refinement work, not permission to create incompatible business semantics. All required functioning format families remain release obligations. |
+| Enrollment and reporting | AD-3 requires live server-side authorization and immediate revocation; AD-14 restricts course projections, excludes private study, handles retained restricted course history and verified CSV invitations. A projection/cache may not authorize a removed learner or expose another course. |
+| Execution dependencies and authority | The six envelopes and ordered handoffs retain whole-epic prerequisites and refinement gates. Technical choices are planning assumptions; no running platform, institution approval, real-data processor compatibility or successful pilot is inferred. |
+
+## Disposition
+
+Record the two shared decisions before affected independent builds: lifecycle target/fence semantics for epics 1–6, and the assessment-to-review policy/result contract for epics 3–5. These are bounded contract clarifications, not requests for a complete physical schema, more services or an expanded implementation plan. No spine, policy, epic or ticket-store edits were made; only this report was written.
