@@ -7,6 +7,15 @@ full GenAI learning platform. The [approved plan](_bmad-output/initiative-ai-lea
 defines scope; the [lint coverage record](docs/lint-coverage.md) explains the
 user-authorized tool replacement.
 
+An additional [dormant provider foundation](docs/ai-provider-adapter.md) now defines
+a provider-neutral text-completion port and a bounded, server-side Chat Completions
+adapter using the exact official SDK. It is **not connected to web/worker startup**:
+no AI UI, route, job or generation behavior is activated. Configuration alone
+cannot construct a client or dispatch; all adapter verification uses synthetic
+transports, with global network trapped. Live activation remains forbidden and
+requires separate eligibility, consent/lineage, durable accounting and operator
+authorization. Coding subscription benefits do not establish product eligibility.
+
 ## Local prerequisites and operation
 
 macOS arm64 only for this first TXT sandbox. Verified Node24.22.0/npm11.19.1 is
@@ -84,6 +93,19 @@ All ten findings were resolved; none was deferred. Cleanup conservatively remain
 exist (up to five minutes before reconciliation); unrelated roots remain usable.
 One failed physical cleanup stays denied/pending without stopping unrelated work.
 
+Adapter foundation verification on 2026-10-21 additionally passed a clean locked
+install with lifecycle scripts disabled, audit0, 254 registry signatures and
+122 attestations, all lint/rule probes, transitive client/provider isolation and
+both typechecks. The full synthetic gate passed **106 unit tests** (102 new adapter
+and boundary cases plus 4 existing), **15 PostgreSQL tests**, **10 browser tests**,
+the sandbox probe, production build and actual web/worker restart. Public bundle
+inspection found no adapter markers in 8 JavaScript chunks. Development imports
+were restored after the build; duplicate inactive generated route types were
+moved aside, not suppressed. Independent Quick review found two issues in
+base-path joining and normalized alias isolation; both were reproduced with four
+new regressions, fixed and independently rechecked. No findings were deferred;
+the earlier tracer review above is separate from this foundation review.
+
 ## Structure and security boundaries
 
 - [src/app](src/app/page.tsx): minimal local study interface and thin HTTP adapters.
@@ -122,7 +144,7 @@ closed. Four-format parsing and dedicated learner-code isolation remain later wo
 	check here explicitly used Node24. The verified copy is ignored local evidence.
 - Cookies are HTTP-only/SameSite-strict but not Secure for this exact loopback HTTP
 	origin. No hosted/production auth configuration is offered.
-- No providers, accounts, costs, deployment, real data, pilot, full generation,
+- No activated providers, accounts, costs, deployment, real data, pilot, full generation,
 	diagnostics, exports, general retention/backup/restore or completion awards.
 - The prior user-approved Homebrew installation changed shared OpenSSL/Kerberos
 	dependencies. Existing PG17 data was not used; unrelated consumers may need

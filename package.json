@@ -30,6 +30,7 @@
   "dependencies": {
     "better-auth": "1.7.12",
     "next": "16.4.2",
+    "openai": "7.39.0",
     "pg": "8.23.1",
     "pg-boss": "12.30.0",
     "react": "19.3.1",
