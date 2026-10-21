@@ -1,0 +1,18 @@
+# No push/PR trigger or remote runner is authorized by the local-only plan.
+# This manual entry requires a separately approved, already prepared isolated
+# macOS self-hosted checkout; no accounts, paid runners or deployment are created.
+name: Synthetic tracer checks (manual only)
+on: workflow_dispatch
+permissions: {}
+jobs:
+  checks:
+    runs-on: [self-hosted, macOS, tracer-synthetic-approved]
+    timeout-minutes: 15
+    steps:
+      - name: Run the same local quality gates
+        shell: bash
+        run: |
+          export PATH="$PWD/.local/runtime/node-v24.22.0-darwin-arm64/bin:$PATH"
+          export NPM_CONFIG_USERCONFIG=/dev/null NEXT_TELEMETRY_DISABLED=1
+          npm ci --ignore-scripts --no-fund
+          npm run checks
