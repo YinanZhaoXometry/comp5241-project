@@ -3,7 +3,7 @@ title: 'Consent, policy admission and durable processing controls'
 type: 'feature'
 ticket: S3
 created: '2026-10-22'
-status: 'planned'
+status: 'built'
 baseline_revision: 'd851f8f77314ab8f7d8f38e84cac266f7f31916e'
 route: 'full'
 route_source: 'auto'
