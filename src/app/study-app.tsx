@@ -5,6 +5,7 @@ import Link from "next/link";
 import { api, command, json } from "./client";
 import { PlanEditor } from "./plan-editor";
 import { FilePicker, Materials } from "./materials";
+import { PrivacyPanel } from "./privacy-panel";
 import { errorCode, messages } from "../platform/errors";
 import type { Study } from "../modules/materials-setup/service";
 import type { Receipt } from "../contracts/setup";
@@ -165,6 +166,7 @@ export function StudyApp() {
             <section className="danger-zone"><h2>Remove this material</h2><p>Deletes this original, extracted text and every dependent plan revision. Unrelated material stays available.</p>{!removing ? <button ref={deleteButton} className="danger" onClick={() => setRemoving(true)}>Review removal</button> : <fieldset><legend>Confirm material removal</legend><p>Access will stop immediately. Cleanup can remain pending. This cannot be undone.</p><button className="quiet" onClick={() => { setRemoving(false); requestAnimationFrame(() => deleteButton.current?.focus()); }}>Cancel removal</button><button className="danger" disabled={busy} onClick={() => { void remove(); }}>Delete material and dependent plans</button></fieldset>}</section>
           </>}
           <section className="library"><h2>Saved studies</h2>{entries.length === 0 ? <p>No saved studies yet.</p> : <ul>{entries.map(entry => <li key={entry.rootId}><div><strong>{entry.filename}</strong><p className="fine">{entry.state === "deleted" ? `Access revoked · cleanup ${entry.cleanupState}` : entry.confirmed ? "Plan confirmed — course not generated" : `Manual draft · ${entry.state} · revision ${entry.revision}`}</p></div>{entry.state !== "deleted" && <button className="quiet" disabled={busy} onClick={() => { void open(entry.rootId); }}>{entry.confirmed ? "View plan" : "Resume"}</button>}</li>)}</ul>}</section>
+          <PrivacyPanel />
         </>}
         <footer>Private by scope. Deliberate by design. <span>Local tracer — not approved for real data.</span></footer>
       </div>

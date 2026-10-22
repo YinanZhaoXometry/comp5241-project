@@ -5,8 +5,10 @@ import { authenticated, trustedMutation, jsonBody, safeFailure, privateHeaders, 
 import { fail } from "../../../../platform/errors";
 import { getOperation, getOriginal, getPreview } from "../../../../modules/materials-setup/queries";
 import { createBatch, addInputs, uploadSlot, acknowledge, controlSlot } from "../../../../modules/materials-setup/batches";
+import { getDisclosure, decide, withdraw } from "../../../../modules/processing-consent/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
+import type { Decide, Withdraw } from "../../../../contracts/consent";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -86,6 +88,15 @@ async function handle(request: Request, context: Context) {
           : action === "removal" ? await removeRoot(identity, rootId, body as Command) : null;
         if (result) return Response.json(result, { headers: privateHeaders });
       }
+    }
+    if (path[0] === "processing" && path.length === 1 && request.method === "GET") {
+      return Response.json(await getDisclosure(identity), { headers: privateHeaders });
+    }
+    if (path[0] === "processing" && path.length === 2 && request.method === "POST") {
+      const body = await jsonBody(request);
+      const result = path[1] === "decision" ? await decide(identity, body as Decide)
+        : path[1] === "withdrawal" ? await withdraw(identity, body as Withdraw) : null;
+      if (result) return Response.json(result, { headers: privateHeaders });
     }
     fail("FORBIDDEN_OR_NOT_FOUND");
   } catch (error) { return safeFailure(error); }
