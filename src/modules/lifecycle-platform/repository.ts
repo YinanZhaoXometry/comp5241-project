@@ -81,6 +81,15 @@ export async function registerObject(
   );
   return id;
 }
+// Transitive deletion scope of one root: the root plus every slot-material
+// root of the batch it aggregates (mirrors removeRoot's tombstone set).
+export async function relatedRoots(client: PoolClient, rootId: string) {
+  const slots = await client.query<{ root_id: string }>(
+    'SELECT root_id FROM app.batch_slot WHERE batch_id=$1 AND root_id<>$1',
+    [rootId],
+  );
+  return [rootId, ...slots.rows.map(row => row.root_id)];
+}
 export async function stage(client: PoolClient, ownerId: string) {
   const key = crypto.randomUUID();
   await client.query(
@@ -136,4 +145,62 @@ export async function receipt(
     [identity.userId, command.commandKey, action, hash, result.rootId, result],
   );
   return result;
+}
+
+// Whole-personal deletion protective record (S9). Not a command_receipt: those
+// are root-anchored, while a personal deletion covers every root of the owner.
+export type DeletionRequestRecord = {
+  id: string;
+  owner_id: string;
+  command_key: string;
+  request_hash: string;
+  state: string;
+  accepted_at: Date;
+  deadline_at: Date;
+  purged_at: Date | null;
+  categories: unknown;
+};
+export async function deletionRequest(
+  client: PoolClient,
+  ownerId: string,
+  commandKey: string,
+): Promise<DeletionRequestRecord | undefined> {
+  const result = await client.query<DeletionRequestRecord>(
+    'SELECT * FROM app.deletion_request WHERE owner_id=$1 AND command_key=$2',
+    [ownerId, commandKey],
+  );
+  return result.rows[0];
+}
+export async function insertDeletionRequest(
+  client: PoolClient,
+  ownerId: string,
+  id: string,
+  commandKey: string,
+  hash: string,
+  categories: unknown,
+) {
+  await client.query(
+    "INSERT INTO app.deletion_request(id,owner_id,command_key,request_hash,deadline_at,categories) VALUES($1,$2,$3,$4,clock_timestamp()+interval '7 days',$5)",
+    [id, ownerId, commandKey, hash, JSON.stringify(categories)],
+  );
+}
+export async function markDeletionPurged(client: PoolClient, id: string) {
+  await client.query(
+    "UPDATE app.deletion_request SET state='purged',purged_at=clock_timestamp() WHERE id=$1 AND state='pending'",
+    [id],
+  );
+}
+// Content-free preview journal: scope plus category counts only, expires in
+// thirty days (AD-4); P7's retention sweep owns the expiry itself.
+export async function insertDeletionPreview(
+  client: PoolClient,
+  ownerId: string,
+  rootId: string | null,
+  scope: 'root' | 'personal',
+  categories: unknown,
+) {
+  await client.query(
+    'INSERT INTO app.deletion_preview(id,owner_id,root_id,scope,categories) VALUES($1,$2,$3,$4,$5)',
+    [crypto.randomUUID(), ownerId, rootId, scope, JSON.stringify(categories)],
+  );
 }
