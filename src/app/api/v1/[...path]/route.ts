@@ -4,6 +4,7 @@ import { removeRoot } from "../../../../modules/lifecycle-platform/service";
 import { authenticated, trustedMutation, jsonBody, safeFailure, privateHeaders, protectedResponse, uploadCommand } from "../../../../platform/http";
 import { fail } from "../../../../platform/errors";
 import { getOperation, getOriginal, getPreview } from "../../../../modules/materials-setup/queries";
+import { getHandoff } from "../../../../modules/materials-setup/handoff";
 import { createBatch, addInputs, uploadSlot, acknowledge, controlSlot } from "../../../../modules/materials-setup/batches";
 import { getDisclosure, decide, withdraw } from "../../../../modules/processing-consent/service";
 import { getPreferences, savePreferences } from "../../../../modules/setup-preferences/service";
@@ -76,6 +77,10 @@ async function handle(request: Request, context: Context) {
         if (action === "material") {
           const original = await getOriginal(identity, rootId);
           return protectedResponse(identity, rootId, original.bytes, request.signal, false, [original.objectId], true);
+        }
+        if (action === "handoff") {
+          const handoff = await getHandoff(identity, rootId);
+          return protectedResponse(identity, rootId, handoff, request.signal, false, handoff.objectIds);
         }
         const study = await getStudy(identity, rootId);
         const objects = [study.selection?.id, study.draft?.id, study.confirmed?.id, study.text !== null ? study.extractionId : null].filter((id): id is string => !!id);
