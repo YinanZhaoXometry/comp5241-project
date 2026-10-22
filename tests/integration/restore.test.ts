@@ -289,7 +289,9 @@ describe('isolated backup and protective restore', () => {
       await deliverPendingJournalEvents(client);
     });
     // Session revocation: the auth fence trigger bumps A's epoch as a side
-    // effect, which is exactly what denies the snapshot's queued job.
+    // effect, revoking every queued job's authorization basis. The event is
+    // journaled so a post-snapshot restore re-applies it (no live producer
+    // module exists for revocation yet).
     await database().query('DELETE FROM auth.session WHERE id=$1', [state.a!.sessionId]);
     await transaction(async client => {
       await journalSessionRevocation(client, {
@@ -299,10 +301,30 @@ describe('isolated backup and protective restore', () => {
       });
       await deliverPendingJournalEvents(client);
     });
-    // The queued extraction job from snapshot time must now be denied on the
-    // live database (revoked session, bumped epoch, deleted root).
-    await expect(runExtraction(state.aOperation!)).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+    // Direct access denial for the revoked owner.
     await expect(getStudy(state.a!, state.aRoot!)).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+    // Queued-work denial under the ACTUAL product contract (recorded in the
+    // ticket Plan Change Log): runExtraction checks session existence first
+    // (authorize) and the epoch second, but a session/epoch denial is
+    // deliberately swallowed into an orderly terminal operation state
+    // (failedOperation records it; the error is not rethrown), so the call
+    // RESOLVES instead of rejecting. Give the denial a fair witness: a
+    // dedicated owner whose queued operation was NOT canceled by the personal
+    // deletion, whose session is then revoked. The job must terminate without
+    // ever producing an extraction.
+    const queued = await actor('restore-queued-c');
+    const queuedUpload = await upload(queued, command(), 'restore-queued-c.txt', stream());
+    await database().query('DELETE FROM auth.session WHERE id=$1', [queued.sessionId]);
+    await expect(runExtraction(queuedUpload.operationId!)).resolves.toBeUndefined();
+    const queuedOperation = await database().query<{ state: string }>(
+      'SELECT state FROM app.operation WHERE id=$1',
+      [queuedUpload.operationId!],
+    );
+    expect(queuedOperation.rows[0].state).toBe('canceled');
+    expect(
+      (await database().query('SELECT 1 FROM app.extraction_revision WHERE root_id=$1', [queuedUpload.rootId]))
+        .rowCount,
+    ).toBe(0);
   });
 
   it('restores into a scratch database and denies access, dispatch and queued work around reconciliation', async () => {
@@ -310,8 +332,12 @@ describe('isolated backup and protective restore', () => {
     state.targetName = target.name;
     loaded = await loadBackup(state.backupId!, { restoreFiles: false });
     expect(loaded.journal.source).toBe('independent');
-    // The independent store carries the post-snapshot events the snapshot
-    // predates; replay must reconcile every one of them.
+    // The journal replay set is the verified union of the independent store
+    // and the snapshot's embedded cut. It intentionally also carries
+    // unrelated live events (other suites' merged S3/S9 hooks deliver into
+    // the same store, and stale segments from earlier runs may head it):
+    // replay's owner-presence guard skips those with an honest count, so
+    // every expectation below is a ≥ bound, never an exact total.
     const journalRows = loaded.journal.rows;
     expect(journalRows.length).toBeGreaterThanOrEqual(4);
     await restoreDump(loaded.dumpPath, target.url);

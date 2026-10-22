@@ -216,7 +216,12 @@ export async function checkSchemaCompatibility(targetPool: Pool): Promise<number
   const keys = new Set(restored.map(row => `${row.schema}.${row.table}.${row.column}:${row.dataType}`));
   const missing = reference.filter(row => !keys.has(`${row.schema}.${row.table}.${row.column}:${row.dataType}`));
   if (missing.length) {
-    console.error(JSON.stringify({ event: 'restore-schema-incompatible', missing: missing.length }));
+    console.error(
+      JSON.stringify({
+        event: 'restore-schema-incompatible',
+        missing: missing.slice(0, 20).map(row => `${row.schema}.${row.table}.${row.column}:${row.dataType}`),
+      }),
+    );
     throw new Error('Restored schema lacks tables/columns the current code requires');
   }
   return restored.length - reference.length;
@@ -225,55 +230,50 @@ export async function checkSchemaCompatibility(targetPool: Pool): Promise<number
 // Step 5: invalidate ALL restored sessions; the auth fence trigger bumps every
 // principal epoch, so queued jobs restored from the snapshot lose their
 // authorization basis too. Journaled as one system-scope revocation in the
-// same transaction.
+// same transaction. One dedicated client carries BEGIN → work → COMMIT: a
+// Pool.query('BEGIN') would land on an arbitrary pooled connection and split
+// the transaction.
 export async function invalidateAllSessions(target: Pool): Promise<number> {
-  await target.query('BEGIN');
+  const client = await target.connect();
   try {
-    const client = await target.connect();
-    let invalidated = 0;
-    try {
-      const updated = await client.query(
-        'UPDATE auth.session SET "expiresAt"=clock_timestamp() WHERE "expiresAt">clock_timestamp()',
-      );
-      invalidated = updated.rowCount ?? 0;
-      await journalSessionRevocation(client, {
-        ownerId: null,
-        sessionIds: [],
-        receipt: { scope: 'all', reason: 'restore' },
-      });
-    } finally {
-      client.release();
-    }
-    await target.query('COMMIT');
-    return invalidated;
+    await client.query('BEGIN');
+    const updated = await client.query(
+      'UPDATE auth.session SET "expiresAt"=clock_timestamp() WHERE "expiresAt">clock_timestamp()',
+    );
+    await journalSessionRevocation(client, {
+      ownerId: null,
+      sessionIds: [],
+      receipt: { scope: 'all', reason: 'restore' },
+    });
+    await client.query('COMMIT');
+    return updated.rowCount ?? 0;
   } catch (error) {
-    await target.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw error;
+  } finally {
+    client.release();
   }
 }
 
 // Step 6: import the independent journal copy and replay it, still before any
-// traffic, reminders, queue dispatch or egress. Replay only denies.
+// traffic, reminders, queue dispatch or egress. Replay only denies. One
+// dedicated client carries BEGIN → work → COMMIT (see invalidateAllSessions).
 export async function replayJournalInto(
   target: Pool,
   rows: JournalExportRow[],
 ): Promise<{ imported: number; replay: ReplaySummary }> {
-  await target.query('BEGIN');
+  const client: PoolClient = await target.connect();
   try {
-    const client: PoolClient = await target.connect();
-    let imported = 0;
-    let replay: ReplaySummary = { reconciled: 0, unchanged: 0, fixtureNoOp: 0, events: 0 };
-    try {
-      imported = await importJournalRows(client, rows);
-      replay = await replayJournal(client, rows);
-    } finally {
-      client.release();
-    }
-    await target.query('COMMIT');
+    await client.query('BEGIN');
+    const imported = await importJournalRows(client, rows);
+    const replay = await replayJournal(client, rows);
+    await client.query('COMMIT');
     return { imported, replay };
   } catch (error) {
-    await target.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw error;
+  } finally {
+    client.release();
   }
 }
 
@@ -288,7 +288,7 @@ export async function restoreBackup(options: RestoreOptions): Promise<RestoreRes
   const target = new Pool({ connectionString: options.targetDatabaseUrl, max: 2 });
   let sessionsInvalidated = 0;
   let journalImported = 0;
-  let replay: ReplaySummary = { reconciled: 0, unchanged: 0, fixtureNoOp: 0, events: 0 };
+  let replay: ReplaySummary = { reconciled: 0, unchanged: 0, fixtureNoOp: 0, skipped: 0, events: 0 };
   let fileCopies = 0;
   let extras = 0;
   let loaded: LoadedBackup | undefined;
