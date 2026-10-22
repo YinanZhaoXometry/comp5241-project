@@ -1,6 +1,6 @@
 import { auth } from "../../../../modules/identity-access/auth";
 import { upload, getStudy, listStudies, savePlan, confirmPlan } from "../../../../modules/materials-setup/service";
-import { removeRoot } from "../../../../modules/lifecycle-platform/service";
+import { removeRoot, dependenciesPreview, personalRemoval } from "../../../../modules/lifecycle-platform/service";
 import { authenticated, trustedMutation, jsonBody, safeFailure, privateHeaders, protectedResponse, uploadCommand } from "../../../../platform/http";
 import { fail } from "../../../../platform/errors";
 import { getOperation, getOriginal, getPreview } from "../../../../modules/materials-setup/queries";
@@ -8,10 +8,13 @@ import { getHandoff } from "../../../../modules/materials-setup/handoff";
 import { createBatch, addInputs, uploadSlot, acknowledge, controlSlot } from "../../../../modules/materials-setup/batches";
 import { getDisclosure, decide, withdraw } from "../../../../modules/processing-consent/service";
 import { getPreferences, savePreferences } from "../../../../modules/setup-preferences/service";
+import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finishCheck, flagUnclear } from "../../../../modules/setup-diagnostic/service";
+import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
 import type { SavePreferences } from "../../../../contracts/preferences";
+import type { SubmitItem, FlagItem } from "../../../../contracts/diagnostic";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -71,6 +74,23 @@ async function handle(request: Request, context: Context) {
       const result = await getOperation(identity, path[1]);
       return protectedResponse(identity, result.rootId, result, request.signal);
     }
+    if (path[0] === "studies" && path[2] === "check" && path.length >= 3 && path.length <= 5) {
+      const rootId = path[1];
+      if (path.length === 3 && request.method === "GET") return protectedResponse(identity, rootId, await getCheckState(identity, rootId), request.signal);
+      if (path.length === 3 && request.method === "POST") return Response.json(await takeCheck(identity, rootId, await jsonBody(request) as Command), { headers: privateHeaders });
+      if (path.length === 4 && path[3] === "skip" && request.method === "POST") return Response.json(await skipCheck(identity, rootId, await jsonBody(request) as Command), { headers: privateHeaders });
+      if (path.length === 4 && request.method === "GET") return protectedResponse(identity, rootId, await getBundleState(identity, rootId, path[3]), request.signal);
+      if (path.length === 5 && request.method === "POST") {
+        const body = await jsonBody(request);
+        const result = path[4] === "item" ? await submitItem(identity, rootId, path[3], body as SubmitItem)
+          : path[4] === "finish" ? await finishCheck(identity, rootId, path[3], body as Command)
+          : path[4] === "flag" ? await flagUnclear(identity, rootId, path[3], body as FlagItem) : null;
+        if (result) return Response.json(result, { headers: privateHeaders });
+      }
+    }
+    if (path[0] === "studies" && path.length === 3 && path[2] === "dependencies" && request.method === "POST") {
+      return Response.json(await dependenciesPreview(identity, path[1], await jsonBody(request)), { headers: privateHeaders });
+    }
     if (path[0] === "studies" && path.length >= 2 && path.length <= 3) {
       const rootId = path[1]; const action = path[2];
       if (request.method === "GET") {
@@ -99,6 +119,16 @@ async function handle(request: Request, context: Context) {
     if (path[0] === "preferences" && path.length === 1) {
       if (request.method === "GET") return Response.json(await getPreferences(identity), { headers: privateHeaders });
       if (request.method === "PUT") return Response.json(await savePreferences(identity, await jsonBody(request) as SavePreferences), { headers: privateHeaders });
+    }
+    if (path[0] === "exports" && path.length === 1) {
+      if (request.method === "GET") return Response.json(await listExports(identity), { headers: privateHeaders });
+      if (request.method === "POST") return Response.json(await requestExport(identity, await jsonBody(request)), { status: 202, headers: privateHeaders });
+    }
+    if (path[0] === "exports" && path.length === 3 && path[2] === "download" && request.method === "GET") {
+      return downloadExport(identity, path[1], request.signal);
+    }
+    if (path[0] === "personal" && path.length === 2 && path[1] === "removal" && request.method === "POST") {
+      return Response.json(await personalRemoval(identity, await jsonBody(request)), { headers: privateHeaders });
     }
     if (path[0] === "processing" && path.length === 1 && request.method === "GET") {
       return Response.json(await getDisclosure(identity), { headers: privateHeaders });

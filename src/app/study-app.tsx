@@ -7,6 +7,9 @@ import { PlanEditor } from "./plan-editor";
 import { FilePicker, Materials } from "./materials";
 import { PrivacyPanel } from "./privacy-panel";
 import { GoalStage } from "./goal-stage";
+import { CheckStage } from "./check-stage";
+import { ExportPanel } from "./export-panel";
+import { DangerZone } from "./danger-zone";
 import { errorCode, messages } from "../platform/errors";
 import type { Study } from "../modules/materials-setup/service";
 import type { Receipt } from "../contracts/setup";
@@ -23,24 +26,22 @@ export function StudyApp() {
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const uploadAbort = useRef<AbortController | null>(null);
-  const [removing, setRemoving] = useState(false);
   const [receipt, setReceipt] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [viewGeneration, setViewGeneration] = useState(0);
   const heading = useRef<HTMLHeadingElement>(null);
-  const deleteButton = useRef<HTMLButtonElement>(null);
   const actionKeys = useRef(new Map<string, ReturnType<typeof command>>());
   const generation = useRef(0);
   const clear = useCallback(() => {
     generation.current += 1;
     uploadAbort.current?.abort(); uploadAbort.current = null; setUploading(false);
     setViewGeneration(generation.current); setBusy(false);
-    setSession(null); setEntries([]); setStudy(null); setDirty(false); setRemoving(false); setReceipt(null); actionKeys.current.clear();
+    setSession(null); setEntries([]); setStudy(null); setDirty(false); setReceipt(null); actionKeys.current.clear();
   }, []);
   const failure = useCallback((error: unknown) => {
     const code = errorCode(error);
     if (code === "UNAUTHENTICATED") clear();
-    if (code === "FORBIDDEN_OR_NOT_FOUND") { setStudy(null); setDirty(false); setRemoving(false); }
+    if (code === "FORBIDDEN_OR_NOT_FOUND") { setStudy(null); setDirty(false); }
     setNotice(messages[code]);
   }, [clear]);
   const load = useCallback(async () => {
@@ -107,7 +108,7 @@ export function StudyApp() {
   }
   async function open(root: string) {
     if (dirty && !globalThis.confirm("Leave unsaved edits? Only saved work can be reopened.")) return;
-    await act(async current => { const value = await api<Study>(`studies/${root}`); if (!current()) return; setStudy(value); setDirty(false); setReceipt(null); setRemoving(false); actionKeys.current.clear(); moveFocus(); });
+    await act(async current => { const value = await api<Study>(`studies/${root}`); if (!current()) return; setStudy(value); setDirty(false); setReceipt(null); actionKeys.current.clear(); moveFocus(); });
   }
   async function upload(files: File[]) {
     const intent = `inputs:${study?.rootId ?? "new"}:${files.map(file => `${file.name}:${file.size}:${file.lastModified}`).join("|")}`;
@@ -131,18 +132,6 @@ export function StudyApp() {
     });
     if (uploadAbort.current === abort) { setUploading(false); uploadAbort.current = null; if (abort.signal.aborted) setNotice("Upload canceled. Committed originals remain saved; unfinished slots can be retried or removed."); }
   }
-  async function remove() {
-    if (!study) return;
-    const intent = `remove:${study.rootId}`;
-    let key = actionKeys.current.get(intent); if (!key) { key = command(study.revision); actionKeys.current.set(intent, key); }
-    const deletion = key;
-    await act(async current => {
-      await api(`studies/${study.rootId}/removal`, json(deletion));
-      if (!current()) return;
-      setStudy(null); setDirty(false); setRemoving(false); setReceipt("Access revoked. Active-copy cleanup is pending or complete; see the library receipt below. No full retention or backup guarantee is claimed by this tracer.");
-      await load(); moveFocus();
-    });
-  }
   return <>
     <a className="skip-link" href="#main">Skip to study workspace</a>
     <header className="topbar"><Link href="/" className="brand" prefetch={false}>Fieldnotes<span>PRIVATE STUDY</span></Link><span className="tag">Local · synthetic only</span>{session && <button className="quiet" onClick={() => { void signOut(); }}>Sign out</button>}</header>
@@ -165,9 +154,11 @@ export function StudyApp() {
             <Materials key={`${session.user.id}:${study.rootId}`} study={study} busy={busy} onWork={act} onUpload={upload} onSaved={value => { if (viewGeneration === generation.current) { setStudy(value); void load(); } }} />
             <GoalStage key={session.user.id} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onDirty={value => { if (viewGeneration === generation.current) setDirty(value); }} />
             {study.extractionId && <PlanEditor key={`${session.user.id}:${study.rootId}:${study.slots.filter(slot => slot.state === "removed").map(slot => slot.slotId).join(":")}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onDirty={value => { if (viewGeneration === generation.current) setDirty(value); }} onSaved={value => { if (viewGeneration === generation.current) { setStudy(value); void load(); } }} />}
-            <section className="danger-zone"><h2>Remove this material</h2><p>Deletes this original, extracted text and every dependent plan revision. Unrelated material stays available.</p>{!removing ? <button ref={deleteButton} className="danger" onClick={() => setRemoving(true)}>Review removal</button> : <fieldset><legend>Confirm material removal</legend><p>Access will stop immediately. Cleanup can remain pending. This cannot be undone.</p><button className="quiet" onClick={() => { setRemoving(false); requestAnimationFrame(() => deleteButton.current?.focus()); }}>Cancel removal</button><button className="danger" disabled={busy} onClick={() => { void remove(); }}>Delete material and dependent plans</button></fieldset>}</section>
+            {study.confirmed && <CheckStage key={`${session.user.id}:${study.rootId}:${study.revision}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} />}
+            <DangerZone study={study} busy={busy} onWork={act} onDeleted={message => { setStudy(null); setDirty(false); setReceipt(message); void load().then(() => moveFocus()); }} />
           </>}
           <section className="library"><h2>Saved studies</h2>{entries.length === 0 ? <p>No saved studies yet.</p> : <ul>{entries.map(entry => <li key={entry.rootId}><div><strong>{entry.filename}</strong><p className="fine">{entry.state === "deleted" ? `Access revoked · cleanup ${entry.cleanupState}` : entry.confirmed ? "Plan confirmed — course not generated" : `Manual draft · ${entry.state} · revision ${entry.revision}`}</p></div>{entry.state !== "deleted" && <button className="quiet" disabled={busy} onClick={() => { void open(entry.rootId); }}>{entry.confirmed ? "View plan" : "Resume"}</button>}</li>)}</ul>}</section>
+          <ExportPanel busy={busy} onWork={act} />
           <PrivacyPanel />
         </>}
         <footer>Private by scope. Deliberate by design. <span>Local tracer — not approved for real data.</span></footer>

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, command, json } from "./client";
 import { errorCode, messages } from "../platform/errors";
+import { DeletionOffer } from "./danger-zone";
 import type { DecisionReceipt, Disclosure } from "../contracts/consent";
 
 // U3 processing disclosure and controls. Processor policy is a separate axis
@@ -50,13 +51,13 @@ export function PrivacyPanel() {
       generation.current += 1;
     };
   }, [load]);
-  async function act(work: () => Promise<void>) {
+  async function act(work: (current: () => boolean) => Promise<void>) {
     const stamp = generation.current;
     setBusy(true);
     setNotice("");
     setStatus("");
     try {
-      await work();
+      await work(() => stamp === generation.current);
     } catch (error) {
       if (stamp === generation.current) setNotice(messages[errorCode(error)]);
     } finally {
@@ -153,10 +154,17 @@ export function PrivacyPanel() {
               )}
             </>
           ) : disclosure!.decision === "withdrawn" ? (
-            <p>
-              Processing is stopped for the future. Prior disclosed processing cannot be undone. You can
-              delete materials and their dependent plans from the study workspace at any time.
-            </p>
+            <>
+              <p>
+                Processing is stopped for the future. Prior disclosed processing cannot be undone. You can
+                delete materials and their dependent plans from the study workspace at any time.
+              </p>
+              <DeletionOffer
+                busy={busy}
+                onWork={act}
+                onDeleted={message => setStatus(message)}
+              />
+            </>
           ) : showOffer ? (
             <>
               <h3>Current disclosure · version {configuration.version}</h3>
