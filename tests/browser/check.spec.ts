@@ -95,7 +95,7 @@ test("optional check: equal Take/Skip offer, answers withheld until submission, 
   await expect(page.getByText("never creates completion awards", { exact: false })).toBeVisible();
   // Direct conversion attempt and payload scan.
   expect((await page.request.post(`/api/v1/studies/${rootId}/check/${bundle.bundleId}/complete`, { headers: { Origin: origin }, data: {} })).status()).toBe(404);
-  const state = await (await page.request.get(`/api/v1/studies/${rootId}/check`)).json();
+  const state = await (await page.request.get(`/api/v1/studies/${rootId}/check`)).json() as { items: Array<{ position: number; evidence: unknown }> };
   const serialized = JSON.stringify(state);
   for (const probe of withheldProbes) expect(serialized).not.toContain(probe);
   for (const banned of ['"score"', '"credit"', '"completion"']) expect(serialized).not.toContain(banned);

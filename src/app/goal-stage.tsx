@@ -29,7 +29,7 @@ export function GoalStage({ busy, onBusy, onFailure, onDirty }: Props) {
   // every render, and re-running this fetch on each poll would clobber the
   // explicit "Saved · revision N" status and the learner's in-progress state.
   const onFailureRef = useRef(onFailure);
-  onFailureRef.current = onFailure;
+  useEffect(() => { onFailureRef.current = onFailure; });
   useEffect(() => {
     let active = true;
     void api<Preferences>("preferences").then(value => {
