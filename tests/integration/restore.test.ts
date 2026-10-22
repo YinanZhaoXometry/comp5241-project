@@ -1,0 +1,480 @@
+import { afterAll, describe, expect, it } from 'vitest';
+import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { Client, Pool } from 'pg';
+import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
+import { BACKUP_DIR, createBackup, purgeExpiredBackups } from '../../scripts/backup';
+import {
+  checkSchemaCompatibility,
+  invalidateAllSessions,
+  loadBackup,
+  restoreBackup,
+  restoreDump,
+  replayJournalInto,
+  type LoadedBackup,
+} from '../../scripts/restore';
+import {
+  PROTECTIVE_JOURNAL_FILE,
+  PROTECTIVE_JOURNAL_STATE,
+  deliverPendingJournalEvents,
+  journalConsentWithdrawal,
+  journalDeletion,
+  journalDigest,
+  journalFixtureEvent,
+  journalSessionRevocation,
+  pruneProtectiveJournalFile,
+  protectiveEventFixture,
+  verifyJournalCompleteness,
+  type JournalExportRow,
+} from '../../src/adapters/protected-journal';
+import { provisionSynthetic } from '../../src/modules/identity-access/provision';
+import { auth } from '../../src/modules/identity-access/auth';
+import { decide, withdraw } from '../../src/modules/processing-consent/service';
+import { upload, getStudy } from '../../src/modules/materials-setup/service';
+import { runExtraction } from '../../src/modules/materials-setup/extraction';
+import { personalRemoval } from '../../src/modules/lifecycle-platform/service';
+import { objectsActive } from '../../src/modules/lifecycle-platform/repository';
+import { closeDatabase, database, transaction } from '../../src/adapters/postgres/database';
+import { closeQueue } from '../../src/adapters/queue';
+import type { Command, Identity } from '../../src/contracts/setup';
+
+// LOCAL SYNTHETIC coverage of S13 (delivery-checks): one encrypted snapshot of
+// this workspace's isolated loopback database plus the independently stored
+// protective journal, restored into a scratch database CREATED BY THIS TEST,
+// with the beyond-criteria proof that direct access, dispatch-shaped egress
+// and the snapshot's queued work are all still denied around the
+// restore → invalidate-sessions → replay window. Every account, document and
+// event below is synthetic; nothing leaves this machine.
+//
+// The journal appends use exactly the adapter functions the integrator hook
+// snippets call inside the S3/S9 transactions; here they run in a follow-up
+// transaction because the merged module functions own their transactions —
+// the atomic in-transaction placement is what those snippets deliver.
+// This suite exercises the real pg_dump/openssl/tar toolchain and therefore
+// only runs where the .local toolchain exists (integration), never on a
+// package branch.
+
+const command = (): Command => ({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0 });
+const withdrawalHash = createHash('sha256').update(JSON.stringify({ withdrawal: true })).digest('hex');
+const text = 'Synthetic restore-fixture source: isolated backup coverage.';
+const stream = (value = text) => new Blob([value]).stream();
+
+let loaded: LoadedBackup | undefined;
+
+async function actor(label: string) {
+  const credentials = await provisionSynthetic(label, 'learner');
+  const response = await auth().api.signInEmail({
+    body: { email: credentials.email, password: credentials.password },
+    asResponse: true,
+  });
+  const body = await response.json();
+  const session = await database().query<{ id: string }>('SELECT id FROM auth.session WHERE token=$1', [body.token]);
+  return { userId: credentials.userId, sessionId: session.rows[0].id } satisfies Identity;
+}
+
+// This suite seeds its OWN eligible synthetic configuration version so the
+// grant never depends on another suite's leftover disclosure state. Synthetic
+// test fixture only — never provider eligibility evidence.
+async function eligibleConfiguration() {
+  const max = await database().query<{ max: number | null }>('SELECT max(version) AS max FROM app.processor_configuration');
+  const version = (max.rows[0].max ?? 0) + 1;
+  const id = crypto.randomUUID();
+  await database().query(
+    `INSERT INTO app.processor_configuration(id,version,provider,purpose,categories,retention_notice,eligibility,synthetic_test,daily_admission_limit)
+     VALUES($1,$2,'Synthetic restore-test configuration (fixture — not compliant live AI)','S13 restore fixture','["synthetic excerpts"]'::jsonb,'Synthetic test fixture; nothing leaves this machine.','eligible',true,10)`,
+    [id, version],
+  );
+  return { id, version };
+}
+
+async function admin() {
+  const client = new Client({
+    host: resolve('.local/pg-socket'),
+    port: 55432,
+    user: 'tracer_bootstrap',
+    database: 'postgres',
+  });
+  await client.connect();
+  return client;
+}
+
+async function createScratch(prefix: string) {
+  const name = `${prefix}_${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}`;
+  const settings = JSON.parse(await readFile('.local/migration-config.json', 'utf8')) as { databaseUrl: string };
+  const url = new URL(settings.databaseUrl);
+  url.pathname = `/${name}`;
+  const client = await admin();
+  try {
+    await client.query(`CREATE DATABASE ${name} OWNER ${url.username}`);
+  } finally {
+    await client.end();
+  }
+  return { name, url: url.href };
+}
+
+async function dropScratch(name: string) {
+  const client = await admin();
+  try {
+    await client.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+  } finally {
+    await client.end();
+  }
+}
+
+// Shared scenario state; its run sequentially inside one describe.
+const state: {
+  a?: Identity;
+  b?: Identity;
+  configuration?: { id: string; version: number };
+  aRoot?: string;
+  aObject?: string;
+  aOperation?: string;
+  bRoot?: string;
+  bObject?: string;
+  backupId?: string;
+  targetName?: string;
+} = {};
+
+afterAll(async () => {
+  if (loaded) await rm(loaded.stagingDir, { recursive: true, force: true });
+  if (state.targetName) await dropScratch(state.targetName);
+  await closeQueue();
+  await closeDatabase();
+});
+
+describe('isolated backup and protective restore', () => {
+  it('appends journal events atomically with the protective transition (no false success)', async () => {
+    state.a = await actor('restore-owner-a');
+    state.b = await actor('restore-owner-b');
+    state.configuration = await eligibleConfiguration();
+    await decide(state.a, {
+      schemaVersion: 1,
+      commandKey: crypto.randomUUID(),
+      expectedRevision: 0,
+      configurationVersion: state.configuration.version,
+      decision: 'granted',
+      acknowledgedTerms: true,
+    });
+    const receipt = {
+      commandKey: crypto.randomUUID(),
+      configurationId: state.configuration.id,
+      disclosureVersion: state.configuration.version,
+      requestHash: withdrawalHash,
+    };
+    let keptId = '';
+    // A valid append followed by a malformed append share one transaction:
+    // the failure must roll the VALID append back too — the journal never
+    // records half of a protective transition, and the caller never sees a
+    // success for a transition that is not durably journaled.
+    await expect(
+      transaction(async client => {
+        const kept = await journalConsentWithdrawal(client, {
+          ownerId: state.a!.userId,
+          sessionId: state.a!.sessionId,
+          receipt,
+        });
+        keptId = kept.id;
+        await journalConsentWithdrawal(client, {
+          ownerId: state.a!.userId,
+          sessionId: state.a!.sessionId,
+          receipt: { ...receipt, requestHash: 'not-a-request-hash' },
+        });
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect((await database().query('SELECT 1 FROM app.protective_journal WHERE id=$1', [keptId])).rowCount).toBe(0);
+    // Independent-store delivery: one durable fixture event (recorded no-op on
+    // replay) as the delivery vehicle; the store is established, a delivery
+    // whose store path is unwritable fails without claiming success (the
+    // event stays durable in the table), and a retry converges.
+    await transaction(client =>
+      journalFixtureEvent(client, protectiveEventFixture('enrollment-revocation', state.a!.userId)),
+    );
+    await transaction(client => deliverPendingJournalEvents(client));
+    await expect(stat(PROTECTIVE_JOURNAL_STATE)).resolves.toBeTruthy();
+    await rm(PROTECTIVE_JOURNAL_FILE);
+    await rm(PROTECTIVE_JOURNAL_STATE);
+    await mkdir(PROTECTIVE_JOURNAL_STATE); // unwritable store path
+    await expect(transaction(client => deliverPendingJournalEvents(client))).rejects.toThrow();
+    await rm(PROTECTIVE_JOURNAL_STATE, { recursive: true });
+    await transaction(client => deliverPendingJournalEvents(client));
+    await expect(stat(PROTECTIVE_JOURNAL_STATE)).resolves.toBeTruthy();
+  });
+
+  it('creates one encrypted snapshot with a registered 30-day inventory and an independent journal copy', async () => {
+    // Owner A keeps a QUEUED extraction job at snapshot time (upload enqueues;
+    // this suite never runs it before the snapshot) — the beyond-criteria's
+    // queued-work fixture. Owner B keeps unrelated material that must survive.
+    const uploaded = await upload(state.a!, command(), 'restore-queued.txt', stream());
+    state.aRoot = uploaded.rootId;
+    state.aOperation = uploaded.operationId!;
+    state.aObject = (
+      await database().query<{ id: string }>(
+        "SELECT id FROM app.lifecycle_object WHERE root_id=$1 AND kind='original'",
+        [state.aRoot],
+      )
+    ).rows[0].id;
+    const bReceipt = await upload(state.b!, command(), 'restore-untouched.txt', stream());
+    state.bRoot = bReceipt.rootId;
+    state.bObject = (
+      await database().query<{ id: string }>(
+        "SELECT id FROM app.lifecycle_object WHERE root_id=$1 AND kind='original'",
+        [state.bRoot],
+      )
+    ).rows[0].id;
+
+    const backup = await createBackup();
+    state.backupId = backup.backupId;
+    // The three physical artifacts are registered under P7's S13 classes with
+    // the thirty-day expiry; the manifest itself stays content-free.
+    const rows = await database().query<{ kind: string; retention_class: string; state: string; expires_at: Date }>(
+      "SELECT kind,retention_class,state,expires_at FROM app.retention_registry WHERE row_id=$1 ORDER BY kind",
+      [backup.backupId],
+    );
+    expect(rows.rows.map(row => row.kind).sort()).toEqual([
+      'protective-backup-dump',
+      'protective-backup-files',
+      'protective-backup-journal',
+    ]);
+    for (const row of rows.rows) {
+      expect(['backup-snapshot', 'protective-journal']).toContain(row.retention_class);
+      expect(row.state).toBe('active');
+      expect(row.expires_at.getTime()).toBeGreaterThan(Date.now() + 29 * 24 * 3600 * 1000);
+    }
+    const manifest = JSON.parse(await readFile(resolve(BACKUP_DIR, `${backup.backupId}.json`), 'utf8')) as {
+      journal: { cut: { cut: number; count: number; digest: string } };
+    };
+    expect(manifest.journal.cut.count).toBe(backup.journalCut.count);
+    expect((await stat(resolve(BACKUP_DIR, `${backup.backupId}.dump.enc`))).size).toBeGreaterThan(0);
+  });
+
+  it('records post-snapshot deletion, withdrawal and revocation in the protective journal', async () => {
+    // AFTER the snapshot: withdraw consent, delete everything personal,
+    // revoke the session. The snapshot predates all three, so a plain restore
+    // would resurrect granted consent, live roots and a valid session — the
+    // journal (delivered to the independent store) is what reconciles them.
+    const withdrawalCommand = command();
+    const withdrawn = await withdraw(state.a!, withdrawalCommand);
+    expect(withdrawn.decision).toBe('withdrawn');
+    await transaction(async client => {
+      await journalConsentWithdrawal(client, {
+        ownerId: state.a!.userId,
+        sessionId: state.a!.sessionId,
+        receipt: {
+          commandKey: withdrawalCommand.commandKey,
+          configurationId: state.configuration!.id,
+          disclosureVersion: state.configuration!.version,
+          requestHash: withdrawalHash,
+        },
+      });
+      await deliverPendingJournalEvents(client);
+    });
+    const roots = (
+      await database().query<{ id: string }>('SELECT id FROM app.lifecycle_root WHERE owner_id=$1', [state.a!.userId])
+    ).rows.map(row => row.id);
+    const objects = (
+      await database().query<{ id: string }>('SELECT id FROM app.lifecycle_object WHERE root_id=ANY($1::uuid[])', [roots])
+    ).rows.map(row => row.id);
+    const receipt = (await personalRemoval(state.a!, command())) as { state: string };
+    expect(receipt.state).toBe('pending');
+    await transaction(async client => {
+      await journalDeletion(client, {
+        ownerId: state.a!.userId,
+        rootIds: roots,
+        objectIds: objects,
+        receipt: { scope: 'personal' },
+      });
+      // Fixture type without a live producer module: appended through the
+      // explicit adapter fixture, never pretending a feature exists.
+      await journalFixtureEvent(client, protectiveEventFixture('publication-withdrawal', state.a!.userId));
+      await deliverPendingJournalEvents(client);
+    });
+    // Session revocation: the auth fence trigger bumps A's epoch as a side
+    // effect, which is exactly what denies the snapshot's queued job.
+    await database().query('DELETE FROM auth.session WHERE id=$1', [state.a!.sessionId]);
+    await transaction(async client => {
+      await journalSessionRevocation(client, {
+        ownerId: state.a!.userId,
+        sessionIds: [state.a!.sessionId],
+        receipt: { scope: 'sessions', reason: 'operator' },
+      });
+      await deliverPendingJournalEvents(client);
+    });
+    // The queued extraction job from snapshot time must now be denied on the
+    // live database (revoked session, bumped epoch, deleted root).
+    await expect(runExtraction(state.aOperation!)).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+    await expect(getStudy(state.a!, state.aRoot!)).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+  });
+
+  it('restores into a scratch database and denies access, dispatch and queued work around reconciliation', async () => {
+    const target = await createScratch('restore_tgt');
+    state.targetName = target.name;
+    loaded = await loadBackup(state.backupId!, { restoreFiles: false });
+    expect(loaded.journal.source).toBe('independent');
+    // The independent store carries the post-snapshot events the snapshot
+    // predates; replay must reconcile every one of them.
+    const journalRows = loaded.journal.rows;
+    expect(journalRows.length).toBeGreaterThanOrEqual(4);
+    await restoreDump(loaded.dumpPath, target.url);
+    const targetPool = new Pool({ connectionString: target.url, max: 2, options: '-c search_path=app,auth,public' });
+    const extras = await checkSchemaCompatibility(targetPool);
+    expect(extras).toBeGreaterThanOrEqual(0);
+    // Queue-schema overlap: the snapshot's queued extraction job came back
+    // intact, so the restored queue is the same durable job store.
+    const job = await targetPool.query<{ data: { operationId?: string } }>('SELECT data FROM queue.job WHERE id=$1', [
+      state.aOperation!,
+    ]);
+    expect(job.rows[0]?.data).toMatchObject({ operationId: state.aOperation!, ownerId: state.a!.userId });
+
+    // Ordered procedure position: restored, sessions invalidated, journal NOT
+    // yet replayed. The pre-deletion snapshot resurrected A's root, A's
+    // granted consent and A's valid-looking session — exactly why every
+    // attempt in this window must stay denied by the fences.
+    const invalidated = await invalidateAllSessions(targetPool);
+    expect(invalidated).toBeGreaterThanOrEqual(2); // A's and B's snapshot sessions
+    const client = await targetPool.connect();
+    try {
+      // Direct access: the restored session is dead — authorize() denies it.
+      const session = await client.query('SELECT 1 FROM auth.session WHERE id=$1 AND "expiresAt">clock_timestamp()', [
+        state.a!.sessionId,
+      ]);
+      expect(session.rowCount).toBe(0);
+      const resurrectedRoot = await client.query<{ deleted_at: Date | null }>(
+        'SELECT deleted_at FROM app.lifecycle_root WHERE id=$1',
+        [state.aRoot!],
+      );
+      expect(resurrectedRoot.rows[0].deleted_at).toBeNull();
+      // The dispatch/egress fence (objectsActive, as admitDispatch consults
+      // it) still sees the resurrected objects BEFORE replay — replay below
+      // is what re-denies them; nothing may serve traffic in between.
+      expect(await objectsActive(client, state.a!.userId, [state.aObject!])).toBe(true);
+      const granted = await client.query<{ decision: string }>(
+        'SELECT decision FROM app.processing_decision WHERE owner_id=$1 ORDER BY decided_at DESC LIMIT 1',
+        [state.a!.userId],
+      );
+      expect(granted.rows[0]?.decision).toBe('granted');
+    } finally {
+      client.release();
+    }
+
+    // Reconciliation: import the independent copy and replay, still before
+    // any traffic, reminders, queue dispatch or egress. Replay only denies.
+    const replayed = await replayJournalInto(targetPool, journalRows);
+    expect(replayed.replay.fixtureNoOp).toBeGreaterThanOrEqual(1);
+    const after = await targetPool.connect();
+    try {
+      const decision = await after.query<{ decision: string }>(
+        'SELECT decision FROM app.processing_decision WHERE owner_id=$1 ORDER BY decided_at DESC LIMIT 1',
+        [state.a!.userId],
+      );
+      expect(decision.rows[0].decision).toBe('withdrawn');
+      const root = await after.query<{ deleted_at: Date | null; cleanup_state: string }>(
+        'SELECT deleted_at,cleanup_state FROM app.lifecycle_root WHERE id=$1',
+        [state.aRoot!],
+      );
+      expect(root.rows[0].deleted_at).not.toBeNull();
+      expect(root.rows[0].cleanup_state).toBe('pending'); // worker start purges the bytes
+      const objects = await after.query<{ invalidated_at: Date | null }>(
+        'SELECT invalidated_at FROM app.lifecycle_object WHERE root_id=$1',
+        [state.aRoot!],
+      );
+      for (const row of objects.rows) expect(row.invalidated_at).not.toBeNull();
+      expect(await objectsActive(after, state.a!.userId, [state.aObject!])).toBe(false);
+      const operation = await after.query<{ state: string }>('SELECT state FROM app.operation WHERE id=$1', [
+        state.aOperation!,
+      ]);
+      expect(operation.rows[0].state).toBe('canceled');
+      // Unrelated owner B survives the restore with live objects and fences.
+      const bRoot = await after.query<{ deleted_at: Date | null }>(
+        'SELECT deleted_at FROM app.lifecycle_root WHERE id=$1',
+        [state.bRoot!],
+      );
+      expect(bRoot.rows[0].deleted_at).toBeNull();
+      expect(await objectsActive(after, state.b!.userId, [state.bObject!])).toBe(true);
+      const sessions = await after.query<{ count: string }>(
+        'SELECT count(*) AS count FROM auth.session WHERE "expiresAt">clock_timestamp()',
+      );
+      expect(sessions.rows[0].count).toBe('0');
+    } finally {
+      after.release();
+      await targetPool.end();
+    }
+    // Full ordered procedure into a second scratch target: the timed operator
+    // path (RTO evidence recorded honestly; no production claim attached).
+    const timed = await createScratch('restore_timed');
+    try {
+      const result = await restoreBackup({ backupId: state.backupId!, targetDatabaseUrl: timed.url, restoreFiles: false });
+      expect(result.replay.events).toBe(journalRows.length);
+      expect(result.rtoBudgetOk).toBe(true);
+      expect(result.timings.map(step => step.step)).toContain('journal-replay');
+    } finally {
+      await dropScratch(timed.name);
+    }
+  }, 120000);
+
+  it('fails closed when the journal cannot be proven complete', async () => {
+    const rows: JournalExportRow[] = loaded!.journal.rows;
+    const cut = { cut: rows[rows.length - 1].seq, count: rows.length, digest: journalDigest(rows) };
+    // Truncated export: count/digest/last-seq all mismatch.
+    expect(() => verifyJournalCompleteness(rows.slice(0, -1), cut)).toThrow();
+    // Mutated export: same shape, different content.
+    const mutated = rows.map((row, index) => (index === 0 ? { ...row, sessionIds: [crypto.randomUUID()] } : row));
+    expect(() => verifyJournalCompleteness(mutated, cut)).toThrow();
+    // A restore whose journal ciphertext was tampered with aborts BEFORE any
+    // schema is restored: the target database stays empty.
+    const tampered = await createBackup();
+    const journalKey = (
+      await database().query<{ storage_key: string }>(
+        "SELECT storage_key FROM app.retention_registry WHERE kind='protective-backup-journal' AND row_id=$1",
+        [tampered.backupId],
+      )
+    ).rows[0].storage_key;
+    const journalPath = resolve(BACKUP_DIR, `${journalKey}.jsonl.enc`);
+    const encrypted = await readFile(journalPath);
+    const corrupted = Buffer.concat([encrypted, Buffer.from([encrypted[0] ^ 0xff])]);
+    await writeFile(journalPath, corrupted);
+    const doomed = await createScratch('restore_doomed');
+    try {
+      await expect(
+        restoreBackup({ backupId: tampered.backupId, targetDatabaseUrl: doomed.url, restoreFiles: false }),
+      ).rejects.toThrow();
+      const probe = new Pool({ connectionString: doomed.url, max: 1 });
+      const tables = await probe.query<{ count: string }>(
+        "SELECT count(*) AS count FROM information_schema.tables WHERE table_schema='app'",
+      );
+      await probe.end();
+      expect(tables.rows[0].count).toBe('0');
+    } finally {
+      await dropScratch(doomed.name);
+    }
+  }, 120000);
+
+  it('expires thirty-day-old snapshots from inventory, registry and disk', async () => {
+    // The independent journal store prunes content-free segments past the
+    // AD-4 ceiling but is never deleted outright: it is the continuation the
+    // next restore needs, and a prune with nothing old is a no-op.
+    await expect(pruneProtectiveJournalFile(new Date(Date.now() - 1000))).resolves.toBe(0);
+    // Backdate every snapshot artifact past the class ceiling, then let the
+    // maintenance purge prove expiry physically: files deleted, rows purged,
+    // manifests removed, and a repeat purge a safe no-op.
+    await database().query(
+      `UPDATE app.retention_registry SET expires_at=clock_timestamp()-interval '1 second'
+       WHERE kind IN ('protective-backup-dump','protective-backup-files','protective-backup-journal') AND state='active'`,
+    );
+    let purged: string[] = [];
+    await transaction(async client => {
+      purged = await purgeExpiredBackups(client);
+    });
+    expect(purged).toContain(state.backupId!);
+    for (const row of (
+      await database().query<{ storage_key: string }>('SELECT storage_key FROM app.retention_registry WHERE row_id=$1', [
+        state.backupId!,
+      ])
+    ).rows) {
+      await expect(stat(resolve(BACKUP_DIR, `${row.storage_key}.enc`))).rejects.toMatchObject({ code: 'ENOENT' });
+    }
+    await expect(stat(resolve(BACKUP_DIR, `${state.backupId!}.json`))).rejects.toMatchObject({ code: 'ENOENT' });
+    await transaction(async client => {
+      await expect(purgeExpiredBackups(client)).resolves.toEqual([]);
+    });
+  });
+});
