@@ -23,7 +23,7 @@ import { authorize } from "../identity-access/access";
 import * as lifecycle from "../lifecycle-platform/repository";
 import { batchRow } from "../materials-setup/batches";
 import { planRevision } from "../materials-setup/repository";
-import { parse, requestHash } from "../materials-setup/service";
+import { parse, requestHash } from "../../platform/commands";
 import { fail } from "../../platform/errors";
 import { checkSupportsBundle, materializeBundle } from "./bundle";
 import * as repository from "./repository";

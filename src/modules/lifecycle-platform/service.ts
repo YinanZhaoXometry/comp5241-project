@@ -6,7 +6,7 @@ import { commandSchema, uuid, type Command, type Identity } from "../../contract
 import { authorize } from "../identity-access/access";
 import { purgeMaterial, purgeObjects } from "../materials-setup/repository";
 import { touchSource } from "../materials-setup/batches";
-import { parse, requestHash } from "../materials-setup/service";
+import { parse, requestHash } from "../../platform/commands";
 import { fail } from "../../platform/errors";
 import { deliverPendingJournalEvents, journalDeletion } from "../../adapters/protected-journal";
 import * as repository from "./repository";

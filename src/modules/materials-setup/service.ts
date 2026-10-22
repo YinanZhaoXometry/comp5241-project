@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-import { ZodError } from "zod";
 import { commandSchema, savePlanSchema, confirmSchema, uuid, hasControl, type Command, type Identity, type SavePlan, type Confirm, type ExtractionJob } from "../../contracts/setup";
 import { transaction } from "../../adapters/postgres/database";
 import { enqueue } from "../../adapters/queue";
@@ -8,14 +6,11 @@ import { authorize } from "../identity-access/access";
 import * as lifecycle from "../lifecycle-platform/repository";
 import { createOperation } from "../lifecycle-platform/operations";
 import { fail } from "../../platform/errors";
+import { parse, requestHash } from "../../platform/commands";
 import * as repository from "./repository";
 import { preferenceRevision } from "./handoff";
 import { getBatch, batchRow } from "./batches";
 
-export function requestHash(value: unknown) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
-export function parse<T>(parser: { parse: (value: unknown) => T }, value: unknown): T {
-  try { return parser.parse(value); } catch (error) { if (error instanceof ZodError) fail("INVALID_INPUT"); throw error; }
-}
 export async function upload(identity: Identity, raw: Command, filename: string, input: ReadableStream<Uint8Array>) {
   const command = parse(commandSchema, raw);
   if (command.expectedRevision !== 0 || filename.length > 184 || !/\.txt$/iu.test(filename) || hasControl(filename) || /[/\\\t\r\n]/u.test(filename)) fail("INVALID_INPUT");

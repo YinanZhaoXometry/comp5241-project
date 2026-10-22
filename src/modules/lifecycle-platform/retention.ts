@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { transaction } from '../../adapters/postgres/database';
 import { uuid, type Identity } from '../../contracts/setup';
 import { fail } from '../../platform/errors';
+import { parse } from '../../platform/commands';
 import { authorize } from '../identity-access/access';
-import { parse } from '../materials-setup/service';
 import { sweepExports } from '../setup-export/worker';
 
 // S10 bounded retention over the explicit active-copy inventory. The registry

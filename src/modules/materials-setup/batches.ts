@@ -8,7 +8,7 @@ import { enqueue, transactionQueue, transactionDb, EXTRACTION_QUEUE } from "../.
 import { authorize } from "../identity-access/access";
 import * as lifecycle from "../lifecycle-platform/repository";
 import { createOperation } from "../lifecycle-platform/operations";
-import { parse, requestHash } from "./service";
+import { parse, requestHash } from "../../platform/commands";
 import { planRevision } from "./repository";
 import { fail } from "../../platform/errors";
 

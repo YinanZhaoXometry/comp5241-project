@@ -1,19 +1,10 @@
-import { createHash } from "node:crypto";
-import { ZodError } from "zod";
 import { savePreferencesSchema, type Preferences, type SavePreferences } from "../../contracts/preferences";
 import type { Identity } from "../../contracts/setup";
 import { transaction } from "../../adapters/postgres/database";
 import { authorize } from "../identity-access/access";
 import { fail } from "../../platform/errors";
+import { parse, requestHash } from "../../platform/commands";
 import * as repository from "./repository";
-
-// Local copies of the shared command helpers: this module is deliberately
-// self-contained (no import from materials-setup) so wave-1 packages cannot
-// break each other; the S11 sweep may consolidate them later.
-export function requestHash(value: unknown) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
-export function parse<T>(parser: { parse: (value: unknown) => T }, value: unknown): T {
-  try { return parser.parse(value); } catch (error) { if (error instanceof ZodError) fail("INVALID_INPUT"); throw error; }
-}
 
 export function emptyPreferences(): Preferences {
   return { stage: "materials", goal: null, topic: "", clarification: "", background: "", timePreference: null, timezone: "", revision: 0 };

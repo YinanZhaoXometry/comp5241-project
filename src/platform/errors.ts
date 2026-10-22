@@ -2,7 +2,7 @@ export const messages = {
   UNAUTHENTICATED: 'Sign in again to continue.',
   FORBIDDEN_OR_NOT_FOUND: 'This item is unavailable.',
   INVALID_INPUT:
-    'Check the input. Only non-empty UTF-8 TXT files up to 20 MiB are supported.',
+    'Check the input. Only non-empty text-based PDF, DOCX, TXT or Markdown files up to 20 MiB each (ten per batch) are supported.',
   CONFLICT:
     'The saved revision changed. Reload the latest version before reapplying your edits.',
   RATE_LIMITED: 'The local processing limit has been reached. Try again later.',

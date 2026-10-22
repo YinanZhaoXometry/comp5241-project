@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-import { ZodError } from "zod";
 import type { PoolClient } from "pg";
 import {
   decideSchema,
@@ -18,20 +16,9 @@ import { transaction } from "../../adapters/postgres/database";
 import { authorize } from "../identity-access/access";
 import { objectsActive } from "../lifecycle-platform/repository";
 import { fail } from "../../platform/errors";
+import { parse, requestHash } from "../../platform/commands";
 import { deliverPendingJournalEvents, journalConsentWithdrawal } from "../../adapters/protected-journal";
 import * as repository from "./repository";
-
-function requestHash(value: unknown) {
-  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
-}
-function parse<T>(parser: { parse: (value: unknown) => T }, value: unknown): T {
-  try {
-    return parser.parse(value);
-  } catch (error) {
-    if (error instanceof ZodError) fail("INVALID_INPUT");
-    throw error;
-  }
-}
 
 // Pinned public disclosure state (other packages read this exact shape).
 export async function getDisclosure(identity: Identity): Promise<Disclosure> {

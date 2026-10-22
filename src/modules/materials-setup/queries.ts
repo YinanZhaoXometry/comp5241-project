@@ -6,7 +6,7 @@ import { scopedRoot, assertObjects } from "../lifecycle-platform/repository";
 import { operation } from "../lifecycle-platform/operations";
 import { fail } from "../../platform/errors";
 import { material, copyKey } from "./repository";
-import { parse } from "./service";
+import { parse } from "../../platform/commands";
 
 export async function getOriginal(identity: Identity, rawId: string) {
   const rootId = parse(uuid, rawId);

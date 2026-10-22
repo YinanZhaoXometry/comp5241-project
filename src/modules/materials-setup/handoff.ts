@@ -6,7 +6,7 @@ import { authorize } from "../identity-access/access";
 import { assertObjects, scopedRoot } from "../lifecycle-platform/repository";
 import { batchRow } from "./batches";
 import { planRevision } from "./repository";
-import { parse } from "./service";
+import { parse } from "../../platform/commands";
 import { fail } from "../../platform/errors";
 
 export type HandoffSource = {

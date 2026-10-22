@@ -7,7 +7,7 @@ import { pipeline } from 'node:stream/promises';
 import { createGzip } from 'node:zlib';
 import { Readable } from 'node:stream';
 import * as files from '../../adapters/private-files';
-import { requestHash } from '../materials-setup/service';
+import { requestHash } from '../../platform/commands';
 import {
   MAX_EXPORT_BYTES,
   canonical,

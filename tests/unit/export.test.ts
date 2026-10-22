@@ -4,7 +4,7 @@ import { arrayBuffer } from 'node:stream/consumers';
 import { describe, expect, it } from 'vitest';
 import { ustarHeader, tarStream, jsonEntry, type TarEntry } from '../../src/modules/setup-export/tar';
 import { canonical, exportRequestSchema, exportJobSchema, exportCategories, MAX_EXPORT_BYTES } from '../../src/contracts/export';
-import { requestHash } from '../../src/modules/materials-setup/service';
+import { requestHash } from '../../src/platform/commands';
 
 // Synthetic decoder: verifies the exact ustar framing this module writes.
 function decodeTar(input: Uint8Array) {

@@ -18,7 +18,7 @@ import { privateHeaders } from '../../platform/http';
 import { fail } from '../../platform/errors';
 import { authorize } from '../identity-access/access';
 import * as lifecycle from '../lifecycle-platform/repository';
-import { parse, requestHash } from '../materials-setup/service';
+import { parse, requestHash } from '../../platform/commands';
 import { EXPORT_QUEUE, exportJob } from './worker';
 import * as repository from './repository';
 import { activeCounts, tablePresent } from './manifest';
