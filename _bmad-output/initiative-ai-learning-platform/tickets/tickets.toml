@@ -2,7 +2,9 @@
 # Covers assigns one accountable epic per initiative requirement; consumers verify integrations.
 # Constraints C1–C7 and product policies D1–D8 apply through each epic's References.
 # Shared architecture adopted; epic 1 has thirteen planned child entries, epic 2 ten (refined 2026-10-23), other epics unrefined.
-# No leaf tickets have been pulled or started; build/activation remains separately gated.
+# Epic 1's leaf tickets are pulled and locally built (see its tickets/ directory);
+# its metadata fields are unchanged and epics 2–6 have no leaf tickets. Build,
+# live-AI activation and deployment remain separately gated.
 # Draft id 7 retired after tree validation: pilot/closure is not a horizontal testing epic.
 next_id = 8
 
