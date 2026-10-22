@@ -4,6 +4,7 @@ import { extractionJobSchema } from "../contracts/setup";
 import { runExtraction } from "../modules/materials-setup/extraction";
 import { workExports } from "../modules/setup-export/worker";
 import { reconcileCopies } from "../modules/lifecycle-platform/service";
+import { reconcileRetention } from "../modules/lifecycle-platform/retention";
 import { extractorExists } from "../adapters/private-files";
 import { parserReady } from "../adapters/document-extractor";
 import { reconcileParsers } from "../adapters/document-sandbox";
@@ -37,6 +38,7 @@ const maintenance = setInterval(() => {
   void reconcileCopies().then(() => boss.supervise(EXTRACTION_QUEUE))
     .catch(() => console.error(JSON.stringify({ event: "maintenance-retry" })))
     .finally(() => { maintaining = false; });
+  void reconcileRetention().catch(() => console.error(JSON.stringify({ event: "retention-retry" })));
 }, 5000);
 console.log(JSON.stringify({ event: "worker-ready" }));
 async function shutdown() { clearInterval(maintenance); await closeQueue(); await workerLock.query("SELECT pg_advisory_unlock(5241002)"); workerLock.release(); await closeDatabase(); }

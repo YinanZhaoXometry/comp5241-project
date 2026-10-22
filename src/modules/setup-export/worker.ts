@@ -1,12 +1,13 @@
 import type { PgBoss } from 'pg-boss';
 import { uuid } from '../../contracts/setup';
-import { EXPORT_QUEUE, exportJobSchema, type ExportJob, type Manifest } from '../../contracts/export';
+import { EXPORT_QUEUE, EXPORT_TTL_HOURS, exportJobSchema, type ExportJob, type Manifest } from '../../contracts/export';
 import { transaction } from '../../adapters/postgres/database';
 import * as files from '../../adapters/private-files';
 import { authorize } from '../identity-access/access';
 import * as lifecycle from '../lifecycle-platform/repository';
 import { errorCode, fail } from '../../platform/errors';
 import * as repository from './repository';
+import { registerRetentionCopy } from '../lifecycle-platform/retention';
 import { captureManifest } from './manifest';
 import { buildArtifact } from './build';
 
@@ -72,12 +73,21 @@ export async function runExport(requestId: string, gate?: () => Promise<void>): 
         artifactKey,
         bytes: built.bytes,
       });
+      await registerRetentionCopy(client, {
+        kind: 'export-request',
+        retentionClass: 'export-artifact',
+        ownerId: identity.userId,
+        storageKey: artifactKey,
+        table: 'export_request',
+        rowId: requestId,
+        expiresAt: new Date(Date.now() + EXPORT_TTL_HOURS * 3600 * 1000),
+      });
       await lifecycle.unstage(client, artifactKey);
     });
     committed = true;
     key = undefined; // committed; the finally reconciliation must not erase it
   } catch (error) {
-    console.error(JSON.stringify({ event: 'export-build-failed', requestId, code: errorCode(error), debugMessage: error instanceof Error ? error.message : String(error) }));
+    console.error(JSON.stringify({ event: 'export-build-failed', requestId, code: errorCode(error) }));
     let canceled = ['UNAUTHENTICATED', 'FORBIDDEN_OR_NOT_FOUND'].includes(errorCode(error));
     const ids = snapshotIds;
     if (!canceled && ids) {
