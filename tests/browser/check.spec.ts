@@ -7,10 +7,11 @@ import type { Receipt } from "../../src/contracts/setup";
 
 const origin = "http://127.0.0.1:3000";
 // Beyond-criteria probes: the fourth item is never submitted in the journey,
-// so its declared answer text and rationale must never reach the page or the
-// pre-submission API payloads.
+// so its rationale and its correct-choice identification must never reach the
+// page or the pre-submission API payloads. The choice list itself — including
+// the correct option's text — must stay visible for the item to be answerable.
 const withheldItem = syntheticCatalog.items[3];
-const withheldProbes = [withheldItem.rationale, withheldItem.choices.find(choice => choice.id === withheldItem.answerId)!.text];
+const withheldProbes = [withheldItem.rationale];
 const sources = [
   { name: "diag-0.txt", text: "Synthetic diagnostic source one" },
   { name: "diag-1.txt", text: "Synthetic diagnostic source two" },
@@ -32,6 +33,8 @@ async function uploadAndConfirm(page: Page, outcomes: string[]) {
   await page.getByRole("button", { name: "Upload materials", exact: true }).click();
   const batch = (await (await created).json()) as Receipt;
   for (const source of sources) {
+    // The acknowledge checkbox lives inside the per-slot preview disclosure.
+    await page.getByRole("button", { name: `Inspect preview · ${source.name}`, exact: true }).click();
     const checkbox = page.getByRole("checkbox", { name: `Acknowledge and select ${source.name}`, exact: false });
     await checkbox.waitFor({ state: "visible", timeout: 120000 });
     await checkbox.check();
@@ -86,7 +89,9 @@ test("optional check: equal Take/Skip offer, answers withheld until submission, 
   await expect(page.getByText("left unanswered · Unknown").first()).toBeVisible();
   await page.getByRole("button", { name: "Finish check · leave the rest Unknown", exact: true }).click();
   await expect(page.getByText("Check finished.", { exact: false })).toBeVisible();
-  await expect(page.getByText("2 submitted · 2 Unknown")).toBeVisible();
+  // The finished summary appears in both the status output and the pinned
+  // item-set note; either presence satisfies the count assertion.
+  await expect(page.getByText("2 submitted · 2 Unknown").first()).toBeVisible();
   await expect(page.getByText("never creates completion awards", { exact: false })).toBeVisible();
   // Direct conversion attempt and payload scan.
   expect((await page.request.post(`/api/v1/studies/${rootId}/check/${bundle.bundleId}/complete`, { headers: { Origin: origin }, data: {} })).status()).toBe(404);
@@ -94,6 +99,10 @@ test("optional check: equal Take/Skip offer, answers withheld until submission, 
   const serialized = JSON.stringify(state);
   for (const probe of withheldProbes) expect(serialized).not.toContain(probe);
   for (const banned of ['"score"', '"credit"', '"completion"']) expect(serialized).not.toContain(banned);
+  const withheldView = state.items.find(item => item.position === 4);
+  expect(withheldView?.evidence).toBeNull();
+  expect(JSON.stringify(withheldView)).not.toContain("correctChoiceId");
+  expect(JSON.stringify(withheldView)).not.toContain("rationale");
   for (const body of await Promise.all(checkBodies)) for (const probe of withheldProbes) expect(body).not.toContain(probe);
   for (const width of [360, 1280]) {
     await page.setViewportSize({ width, height: 900 });
@@ -116,6 +125,7 @@ test("unavailable check still finishes setup: skip is recorded without penalty a
   await page.getByRole("button", { name: "Upload materials", exact: true }).click();
   const batch = (await (await created).json()) as Receipt;
   const checkbox = page.getByRole("checkbox", { name: `Acknowledge and select ${single[0].name}`, exact: false });
+  await page.getByRole("button", { name: `Inspect preview · ${single[0].name}`, exact: true }).click();
   await checkbox.waitFor({ state: "visible", timeout: 120000 });
   await checkbox.check();
   await page.getByRole("button", { name: "Continue with acknowledged selection", exact: true }).click();

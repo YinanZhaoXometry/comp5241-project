@@ -144,11 +144,12 @@ describe("exact-revision plan handoff (S5)", () => {
     // The confirmation pointer is gone after transitive purge: absent confirmation conflicts.
     await expect(getHandoff(study.a, study.batch.rootId)).rejects.toMatchObject({ code: "CONFLICT" });
 
-    // Invalidated-but-unpurged lineage fails closed as unavailable, and the stale
-    // plan cannot be re-confirmed into a usable handoff.
+    // Invalidated-but-unpurged lineage is the same actionable state (U5): the
+    // handoff conflicts — it needs updated sources and a new confirmation — and
+    // the stale plan cannot be re-confirmed into a usable handoff.
     const second = await confirmedStudy("handoff-invalidated");
     await database().query("UPDATE app.lifecycle_object SET invalidated_at=clock_timestamp() WHERE id=$1 AND kind='plan'", [second.saved.planRevisionId]);
-    await expect(getHandoff(second.a, second.batch.rootId)).rejects.toMatchObject({ code: "FORBIDDEN_OR_NOT_FOUND" });
+    await expect(getHandoff(second.a, second.batch.rootId)).rejects.toMatchObject({ code: "CONFLICT" });
     await expect(confirmPlan(second.a, second.batch.rootId, { ...cmd(second.confirmed.revision), planRevisionId: second.saved.planRevisionId! })).rejects.toMatchObject({ code: "FORBIDDEN_OR_NOT_FOUND" });
   });
 

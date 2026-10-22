@@ -81,7 +81,9 @@ test("declining keeps manual work available, offers Enable AI later and never ca
   const panel = page.getByRole("region", { name: "AI processing disclosure" });
   await expect(panel.getByText(/Synthetic test configuration — not compliant live AI/)).toBeVisible();
   await panel.getByRole("button", { name: "Not now", exact: true }).click();
-  await expect(panel.getByText(/AI processing declined\. Manual topic and plan editing stay available/)).toBeVisible();
+  // Exact match: the decline confirmation (status output) and the declined
+  // state paragraph intentionally share the same opening sentence.
+  await expect(panel.getByText("AI processing declined. Manual topic and plan editing stay available.", { exact: true })).toBeVisible();
   expect(await page.request.get("/api/v1/processing").then((response) => response.json())).toMatchObject({ decision: "declined" });
   await panel.getByRole("button", { name: "Enable AI later", exact: true }).click();
   await expect(panel.getByRole("button", { name: "Allow AI processing", exact: true })).toBeVisible();

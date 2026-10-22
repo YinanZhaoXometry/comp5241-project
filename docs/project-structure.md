@@ -16,16 +16,24 @@ project-new/
 │   ├── app/                thin UI/HTTP only; no direct postgres/pg imports
 │   │   ├── api/v1/[...path]/route.ts   single HTTP entry; delegates to modules
 │   │   ├── page.tsx · study-app.tsx · plan-editor.tsx · materials.tsx    private tracer UI
+│   │   ├── privacy-panel.tsx · goal-stage.tsx · check-stage.tsx ·        S3/S4/S7 stage panels
+│   │   │   export-panel.tsx · danger-zone.tsx                            S8/S9 panels
 │   │   └── demo/           isolated unauthenticated screenshot prototype ("No live AI")
 │   ├── contracts/          domain contracts; import no adapters/modules/platform/next/pg
 │   │   ├── setup.ts        tracer setup/plan contracts
 │   │   ├── documents.ts    bounded document/extraction contracts
 │   │   ├── batches.ts      batch admission/selection contracts
+│   │   ├── consent.ts · preferences.ts · diagnostic.ts · export.ts   S3/S4/S7/S8 contracts
 │   │   └── ai-provider.ts  provider-neutral text-completion port (dormant)
 │   ├── modules/            shared web/worker services; never import app/worker/next
 │   │   ├── identity-access/    auth, sessions, role fences, synthetic provisioning
-│   │   ├── materials-setup/    uploads, extraction, batches, plans (queries/repository/service)
-│   │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration
+│   │   ├── materials-setup/    uploads, extraction, batches, plans, handoff (queries/repository/service)
+│   │   ├── processing-consent/ versioned disclosure, owner consent, dispatch admission (S3)
+│   │   ├── setup-preferences/  resumable goal/topic/preferences with pinned revision (S4)
+│   │   ├── setup-diagnostic/   synthetic check bundles, evidence, skip path (S7 infrastructure)
+│   │   ├── setup-export/       consistent manifest snapshot + tar.gz artifacts (S8)
+│   │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
+│   │                           derivative ports, dependencies preview (S9)
 │   ├── adapters/           infrastructure; may not be reached from client components
 │   │   ├── postgres/       pg client (app code must go through modules)
 │   │   ├── queue.ts        pg-boss one-client enqueue

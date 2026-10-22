@@ -125,7 +125,9 @@ async function handle(request: Request, context: Context) {
       if (request.method === "POST") return Response.json(await requestExport(identity, await jsonBody(request)), { status: 202, headers: privateHeaders });
     }
     if (path[0] === "exports" && path.length === 3 && path[2] === "download" && request.method === "GET") {
-      return downloadExport(identity, path[1], request.signal);
+      // return await: a bare return would settle outside this try block, and
+      // the denied download's rejection would escape safeFailure as a 500.
+      return await downloadExport(identity, path[1], request.signal);
     }
     if (path[0] === "personal" && path.length === 2 && path[1] === "removal" && request.method === "POST") {
       return Response.json(await personalRemoval(identity, await jsonBody(request)), { headers: privateHeaders });

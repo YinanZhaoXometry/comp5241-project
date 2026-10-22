@@ -44,7 +44,9 @@ test("export scope shows before request; one ready authenticated download; expli
   // U7: scope and included derivative categories are visible before any request.
   await expect(panel.getByRole("heading", { name: "Included categories" })).toBeVisible();
   await expect(panel.getByText("Original materials: 1")).toBeVisible();
-  await expect(panel.getByText("Diagnostic evidence: Not present in this deployment")).toBeVisible();
+  // Integrated deployment: the diagnostic tables exist; their exact counts
+  // appear in the export manifest, not the scope preview.
+  await expect(panel.getByText("Diagnostic evidence: Present; exact counts appear in the export manifest")).toBeVisible();
   await expect(panel.getByText(/snapshot pins your setup data exactly as captured/i)).toBeVisible();
   await panel.getByRole("button", { name: "Request export snapshot" }).click();
   // The local worker builds the queued snapshot; the panel polls until ready.
@@ -110,6 +112,8 @@ test("expiry shows the honest purged state, Regenerate builds fresh, sign-out de
   const readyId = renewed.requests[0].id;
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sign in", exact: true })).toBeVisible();
-  expect((await page.request.get("/api/v1/exports")).status()).toBe(401);
+  // The sign-out POST is in flight while the client has already cleared its
+  // state; poll until the server has actually revoked the session.
+  await expect.poll(async () => (await page.request.get("/api/v1/exports")).status()).toBe(401);
   expect((await page.request.get(`/api/v1/exports/${readyId}/download`)).status()).toBe(401);
 });

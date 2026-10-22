@@ -56,20 +56,24 @@ export async function getHandoff(identity: Identity, rawId: string) {
     await scopedRoot(client, identity.userId, rootId);
     const batch = await batchRow(client, rootId);
     // Absent confirmation is a state conflict, not a missing study: the handoff
-    // never returns a draft and never substitutes the latest revision.
+    // never returns a draft and never substitutes the latest revision. A cleared
+    // pointer and a purged confirmed revision (source deletion cascades the plan
+    // row) are the same actionable state: select sources and confirm again.
     if (!batch.confirmed_id) fail("CONFLICT");
     const confirmed = await planRevision(client, batch.confirmed_id);
-    if (!confirmed || !confirmed.selectionId) fail("FORBIDDEN_OR_NOT_FOUND");
+    if (!confirmed || !confirmed.selectionId) fail("CONFLICT");
     const sources = (await client.query<HandoffSource>(`SELECT x.slot_id AS "slotId",x.root_id AS "rootId",b.filename,b.format,x.extraction_id AS "extractionId",e.metadata
       FROM app.selection_source x JOIN app.batch_slot b ON b.id=x.slot_id
       JOIN app.extraction_revision e ON e.id=x.extraction_id
       WHERE x.selection_id=$1 ORDER BY b.position`, [confirmed.selectionId])).rows;
-    // Deleted or unauthorized lineage (root, confirmed plan, selection or any
-    // selected extraction) fails closed with no substitute content.
+    // Dead confirmed lineage — purged or still-invalidated-unpurged — is one
+    // actionable state (U5): the plan needs updated sources and a new
+    // confirmation, so it conflicts instead of substituting content. Ownership,
+    // session and root-state denials above stay FORBIDDEN/UNAUTHENTICATED.
     const objectIds = [confirmed.id, confirmed.selectionId, ...sources.map(source => source.extractionId)];
-    await assertObjects(client, identity.userId, objectIds);
+    try { await assertObjects(client, identity.userId, objectIds); } catch { fail("CONFLICT"); }
     const confirmation = await client.query<{ confirmed_at: Date }>("SELECT confirmed_at FROM app.plan_confirmation WHERE plan_id=$1", [batch.confirmed_id]);
-    if (!confirmation.rows[0]) fail("FORBIDDEN_OR_NOT_FOUND");
+    if (!confirmation.rows[0]) fail("CONFLICT");
     return {
       rootId,
       planRevisionId: confirmed.id,

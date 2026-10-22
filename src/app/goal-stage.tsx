@@ -25,6 +25,11 @@ export function GoalStage({ busy, onBusy, onFailure, onDirty }: Props) {
   const saveIntent = useRef<{ body: string; key: ReturnType<typeof command> } | null>(null);
   const form = useRef<HTMLFormElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  // The load runs once per mount: the parent passes a fresh onFailure identity
+  // every render, and re-running this fetch on each poll would clobber the
+  // explicit "Saved · revision N" status and the learner's in-progress state.
+  const onFailureRef = useRef(onFailure);
+  onFailureRef.current = onFailure;
   useEffect(() => {
     let active = true;
     void api<Preferences>("preferences").then(value => {
@@ -33,9 +38,9 @@ export function GoalStage({ busy, onBusy, onFailure, onDirty }: Props) {
       setGoal(value.goal); setTopic(value.topic); setClarification(value.clarification); setBackground(value.background);
       setTimePreference(value.timePreference); setTimezone(value.timezone || detected);
       setStatus(value.revision > 0 || value.topic || value.goal || value.background || value.timezone ? `Resumed saved setup · revision ${value.revision}.` : "Nothing saved yet. Choosing a goal is enough to start; everything here is optional except Other's short clarification.");
-    }).catch(error => { if (active) onFailure(error); });
+    }).catch(error => { if (active) onFailureRef.current(error); });
     return () => { active = false; };
-  }, [onFailure]);
+  }, []);
   function markEdit() { onDirty(true); setConflict(false); setStatus("Unsaved changes — not saved yet."); }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -80,7 +85,7 @@ export function GoalStage({ busy, onBusy, onFailure, onDirty }: Props) {
     <form ref={form} onSubmit={event => { void save(event); }}><fieldset disabled={busy} className="plan-fields"><legend className="fine">Manual entry only — no AI topic inference exists in this release. Saved state resumes after back, refresh or sign-in.</legend>
       <label htmlFor="stage-topic">Topic (Manual)</label><input id="stage-topic" name="topic" maxLength={160} value={topic} onChange={event => { setTopic(event.target.value); markEdit(); }} />
       <label htmlFor="stage-goal">Goal</label><select id="stage-goal" name="goal" value={goal ?? ""} onChange={event => { setGoal((event.target.value || null) as Goal | null); markEdit(); }}><option value="">Not set</option>{goals.map(value => <option key={value}>{value}</option>)}</select>
-      {goal === "Other" && <><label htmlFor="stage-clarification">Short clarification · Other goal</label><input id="stage-clarification" name="clarification" required maxLength={240} value={clarification} onChange={event => { setClarification(event.target.value); markEdit(); }} /></>}
+      {goal === "Other" && <><label htmlFor="stage-clarification">Short clarification · Other goal</label><input id="stage-clarification" name="clarification" maxLength={240} value={clarification} onChange={event => { setClarification(event.target.value); markEdit(); }} /></>}
       <label htmlFor="stage-background">Background (optional, short)</label><textarea id="stage-background" name="background" maxLength={400} value={background} onChange={event => { setBackground(event.target.value); markEdit(); }} />
       <label htmlFor="stage-time">Time preference (optional)</label><select id="stage-time" name="timePreference" value={timePreference ?? ""} onChange={event => { setTimePreference((event.target.value || null) as TimePreference | null); markEdit(); }}><option value="">Not set</option>{timePreferences.map(value => <option key={value}>{value}</option>)}</select>
       <label htmlFor="stage-timezone">Timezone (IANA)</label><input id="stage-timezone" name="timezone" maxLength={64} value={timezone} onChange={event => { setTimezone(event.target.value); markEdit(); }} aria-describedby="stage-timezone-hint" />

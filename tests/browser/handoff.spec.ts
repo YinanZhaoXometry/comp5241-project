@@ -47,7 +47,8 @@ async function upload(page: Page, names: string[]) {
   await page.getByLabel("Synthetic study materials").setInputFiles(names.map(name => ({ name, mimeType: "text/plain", buffer: Buffer.from(text) })));
   const response = page.waitForResponse(value => /\/slots\/[^/]+$/u.test(value.url()) && value.request().method() === "POST");
   await page.getByRole("button", { name: "Upload materials", exact: true }).click();
-  const receipt = await (await response).json() as Receipt;
+  const settled = await response;
+  const receipt = await settled.json() as Receipt;
   for (const name of names) {
     await page.getByRole("button", { name: `Inspect preview · ${name}`, exact: true }).click();
     await page.getByRole("checkbox", { name: `Acknowledge and select ${name}`, exact: false }).check();
