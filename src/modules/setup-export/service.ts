@@ -118,18 +118,33 @@ export type DownloadInfo = { requestId: string; key: string; objectId: string; b
 // streaming Response whose every chunk re-runs session/owner/fence checks.
 export async function downloadExport(identity: { userId: string; sessionId: string }, rawId: string, signal: AbortSignal): Promise<Response> {
   const requestId = repository.parseRequestId(rawId);
-  const info = await transaction(async (client) => {
+  // The expiry write must COMMIT before the denial fails: a fail() thrown in
+  // this transaction would roll the expireReady update back.
+  const outcome = await transaction(async (client) => {
     await authorize(client, identity);
     const item = await repository.requestById(client, requestId);
     if (!item || item.ownerId !== identity.userId) fail('FORBIDDEN_OR_NOT_FOUND');
     if (item.state === 'ready' && item.expiresAt && item.expiresAt.getTime() <= Date.now()) {
       await repository.expireReady(client, requestId);
-      fail('FORBIDDEN_OR_NOT_FOUND');
+      return { expired: true as const, key: item.artifactKey };
     }
-    if (item.state !== 'ready' || !item.artifactKey || !item.artifactObjectId || !item.artifactBytes)
-      fail('FORBIDDEN_OR_NOT_FOUND');
-    return { key: item.artifactKey, objectId: item.artifactObjectId, bytes: item.artifactBytes };
+    return {
+      expired: false as const,
+      key: item.artifactKey,
+      objectId: item.artifactObjectId,
+      bytes: item.artifactBytes,
+      state: item.state,
+    };
   });
+  if (outcome.expired) {
+    // An expired copy is erased immediately at the denial; if this erase fails
+    // the sweep's leftover pass retries (the row keeps its artifact_key until then).
+    if (outcome.key) await files.erase(outcome.key).catch(() => console.error(JSON.stringify({ event: 'export-expiry-purge-pending' })));
+    fail('FORBIDDEN_OR_NOT_FOUND');
+  }
+  if (outcome.state !== 'ready' || !outcome.key || !outcome.objectId || !outcome.bytes)
+    fail('FORBIDDEN_OR_NOT_FOUND');
+  const info = { key: outcome.key, objectId: outcome.objectId, bytes: outcome.bytes };
   const handle = await open(await files.objectPath(info.key), constants.O_RDONLY | constants.O_NOFOLLOW);
   let closed = false;
   const close = async () => {

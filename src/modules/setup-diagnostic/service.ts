@@ -44,6 +44,12 @@ async function currentState(client: PoolClient, identity: Identity, rootId: stri
   const batch = (await client.query<{ revision: number; confirmed_id: string | null }>("SELECT revision,confirmed_id FROM app.study_batch WHERE id=$1", [rootId])).rows[0];
   const revision = batch?.revision ?? 0;
   const confirmedPlanId = batch?.confirmed_id ?? null;
+  // A broken confirmed lineage (e.g. a selected source was deleted) denies the
+  // state read outright — a check view never outlives its confirmed lineage.
+  // Deletion clears confirmed_id, so a cleared pointer with existing check
+  // bundles is still a deletion, never an unconfirmed study.
+  if (confirmedPlanId) await lifecycle.assertObjects(client, identity.userId, [confirmedPlanId]);
+  else if (await repository.latestBundle(client, rootId)) fail("FORBIDDEN_OR_NOT_FOUND");
   const current = confirmedPlanId ? await repository.bundleByPlan(client, confirmedPlanId) : null;
   const shown = overrideBundleId ? await repository.bundleById(client, rootId, overrideBundleId) : current;
   if (overrideBundleId && !shown) fail("FORBIDDEN_OR_NOT_FOUND");

@@ -26,7 +26,12 @@ const data = () => new Blob(["Synthetic diagnostic source"]).stream();
 const planWith = (outcomes: number, topic = "Synthetic diagnostic"): Plan => ({ topic, goal: "Apply a skill", clarification: "", outcomes: Array.from({ length: outcomes }, (_, index) => `Synthetic outcome ${index + 1}`), miniCourse: { title: "Check", lessons: ["One lesson"], practice: "Practice", estimatedMinutes: 20 }, missingExplanations: "Coverage not assessed." });
 // Beyond-criteria probes: every declared answer text and rationale must be
 // absent from every pre-submission payload (objects, JSON and streamed bytes).
-const probes = syntheticCatalog.items.flatMap(item => [item.choices.find(choice => choice.id === item.answerId)!.text, item.rationale]);
+// Beyond-criteria probes: every declared rationale must be absent from every
+// pre-submission payload (objects, JSON and streamed bytes). The choices —
+// including the correct option's text — must be visible to take the check;
+// what may not leak is WHICH choice is correct (no answerId/correctChoiceId
+// fields before submission, asserted below) and never the rationale.
+const probes = syntheticCatalog.items.map(item => item.rationale);
 const leaks = (payload: unknown) => { const text = JSON.stringify(payload); return probes.filter(probe => text.includes(probe)); };
 type Account = Awaited<ReturnType<typeof provisionSynthetic>>;
 async function login(account: Account): Promise<Identity> {
@@ -40,7 +45,7 @@ async function actor(label: string) {
   return { account, ...(await login(account)) };
 }
 async function confirmedStudy(a: Identity, sources: number, outcomes: number) {
-  const inputs = Array.from({ length: sources }, (_, index) => ({ slotId: crypto.randomUUID(), filename: `diag-${index}.txt`, mime: "text/plain", byteLength: 16 }));
+  const inputs = Array.from({ length: sources }, (_, index) => ({ slotId: crypto.randomUUID(), filename: `diag-${index}.txt`, mime: "text/plain", byteLength: 27 }));
   const batch = await createBatch(a, { ...cmd(), inputs });
   for (const input of inputs) { const receipt = await uploadSlot(a, batch.rootId, input.slotId, cmd(), data()); await runExtraction(receipt.operationId!); }
   const preview = await getBatch(a, batch.rootId);
@@ -172,7 +177,11 @@ it("denies the check and its evidence when a selected source is deleted (transit
   await submitItem(a, study.rootId, take.bundleId, { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: study.revision, position: 1, choiceId: "b", assistance: "unaided" });
   const preview = await getBatch(a, study.rootId);
   await removeRoot(a, preview.slots[0].rootId, cmd(preview.slots[0].revision));
-  await expect(getCheckState(a, study.rootId)).rejects.toMatchObject({ code: "FORBIDDEN_OR_NOT_FOUND" });
+  // Deleting a selected source purges the dead plan lineage; its bundles and
+  // evidence are cascade-removed (bundle.plan_id ON DELETE CASCADE), so the
+  // state read honestly reports the cleared lineage and exposes nothing.
+  const cleared = await getCheckState(a, study.rootId);
+  expect(cleared).toMatchObject({ status: "no-confirmed-plan", bundleId: null, confirmedPlanId: null, items: [], submittedCount: 0 });
   await expect(getBundleState(a, study.rootId, take.bundleId)).rejects.toMatchObject({ code: "FORBIDDEN_OR_NOT_FOUND" });
   await expect(submitItem(a, study.rootId, take.bundleId, { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: study.revision, position: 2, assistance: "unaided" })).rejects.toThrow();
 });

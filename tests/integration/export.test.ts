@@ -127,9 +127,14 @@ describe('authenticated consistent personal-setup export', () => {
     }
     for (const category of ['originals', 'extractions', 'selections', 'plans', 'confirmations'])
       expect(categories.get(category)!.length).toBeGreaterThanOrEqual(1);
-    const foreign = await database().query<{ id: string }>('SELECT id FROM app.lifecycle_object o JOIN app.lifecycle_root r ON r.id=o.root_id WHERE r.owner_id=$1', [b.owner.userId]);
+    const foreign = await database().query<{ id: string }>('SELECT o.id AS id FROM app.lifecycle_object o JOIN app.lifecycle_root r ON r.id=o.root_id WHERE r.owner_id=$1', [b.owner.userId]);
     expect(manifest.entries.some(entry => foreign.rows.some(item => item.id === entry.objectId))).toBe(false);
-    expect(manifest.skipped.map(item => item.category).sort()).toEqual(['diagnostic-evidence', 'diagnostic-evidence', 'diagnostic-evidence', 'dispatch-admissions', 'processing-decisions']);
+    // Integrated deployment: P1's receipt tables are owner-scoped and
+    // inventoried; the diagnostic bundle/item tables key by root/bundle rather
+    // than owner, so exactly those two are honestly skipped while the
+    // owner-scoped diagnostic evidence is captured.
+    expect(manifest.skipped.map(item => item.category)).toEqual(['diagnostic-evidence', 'diagnostic-evidence']);
+    expect(manifest.skipped.every(item => item.reason.includes('owner-scoped'))).toBe(true);
     // Every storage key in the manifest is a real registered copy of this owner.
     const withKeys = manifest.entries.filter(entry => entry.storageKey);
     expect(withKeys.length).toBeGreaterThanOrEqual(2);
@@ -138,7 +143,7 @@ describe('authenticated consistent personal-setup export', () => {
     // Preview: live category counts and honest absent-table labels.
     const preview = await listExports(a.owner);
     expect(preview.categories.find(item => item.category === 'originals')).toMatchObject({ count: 1, available: true });
-    expect(preview.categories.find(item => item.category === 'diagnostic-evidence')).toMatchObject({ count: null, available: false });
+    expect(preview.categories.find(item => item.category === 'diagnostic-evidence')).toMatchObject({ count: null, available: true });
     expect(preview.requests[0]).toMatchObject({ id: receipt.rootId, state: 'ready' });
     // Authenticated download: no-store, attachment, real gzip tar content.
     const response = await downloadExport(a.owner, receipt.rootId, new AbortController().signal);
@@ -272,7 +277,7 @@ describe('authenticated consistent personal-setup export', () => {
     for (let index = 0; index < 3; index += 1) expect((await requestExport(seeded.owner, command())).state).toBe('queued');
     await expect(requestExport(seeded.owner, command())).rejects.toMatchObject({ code: 'RATE_LIMITED' });
     // A command key already used by another action can never silently re-export.
-    const usedKey = (await database().query<{ command_key: string }>('SELECT command_key FROM app.command_receipt WHERE owner_id=$1 LIMIT 1', [seeded.owner.userId])).rows[0].command_key;
+    const usedKey = (await database().query<{ command_key: string }>("SELECT command_key FROM app.command_receipt WHERE owner_id=$1 AND action<>'request-export' LIMIT 1", [seeded.owner.userId])).rows[0].command_key;
     await expect(requestExport(seeded.owner, { schemaVersion: 1, commandKey: usedKey, expectedRevision: 0 })).rejects.toMatchObject({ code: 'CONFLICT' });
     await expect(requestExport(seeded.owner, { schemaVersion: 2, commandKey: crypto.randomUUID(), expectedRevision: 0 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
     // Only the owner sees their own requests; the second owner sees none.

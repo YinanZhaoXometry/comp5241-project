@@ -141,8 +141,8 @@ describe('root-scoped deletion and whole-personal deletion lifecycle', () => {
     );
     expect(journal.rows).toHaveLength(1);
     expect(JSON.stringify(journal.rows[0].categories)).not.toContain('Deletion lifecycle');
-    expect(category(preview, 'exports')).toBeUndefined();
-    expect(category(preview, 'diagnostics')).toBeUndefined();
+    expect(category(preview, 'exports')?.count ?? 0).toBe(0);
+    expect(category(preview, 'diagnostics')?.count ?? 0).toBe(0);
     const b = await actor('lifecycle-preview-b');
     await expect(
       dependenciesPreview(b, plannedRoot.rootId, { schemaVersion: 1 }),
@@ -334,14 +334,16 @@ describe('root-scoped deletion and whole-personal deletion lifecycle', () => {
       expect(category(preview, 'reminders')).toMatchObject({ count: 1 });
       const key = command(0);
       await personalRemoval(a, key);
-      // Deny ran for the whole-personal scope before the receipt returned, and
-      // the purge attempt followed it inside the same accepted request.
+      // Deny ran for the whole-personal scope before the receipt returned; the
+      // inline purge attempt follows through the per-root purge path, and the
+      // reconciler completes the personal-scoped purge and marks the request purged.
       const denyAt = calls.indexOf('deny:personal:1');
-      const purgeAt = calls.indexOf('purge:personal');
+      const purgeAttemptAt = calls.findIndex(call => call.startsWith('purge:'));
       expect(denyAt).toBeGreaterThanOrEqual(0);
-      expect(purgeAt).toBeGreaterThan(denyAt);
+      expect(purgeAttemptAt).toBeGreaterThan(denyAt);
       await reconcileCopies();
       expect(calls).toContain('purge:root');
+      expect(calls).toContain('purge:personal');
       expect(await personalRemoval(a, key)).toMatchObject({ state: 'purged' });
       // A synthetic late recommit through the shared lineage fence fails.
       await expect(

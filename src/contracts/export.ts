@@ -3,6 +3,9 @@ import { commandSchema, uuid } from './setup';
 
 export const exportStates = ['queued', 'running', 'ready', 'failed', 'expired', 'canceled'] as const;
 export type ExportState = typeof exportStates[number];
+// Single source of truth for the durable export queue: migrate.ts creates it,
+// the worker consumes it.
+export const EXPORT_QUEUE = 'export-setup-v1';
 export const exportReasons = ['resource', 'service'] as const;
 export type ExportReason = typeof exportReasons[number];
 export const exportCategories = [

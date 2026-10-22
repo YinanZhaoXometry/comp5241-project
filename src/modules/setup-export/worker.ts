@@ -1,6 +1,6 @@
 import type { PgBoss } from 'pg-boss';
 import { uuid } from '../../contracts/setup';
-import { exportJobSchema, type ExportJob, type Manifest } from '../../contracts/export';
+import { EXPORT_QUEUE, exportJobSchema, type ExportJob, type Manifest } from '../../contracts/export';
 import { transaction } from '../../adapters/postgres/database';
 import * as files from '../../adapters/private-files';
 import { authorize } from '../identity-access/access';
@@ -10,8 +10,7 @@ import * as repository from './repository';
 import { captureManifest } from './manifest';
 import { buildArtifact } from './build';
 
-// Content-free job envelope: no manifest, key or owner data beyond the id.
-export const EXPORT_QUEUE = 'export-setup-v1';
+export { EXPORT_QUEUE };
 
 export function exportJob(requestId: string): ExportJob {
   return { schemaVersion: 1, requestId };
@@ -78,6 +77,7 @@ export async function runExport(requestId: string, gate?: () => Promise<void>): 
     committed = true;
     key = undefined; // committed; the finally reconciliation must not erase it
   } catch (error) {
+    console.error(JSON.stringify({ event: 'export-build-failed', requestId, code: errorCode(error), debugMessage: error instanceof Error ? error.message : String(error) }));
     let canceled = ['UNAUTHENTICATED', 'FORBIDDEN_OR_NOT_FOUND'].includes(errorCode(error));
     const ids = snapshotIds;
     if (!canceled && ids) {

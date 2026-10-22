@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { createReadStream } from 'node:fs';
 import { open } from 'node:fs/promises';
-import { Transform } from 'node:stream';
+import { Transform, Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGzip } from 'node:zlib';
 import { Readable } from 'node:stream';
@@ -96,8 +96,24 @@ export async function buildArtifact(
         callback(null, chunk);
       },
     });
-    await pipeline(Readable.from(tarStream(tarEntries)), createGzip(), meter, handle.createWriteStream());
-    await handle.sync();
+    // The sink writes through the handle like private-files.store does. The
+    // FileHandle stream APIs are unusable here: with autoClose the fd closes
+    // out from under sync(), and with autoClose:false close() never settles.
+    const sink = new Writable({
+      async write(chunk: Buffer, _encoding, callback) {
+        try {
+          await handle.writeFile(chunk);
+          callback();
+        } catch (error) { callback(error instanceof Error ? error : new Error(String(error))); }
+      },
+      final(callback) {
+        handle.sync().then(
+          () => callback(),
+          (error: Error) => callback(error),
+        );
+      },
+    });
+    await pipeline(Readable.from(tarStream(tarEntries)), createGzip(), meter, sink);
     return { manifest, bytes, sha256: sha256.digest('hex') };
   } finally {
     await handle.close();
