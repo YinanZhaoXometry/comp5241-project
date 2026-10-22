@@ -106,35 +106,43 @@ describe('bounded retention registry and synthetic archive contract', () => {
         }),
       ),
     ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
-    // Known class, row locator: one idempotent inventory row per copy.
+    // Known class, row locator: one idempotent inventory row per copy. The
+    // copy-identity index is global and the integration database persists rows
+    // between suite runs, so the locator must be unique per run — a fixed
+    // literal would collide with a previous run's leftover row, whose expiry
+    // the guarded upsert must not (and does not) refresh.
+    const run = crypto.randomUUID();
+    const kind = `synthetic-copy-${run}`;
+    const rowLocator = { table: 'synthetic_store', rowId: `row-1-${run}` };
     const expires = new Date(Date.now() + DAY);
+    const refreshExpires = new Date(expires.getTime() + 3600 * 1000);
     const first = await transaction(client =>
       registerRetentionCopy(client, {
-        kind: 'synthetic-copy',
+        kind,
         retentionClass: 'metadata-receipt',
         ownerId: a.userId,
-        table: 'synthetic_store',
-        rowId: 'row-1',
+        ...rowLocator,
         expiresAt: expires,
       }),
     );
     const duplicate = await transaction(client =>
       registerRetentionCopy(client, {
-        kind: 'synthetic-copy',
+        kind,
         retentionClass: 'metadata-receipt',
         ownerId: a.userId,
-        table: 'synthetic_store',
-        rowId: 'row-1',
-        expiresAt: new Date(expires.getTime() + 3600 * 1000),
+        ...rowLocator,
+        expiresAt: refreshExpires,
       }),
     );
     expect(duplicate).toBe(first);
     const rows = await database().query(
       'SELECT id,expires_at,state FROM app.retention_registry WHERE kind=$1 AND table_name=$2 AND row_id=$3',
-      ['synthetic-copy', 'synthetic_store', 'row-1'],
+      [kind, rowLocator.table, rowLocator.rowId],
     );
     expect(rows.rowCount).toBe(1);
-    expect((rows.rows[0] as { expires_at: Date }).expires_at.getTime()).toBeGreaterThan(expires.getTime());
+    // Contract: for a still-active row the stored expiry is exactly the value
+    // the caller passed on the refresh — never an older or clock-derived one.
+    expect((rows.rows[0] as { expires_at: Date }).expires_at.getTime()).toBe(refreshExpires.getTime());
     // Key locator variant registers the same way.
     const key = crypto.randomUUID();
     await transaction(client =>
@@ -160,11 +168,10 @@ describe('bounded retention registry and synthetic archive contract', () => {
     await database().query("UPDATE app.retention_registry SET state='purged',purged_at=clock_timestamp() WHERE id=$1", [first]);
     await transaction(client =>
       registerRetentionCopy(client, {
-        kind: 'synthetic-copy',
+        kind,
         retentionClass: 'metadata-receipt',
         ownerId: a.userId,
-        table: 'synthetic_store',
-        rowId: 'row-1',
+        ...rowLocator,
         expiresAt: new Date(Date.now() + DAY),
       }),
     );
