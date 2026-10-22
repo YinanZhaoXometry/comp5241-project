@@ -145,7 +145,7 @@ describe("real PostgreSQL setup preferences", () => {
     expect(identical.revision).toBe(1);
     // Optional preference and stage navigation changes never invalidate confirmation.
     // Saves are full-replace, so plan-relevant fields are carried unchanged here.
-    const unchangedIntent = { goal: "Understand a topic", topic: "First topic" };
+    const unchangedIntent = { goal: "Understand a topic" as const, topic: "First topic" };
     const optional = await save(d, identical.revision, {
       ...unchangedIntent,
       background: "Self-taught synthetic learner",
