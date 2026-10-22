@@ -33,7 +33,8 @@ project-new/
 │   │   ├── setup-diagnostic/   synthetic check bundles, evidence, skip path (S7 infrastructure)
 │   │   ├── setup-export/       consistent manifest snapshot + tar.gz artifacts (S8)
 │   │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
-│   │                           derivative ports, dependencies preview (S9)
+│   │                           derivative ports, dependencies preview (S9),
+│   │                           retention registry/scheduler + archive contract (S10)
 │   ├── adapters/           infrastructure; may not be reached from client components
 │   │   ├── postgres/       pg client (app code must go through modules)
 │   │   ├── queue.ts        pg-boss one-client enqueue
@@ -42,7 +43,8 @@ project-new/
 │   │   ├── document-extractor.ts · document-sandbox.ts   four-format parser dispatch/admission
 │   │   ├── protected-journal.ts  protective journal store/delivery/replay (S13)
 │   │   └── openai-compatible.ts  dormant Chat Completions adapter (see docs/ai-provider-adapter.md)
-│   ├── platform/           config (loopback-only enforcement), errors, HTTP helpers
+│   ├── platform/           config (loopback-only enforcement), errors, HTTP helpers,
+│   │                       shared command-envelope helpers (commands.ts: requestHash/parse)
 │   └── worker/             worker process; never imports app/next
 │       ├── main.ts         queue consumer / extraction jobs
 │       ├── txt-extract.c   macOS Seatbelt-confined TXT helper (sandbox 1 of 2)
@@ -64,11 +66,14 @@ project-new/
 │   └── restart-smoke.ts                  real web/worker restart evidence (test:restart)
 ├── tests/
 │   ├── unit/               contracts, documents, adapter transport (vitest)
-│   ├── integration/        real PostgreSQL: tracer, batches, documents, migrations, parser stack
-│   ├── browser/            Playwright: tracer (10), demo (12), batches — production build
+│   ├── integration/        real PostgreSQL: tracer, batches, documents, migrations,
+│   │                       parser stack, consent, preferences, handoff, diagnostic,
+│   │                       export, lifecycle, retention, restore
+│   ├── browser/            Playwright: tracer, demo, batches, consent, preferences,
+│   │                       handoff, check, export, lifecycle — production build
 │   └── fixtures/           original synthetic documents only
 ├── docs/                   guides: ai-provider-adapter, bounded-document-extraction,
-│                           lint-coverage, project-structure (this file)
+│                           backup-restore, lint-coverage, project-structure (this file)
 ├── _bmad/                  the installed BMad Method tooling itself — do not edit casually
 ├── _bmad-output/           BMad-generated planning artifacts for this initiative (below)
 ├── .local/                 ignored local runtime state (below)

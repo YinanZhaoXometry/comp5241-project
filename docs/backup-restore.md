@@ -1,7 +1,9 @@
 # Backup and protective restore (S13) — local configuration and procedure
 
-Status: **built at package level, integration evidence pending** (see
-[Evidence](#evidence-measured-timings-and-expiry-proof)). Everything here is
+Status: **built and gated locally** — integration restore tests and the Manual
+drill below are recorded (see
+[Evidence](#evidence-measured-timings-and-expiry-proof)); independent review of
+this work is still pending. Everything here is
 LOCAL SYNTHETIC scope on the isolated `.local/pg18` loopback cluster.
 **This local evidence cannot certify managed-host retention, geo-placement,
 provider terms or a production RTO** — release requires the actual topology

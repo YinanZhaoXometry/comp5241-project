@@ -140,6 +140,26 @@ journeys and a real web+worker restart smoke. It stops on any failed command.
 The manual-only workflow runs the same local gate on a separately approved prepared
 macOS runner; no remote workflow or deployment has been run or authorized.
 
+Epic 1 local implementation status (recorded 2026-10-22/23): stories 3 (consent and
+fail-closed processor admission), 4 (short goals and resumable preferences), 5
+(editable immutable plan handoff), 7-infrastructure (skip-first optional check), 8
+(authenticated export), 9 (root-scoped deletion), 10 (bounded retention and archive
+contract) and 13 (isolated encrypted backup and protective restore) are built and
+gated locally on top of stories 1–2, and the S11 refactor sweep + closure
+bookkeeping ran (stale INVALID_INPUT message text corrected to the four-format
+admission; wave-duplicated `requestHash`/`parse` command helpers consolidated into
+`src/platform/commands.ts`; no behavior, schema or test-strength change). The full
+gate after the sweep passed with **131 unit, 103 PostgreSQL integration and 45
+browser cases**, both typechecks, the 113-rule lint coverage and probes, module
+boundaries, the production build (documented typegen dance; development imports
+restored), the real web/worker restart smoke and the recorded Manual
+`npm run backup`/`restore` drill ([docs/backup-restore.md](docs/backup-restore.md)).
+**This does not close the epic:** S6 (eligible live-AI inference), the S7 take-path
+closure and S12 (integrated suite and separately authorized release) remain blocked
+on F3/F6 authorization, and independent review of the wave-1–3 and sweep work is
+still pending. Local passes are synthetic-only evidence and imply no release
+readiness.
+
 Recorded on 2026-10-21; independent review findings corrected and regression-tested:
 
 | Check                                     | Measured result                                                                                                                                                                                                           |
@@ -228,8 +248,12 @@ container documented above; dedicated learner-code isolation remains later work.
   check here explicitly used Node24. The verified copy is ignored local evidence.
 - Cookies are HTTP-only/SameSite-strict but not Secure for this exact loopback HTTP
   origin. No hosted/production auth configuration is offered.
-- No activated providers, accounts, costs, deployment, real data, pilot, full generation,
-  diagnostics, exports, general retention/backup/restore or completion awards.
+- No activated providers, accounts, costs, deployment, real data, pilot, full
+  generation or completion awards. Export, retention and backup/restore exist as
+  local synthetic implementations only. Live-AI inference (S6), the
+  eligible-generator diagnostic take path (S7 closure) and the integrated
+  authorized release (S12) remain blocked on F3/F6; the epic is not closed, and
+  independent review of the 2026-10-22/23 wave and sweep work is pending.
 - The prior user-approved Homebrew installation changed shared OpenSSL/Kerberos
   dependencies. Existing PG17 data was not used; unrelated consumers may need
   checking. No privileged Command Line Tools repair was attempted.
