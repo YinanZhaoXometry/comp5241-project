@@ -3,7 +3,9 @@ import { upload, getStudy, listStudies, savePlan, confirmPlan } from "../../../.
 import { removeRoot } from "../../../../modules/lifecycle-platform/service";
 import { authenticated, trustedMutation, jsonBody, safeFailure, privateHeaders, protectedResponse, uploadCommand } from "../../../../platform/http";
 import { fail } from "../../../../platform/errors";
-import { getOperation, getOriginal } from "../../../../modules/materials-setup/queries";
+import { getOperation, getOriginal, getPreview } from "../../../../modules/materials-setup/queries";
+import { createBatch, addInputs, uploadSlot, acknowledge, controlSlot } from "../../../../modules/materials-setup/batches";
+import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +34,24 @@ async function handle(request: Request, context: Context) {
       return response;
     }
     const identity = await authenticated(request);
+    if (path[0] === "batches" && path.length === 1 && request.method === "POST") {
+      return Response.json(await createBatch(identity, await jsonBody(request) as InputsCommand), { status: 201, headers: privateHeaders });
+    }
+    if (path[0] === "batches" && path.length === 3 && request.method === "POST") {
+      const body = await jsonBody(request);
+      const result = path[2] === "inputs" ? await addInputs(identity, path[1], body as InputsCommand)
+        : path[2] === "selection" ? await acknowledge(identity, path[1], body as SelectionCommand) : null;
+      if (result) return Response.json(result, { headers: privateHeaders });
+    }
+    if (path[0] === "batches" && path[2] === "slots" && path.length >= 4 && path.length <= 5 && request.method === "POST") {
+      const result = path.length === 4 ? await uploadSlot(identity, path[1], path[3], uploadCommand(request, true), request.body!)
+        : path[4] === "control" ? await controlSlot(identity, path[1], path[3], await jsonBody(request) as ControlCommand) : null;
+      if (result) return Response.json(result, { status: path.length === 4 ? 202 : 200, headers: privateHeaders });
+    }
+    if (path[0] === "sources" && path.length === 3 && request.method === "GET") {
+      const preview = await getPreview(identity, path[1], path[2]);
+      return protectedResponse(identity, preview.rootId, preview, request.signal, false, [preview.extractionId]);
+    }
     if (path[0] === "studies" && path.length === 1) {
       if (request.method === "GET") return Response.json(await listStudies(identity), { headers: privateHeaders });
       if (request.method === "POST") {
@@ -49,11 +69,15 @@ async function handle(request: Request, context: Context) {
     if (path[0] === "studies" && path.length >= 2 && path.length <= 3) {
       const rootId = path[1]; const action = path[2];
       if (request.method === "GET") {
-        if (action === "material") return protectedResponse(identity, rootId, await getOriginal(identity, rootId), request.signal, true);
+        if (action === "material") {
+          const original = await getOriginal(identity, rootId);
+          return protectedResponse(identity, rootId, original.bytes, request.signal, false, [original.objectId], true);
+        }
         const study = await getStudy(identity, rootId);
-        if (!action) return protectedResponse(identity, rootId, study, request.signal);
-        if (action === "text") return protectedResponse(identity, rootId, study.text ?? "", request.signal, true);
-        if (action === "plan") return protectedResponse(identity, rootId, { draft: study.draft, confirmed: study.confirmed }, request.signal);
+        const objects = [study.selection?.id, study.draft?.id, study.confirmed?.id, study.text !== null ? study.extractionId : null].filter((id): id is string => !!id);
+        if (!action) return protectedResponse(identity, rootId, study, request.signal, false, objects);
+        if (action === "text") return protectedResponse(identity, rootId, study.text ?? "", request.signal, true, objects);
+        if (action === "plan") return protectedResponse(identity, rootId, { draft: study.draft, confirmed: study.confirmed }, request.signal, false, objects);
       }
       if (request.method === "POST") {
         const body = await jsonBody(request);

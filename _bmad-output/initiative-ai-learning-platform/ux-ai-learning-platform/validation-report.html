@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UX Design Validation: Fieldnotes — AI Learning Platform</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+    --verdict-strong: #16a34a;
+    --verdict-adequate: #65a30d;
+    --verdict-thin: #d97706;
+    --verdict-broken: #dc2626;
+    --sev-low: #64748b;
+    --sev-medium: #ca8a04;
+    --sev-high: #ea580c;
+    --sev-critical: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; font-size: 15px; }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+  header.report-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+  .title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .title .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .synthesis { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--muted); border-radius: 8px; padding: 18px 22px; margin-bottom: 24px; font-size: 15.5px; }
+  .synthesis p { margin: 0 0 10px; }
+  .synthesis p:last-child { margin-bottom: 0; }
+  .dimension-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 24px; }
+  .dim-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
+  section.dimension, section.reviewer-section { margin-bottom: 14px; }
+  section.dimension details, section.reviewer-section details { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  section summary { padding: 14px 20px; cursor: pointer; user-select: none; list-style: none; display: flex; align-items: center; gap: 12px; }
+  section summary::-webkit-details-marker { display: none; }
+  section summary::before { content: "▸"; display: inline-block; color: var(--muted); transition: transform 0.15s ease; }
+  section details[open] summary::before { transform: rotate(90deg); }
+  section summary h2 { display: inline; margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.005em; flex: 1; }
+  .verdict-pill { font-size: 11px; padding: 3px 10px; border-radius: 999px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: white; }
+  .verdict-strong { background: var(--verdict-strong); }
+  .verdict-adequate { background: var(--verdict-adequate); }
+  .verdict-thin { background: var(--verdict-thin); }
+  .verdict-broken { background: var(--verdict-broken); }
+  .dim-body { padding: 4px 20px 18px; }
+  .dim-judgment { color: var(--text); font-size: 14.5px; }
+  .dim-judgment p { margin: 0 0 10px; }
+  .findings-list { padding: 0 20px 4px; }
+  article.finding { padding: 14px 0; border-top: 1px solid var(--border); }
+  article.finding:first-child { border-top: none; }
+  article.finding header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+  .badge { font-size: 10.5px; padding: 3px 8px; border-radius: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.4; }
+  .badge-sev-low { background: rgba(100, 116, 139, 0.12); color: var(--sev-low); }
+  .badge-sev-medium { background: rgba(202, 138, 4, 0.14); color: var(--sev-medium); }
+  .badge-sev-high { background: rgba(234, 88, 12, 0.14); color: var(--sev-high); }
+  .badge-sev-critical { background: rgba(220, 38, 38, 0.14); color: var(--sev-critical); }
+  .finding-title { margin: 0; font-size: 15px; font-weight: 500; flex: 1; min-width: 200px; }
+  .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+  .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
+  .finding-fix strong { color: var(--muted); font-weight: 500; }
+  .reviewer-source { font-size: 12px; color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .mechanical { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; margin-top: 24px; font-size: 14px; }
+  .mechanical h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .mechanical ul { margin: 0; padding-left: 20px; }
+  .mechanical li { margin-bottom: 4px; color: var(--text); }
+  footer.report-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  footer .meta { display: flex; gap: 24px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <header class="report-header">
+      <div class="title">
+        <h1>Fieldnotes — AI Learning Platform — UX Design Validation Report</h1>
+        <div class="subtitle">_bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/ (DESIGN.md · EXPERIENCE.md · mockups/)</div>
+      </div>
+    </header>
+
+    <div class="synthesis">
+      <p>This is a strong, source-extractable spine pair: every R1–R22 requirement is accounted for in the coverage map with defensible rationale for the three non-flow requirements, all token references resolve, both mocks are linked inline and consistent with the tokens, and the measured WCAG contrast table exceeds the bar. Two medium findings needed attention before story-dev leans on it hard: DESIGN.md never formalized an input/field component despite form-heavy setup flows (the prototype styles inputs with a radius that matches no token), and R17's five activity-format families got one paragraph of behavior with no per-family pattern and no recorded deferral. Everything else was minor polish.</p>
+      <p>The accessibility lens sharpened the picture without contradicting it: strong floor, two high gaps — the dialog keyboard contract was unspecified, and control boundaries (<code>input-border</code> 2.97:1, <code>input-border-soft</code> 2.09:1) failed the 3:1 non-text contrast rule that the table had not covered — plus a medium cluster around focus edges (row removal, ink-surface focus ring, skip link), media controls, session-expiry, and mock landmark hygiene.</p>
+      <p><strong>Resolution status:</strong> every finding below (2 medium + 9 minor rubric; 2 high + 7 medium + 9 low accessibility) was resolved in the spines and mocks in the same session before finalization — see <code>.memlog.md</code> entries 18–23 for the exact decisions (input-border → #7a8b81, lime focus ring on ink, input component, dialog primitive, R17 deferral, help footer, etc.). The reviewer files record the review as it ran.</p>
+    </div>
+
+    <div class="dimension-summary">
+      <div class="dim-card"><div class="dim-name">Flow coverage</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+      <div class="dim-card"><div class="dim-name">Token completeness</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+      <div class="dim-card"><div class="dim-name">Component coverage</div><div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div></div>
+      <div class="dim-card"><div class="dim-name">State coverage</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+      <div class="dim-card"><div class="dim-name">Visual reference coverage</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+      <div class="dim-card"><div class="dim-name">Bloat &amp; overspecification</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+      <div class="dim-card"><div class="dim-name">Inheritance discipline</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+      <div class="dim-card"><div class="dim-name">Shape fit</div><div class="dim-verdict" style="color: var(--verdict-strong)">strong</div></div>
+    </div>
+
+    <section class="dimension"><details>
+      <summary><h2>1. Flow coverage</h2><span class="verdict-pill verdict-strong">strong</span></summary>
+      <div class="dim-body"><div class="dim-judgment"><p>All 22 requirements accounted for: 18 via five named-protagonist flows with numbered steps, climax beats and failure paths; R2 via denial paths and state rows; R9/R17 via lesson shells; R19 verbatim-supported as a non-surface deliverable.</p></div></div>
+      <div class="findings-list">
+        <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">R17 activity families are one paragraph with no per-family pattern and no recorded deferral</h3><span class="finding-location">EXPERIENCE.md › Component Patterns</span></header><div class="finding-note">Downstream epic-6 story-dev had nothing to build against and no signal that more is coming.</div><div class="finding-fix"><strong>Fix:</strong> Explicit deferral recorded under Decisions; three inherited rules (lesson shell, honest-unavailable, media floor) stated. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">minor</span><h3 class="finding-title">R2's Flow 1 attribution was nominal</h3><span class="finding-location">EXPERIENCE.md › Key Flows coverage map</span></header><div class="finding-note">Flow 1 had no denial beat; learner-side denial lived in State Patterns.</div><div class="finding-fix"><strong>Fix:</strong> Map reworded to Flow 3 failure beat + cross-access state rows. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">minor</span><h3 class="finding-title">R8 assigned by attribution, not demonstration</h3><span class="finding-location">EXPERIENCE.md › Flow 5</span></header><div class="finding-note">No beat showed the same objective treated differently for a non-CS beginner and a CS graduate.</div><div class="finding-fix"><strong>Fix:</strong> Adaptation clause added to Flow 5 step 1; map cites the Wen/Kai protagonist split. <em>Resolved.</em></div></article>
+      </div></details></section>
+
+    <section class="dimension"><details>
+      <summary><h2>2. Token completeness</h2><span class="verdict-pill verdict-strong">strong</span></summary>
+      <div class="dim-body"><div class="dim-judgment"><p>23/23 colors carry hex; every <code>{path.to.token}</code> reference in both files resolves; contrast measured for 15 text pairs (now 16 text + 9 non-text).</p></div></div>
+      <div class="findings-list">
+        <article class="finding"><header><span class="badge badge-sev-low">minor</span><h3 class="finding-title">One unresolved wildcard survived the earlier fix pass</h3><span class="finding-location">DESIGN.md › Components › Buttons</span></header><div class="finding-note"><code>{colors.disabled-*}</code> cannot be flattened by a resolver.</div><div class="finding-fix"><strong>Fix:</strong> Spelled out as three named tokens. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">minor</span><h3 class="finding-title">Custom rounded scale names (pill, circle) instead of the spec's vocabulary</h3><span class="finding-location">DESIGN.md › frontmatter rounded</span></header><div class="finding-note">A consumer expecting the canonical scale would not find <code>rounded.full</code>.</div><div class="finding-fix"><strong>Fix:</strong> Renamed to <code>full: 9999px</code>; Shapes notes the prototype normalization. <em>Resolved.</em></div></article>
+      </div></details></section>
+
+    <section class="dimension"><details open>
+      <summary><h2>3. Component coverage</h2><span class="verdict-pill verdict-adequate">adequate</span></summary>
+      <div class="dim-body"><div class="dim-judgment"><p>16×16 behavioral-to-visual mapping with real rules, but the product's most-used control — the form input — had no visual contract, and four DESIGN components lacked behavioral rows.</p></div></div>
+      <div class="findings-list">
+        <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">No input/field component in DESIGN.md</h3><span class="finding-location">DESIGN.md › Components (absence)</span></header><div class="finding-note">Setup is form-heavy; the prototype's 0.2rem input radius matched no token — the exact prototype-vs-token conflict the spine exists to resolve.</div><div class="finding-fix"><strong>Fix:</strong> <code>input</code> component added (white field, input-border, rounded.sm normalization, 44px min, textarea 96px, disabled trio) and referenced from a new Form field pattern row. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">minor</span><h3 class="finding-title">Four DESIGN components had no EXPERIENCE pattern row</h3><span class="finding-location">EXPERIENCE.md › Component Patterns</span></header><div class="finding-note">button-lime reachability, sample-badge rule, feedback mapping, hero placement were only recoverable from context.</div><div class="finding-fix"><strong>Fix:</strong> Rows added for Feedback block, Hero, Sample badge, Lime action; Recall card now cites <code>{components.feedback}</code>. <em>Resolved.</em></div></article>
+      </div></details></section>
+
+    <section class="dimension"><details>
+      <summary><h2>4. State coverage</h2><span class="verdict-pill verdict-strong">strong</span></summary>
+      <div class="dim-body"><div class="dim-judgment"><p>U0–U8 delegation to the epic-1 UX contract verified; loading, offline, permission-denied and empty states covered product-wide.</p></div></div>
+      <div class="findings-list">
+        <article class="finding"><header><span class="badge badge-sev-low">minor</span><h3 class="finding-title">"Reminders paused" had no State Patterns row despite being a canonical mock state</h3><span class="finding-location">EXPERIENCE.md › State Patterns</span></header><div class="finding-fix"><strong>Fix:</strong> Row added. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">minor</span><h3 class="finding-title">Approval-queue empty state unspecified</h3><span class="finding-location">EXPERIENCE.md › State Patterns › Empty surface</span></header><div class="finding-fix"><strong>Fix:</strong> "Nothing pending approval" — an inspected-all state, not an error. <em>Resolved.</em></div></article>
+      </div></details></section>
+
+    <section class="dimension"><details>
+      <summary><h2>5. Visual reference coverage</h2><span class="verdict-pill verdict-strong">strong</span></summary>
+      <div class="dim-body"><div class="dim-judgment"><p>Both mocks linked inline at their sections and named in the IA composition reference; prototype surfaces, screenshot set and docx verified present; spines-win-on-conflict stated once per file. No orphans.</p></div></div>
+    </details></section>
+
+    <section class="dimension"><details>
+      <summary><h2>6. Bloat &amp; overspecification</h2><span class="verdict-pill verdict-strong">strong</span></summary>
+      <div class="dim-body"><div class="dim-judgment"><p>No ticket restatement; tables where tables work; editorial voice confined to DESIGN.md.</p></div></div>
+      <div class="findings-list">
+        <article class="finding"><header><span class="badge badge-sev-low">minor</span><h3 class="finding-title">Decisions section partially duplicates .memlog.md</h3><span class="finding-location">EXPERIENCE.md › Decisions and Open Questions</span></header><div class="finding-note">Defensible: the memlog is the working log, the spine is the consumer-facing projection.</div><div class="finding-fix"><strong>Fix:</strong> None now; update both in the same edit when a decision changes. <em>Accepted as-is.</em></div></article>
+      </div></details></section>
+
+    <section class="dimension"><details>
+      <summary><h2>7. Inheritance discipline</h2><span class="verdict-pill verdict-strong">strong</span></summary>
+      <div class="dim-body"><div class="dim-judgment"><p>All EXPERIENCE sources resolve; R/D/U/C IDs verbatim-verified against the ticket and companions; component names identical across sections.</p></div></div>
+      <div class="findings-list">
+        <article class="finding"><header><span class="badge badge-sev-low">minor</span><h3 class="finding-title">DESIGN.md sources mixed path bases</h3><span class="finding-location">DESIGN.md › frontmatter sources</span></header><div class="finding-note">Repo-root-relative CSS paths did not resolve from the spine's folder.</div><div class="finding-fix"><strong>Fix:</strong> Rewritten as <code>../../../src/app/…</code>. <em>Resolved.</em></div></article>
+      </div></details></section>
+
+    <section class="dimension"><details>
+      <summary><h2>8. Shape fit</h2><span class="verdict-pill verdict-strong">strong</span></summary>
+      <div class="dim-body"><div class="dim-judgment"><p>DESIGN.md canonical order intact; EXPERIENCE.md has all eight defaults, both triggered sections, and one invented section (Decisions and Open Questions) that earns its place by recording deliberate deferrals.</p></div></div>
+    </details></section>
+
+    <section class="reviewer-section"><details open>
+      <summary><h2>Accessibility review</h2><span class="reviewer-source">review-accessibility.md</span></summary>
+      <div class="dim-body"><div class="dim-judgment"><p>Strong — usable as an implementation contract after the two high findings are fixed; no critical blockers. All 16 measured contrast ratios re-computed and accurate; keyboard, target-size, reduced-motion, no-drag, redundant-entry and text+status commitments explicit and sound. Gaps were additive, not contradictory. All 18 findings resolved in-session.</p></div></div>
+      <div class="findings-list">
+        <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">Dialog keyboard contract unspecified (Esc, focus containment, initial focus)</h3><span class="finding-location">EXPERIENCE.md › Interaction Primitives</span></header><div class="finding-fix"><strong>Fix:</strong> Dialog primitive added: Esc = cancel, Tab containment, heading focus on open, opener return, cancel-safe initial focus on destructive dialogs, inert background, one level deep. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-high">high</span><h3 class="finding-title">Non-text contrast (1.4.11) absent; control-boundary tokens fail 3:1</h3><span class="finding-location">DESIGN.md › Colors; input-border, input-border-soft</span></header><div class="finding-note">input-border 2.97:1 on surface; input-border-soft 2.09:1 as the only boundary cue on answer options.</div><div class="finding-fix"><strong>Fix:</strong> input-border → #7a8b81 (3.1–3.6:1 on all light surfaces); answer-option uses it; input-border-soft decorative only; non-text contrast section added. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Universal olive focus ring fails 3:1 on ink surfaces (1.82:1)</h3><span class="finding-location">DESIGN.md › Components › focus-ring</span></header><div class="finding-fix"><strong>Fix:</strong> <code>outline-on-ink</code> = lime (9.1:1); rule stated in Components and contrast table. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Review-row controls not associated with their rows (mock diverges from spine)</h3><span class="finding-location">mockups/key-review-inbox.html; EXPERIENCE.md › Review row</span></header><div class="finding-fix"><strong>Fix:</strong> Spine now scopes snooze per row (named target), pause/disable inbox-wide, live-region announcement and focus rule; mock divergence noted inline, spine wins. <em>Resolved in spine.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">No focus-destination rule after removing a list item</h3><span class="finding-location">EXPERIENCE.md › Interaction Primitives</span></header><div class="finding-fix"><strong>Fix:</strong> Same-position rule added with polite announcement. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Narrated animation media controls not committed</h3><span class="finding-location">EXPERIENCE.md › Accessibility Floor</span></header><div class="finding-fix"><strong>Fix:</strong> No autoplay, visible pause/stop, adjustable rate, transcript from the same item. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">No skip-to-content commitment</h3><span class="finding-location">EXPERIENCE.md › Interaction Primitives / Accessibility Floor</span></header><div class="finding-fix"><strong>Fix:</strong> Skip link is the first focusable element on every screen, visible on focus. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Mocks contain invalid landmark structure (nested &lt;main&gt;)</h3><span class="finding-location">mockups/*.html</span></header><div class="finding-fix"><strong>Fix:</strong> Outer sheet wrapper changed to &lt;div&gt;; one &lt;main&gt; per framed screen. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-medium">medium</span><h3 class="finding-title">Session expiry mid-edit needs a stated contract; 120 s rule is not a user time limit</h3><span class="finding-location">EXPERIENCE.md › State Patterns</span></header><div class="finding-fix"><strong>Fix:</strong> "No time limits" row: 120 s is a system honesty deadline (2.2.1 n/a); warn before expiry; plain statement when unsaved edits could not be kept. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">muted on soft (5.5:1) and ink on selected-bg (10.8:1) used but untabled</h3><span class="finding-location">DESIGN.md › Colors</span></header><div class="finding-fix"><strong>Fix:</strong> Added. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">list-style: none risks dropped list semantics</h3><span class="finding-location">mockups/key-review-inbox.html</span></header><div class="finding-fix"><strong>Fix:</strong> role="list" added. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">Evidence &lt;meter&gt; lacks a programmatic accessible name</h3><span class="finding-location">mockups/key-instructor-approvals.html</span></header><div class="finding-fix"><strong>Fix:</strong> aria-label added; floor now requires programmatic association. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">Consequential copy set below 12px; 1.4.12 text spacing not committed</h3><span class="finding-location">DESIGN.md › Typography; EXPERIENCE.md › Accessibility Floor</span></header><div class="finding-fix"><strong>Fix:</strong> 12px floor for consequential text (fine/tagline furniture only); text-spacing tolerance line added. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">Consistent help (3.2.6) had no surface</h3><span class="finding-location">EXPERIENCE.md › IA / Accessibility Floor</span></header><div class="finding-fix"><strong>Fix:</strong> Consistent footer on every screen: operator contact + "Report a problem"; recorded as a decision. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">Accessible authentication (3.3.8) unstated</h3><span class="finding-location">EXPERIENCE.md › Accessibility Floor</span></header><div class="finding-fix"><strong>Fix:</strong> Paste and password-manager autofill allowed; no memorization/transcription puzzles. <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">Learner-facing jargon: operation IDs and "Quarantined"</h3><span class="finding-location">EXPERIENCE.md › Voice and Tone</span></header><div class="finding-fix"><strong>Fix:</strong> Operation id parenthetical after a plain sentence; learner label "Checking this file safely". <em>Resolved.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">Approval gate: "inspected" had no mechanism</h3><span class="finding-location">EXPERIENCE.md › Approval inspector; mock</span></header><div class="finding-fix"><strong>Fix:</strong> Per-bundle inspected checkbox enables Approve; versions sentence tied via aria-describedby; mock's always-enabled button noted as illustrative. <em>Resolved in spine.</em></div></article>
+        <article class="finding"><header><span class="badge badge-sev-low">low</span><h3 class="finding-title">English-only interface — risk for Cantonese-first learners</h3><span class="finding-location">EXPERIENCE.md › Decisions</span></header><div class="finding-fix"><strong>Fix:</strong> Recorded as a named accessibility risk with a pilot-feedback revisit trigger. <em>Resolved (recorded).</em></div></article>
+      </div></details></section>
+
+    <div class="mechanical">
+      <h3>Mechanical notes</h3>
+      <ul>
+        <li>Requirement accounting: 18 requirements via flows + R2 (denial) + R9/R17 (lesson shells) + R19 (non-surface) = 22/22; no silent drops.</li>
+        <li>All 23 colors carry quoted hex; typography entries use legal subsets; clamp()/em sizes are valid CSS dimensions.</li>
+        <li>Token values verified against src/app/globals.css and src/app/demo/demo.module.css; mocks reproduce the same variables. Post-review deviations from the prototype (input-border, input radius, badge radius) are recorded as decisions in the spine and memlog.</li>
+        <li>Review ran against the draft as of the reviewer dispatch; this report documents findings and their in-session resolution. Re-run the Reviewer Gate (Validate intent) for a clean pass over the finalized spines if desired.</li>
+      </ul>
+    </div>
+
+    <footer class="report-footer">
+      <div class="meta">
+        <span>Rubric: review-rubric.md · Accessibility: review-accessibility.md</span>
+        <span>Generated: 2026-10-22T00:37:47+08:00</span>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

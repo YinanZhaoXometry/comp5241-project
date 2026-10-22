@@ -2,8 +2,17 @@
 type: initiative
 title: AI Learning Platform
 parent: none
-sources: [project-overview.md, _bmad-output/initiative-ai-learning-platform/brief-adaptive-learning/brief-adaptive-learning.md]
-companions: [_bmad-output/initiative-ai-learning-platform/brief-adaptive-learning/addendum.md, _bmad-output/initiative-ai-learning-platform/product-policies.md, _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md]
+sources:
+  [
+    project-overview.md,
+    _bmad-output/initiative-ai-learning-platform/brief-adaptive-learning/brief-adaptive-learning.md,
+  ]
+companions:
+  [
+    _bmad-output/initiative-ai-learning-platform/brief-adaptive-learning/addendum.md,
+    _bmad-output/initiative-ai-learning-platform/product-policies.md,
+    _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md,
+  ]
 risk: high
 ---
 

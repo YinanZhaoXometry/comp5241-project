@@ -1,0 +1,52 @@
+# Review — Polish Pass (STRUCTURE, then PROSE)
+
+**Skill:** bmad-review (editorial lenses per `references/editorial-common.md`)
+**Content:** `prd-ai-learning-platform.md` (5,758 words) and `addendum.md` (1,180 words) — class: docs
+**Reader calibration:** humans · **Style guide in effect:** Microsoft Writing Style Guide
+**Word counts:** exact, via the skill's `word_metrics.py`; both documents' largest sections — PRD §2.3 journeys (808 w), §3 Glossary (611 w), §7 Success Metrics (314 w); addendum §A (354 w), §B (336 w).
+**Standing constraint honored:** FR-1…FR-22 map 1:1 to settled R1–R22; every FR-touching row below is grammar/presentation only — no number, scope, actor or obligation changes. All `[ASSUMPTION]`, `[NOTE FOR PM]`, ID references, glossary terms and cross-references are preserved.
+
+**Purpose/audience read:** these documents exist to help the COMP5241 course team, instructor stakeholders and downstream workflow owners (UX, architecture, epic refinement) consume the already-settled product baseline (R1–R22, D1–D8, AD-1–AD-18) as one citable, audit-ready PRD — without re-deciding anything.
+
+**Structure model chosen:** Strategic/Context (Pyramid) — "PRDs, research reports, proposals, decision records." Verdict on fit: the PRD fits the model well (purpose/status first in §0, MECE numbered sections, evidence and context fenced off in §8.4 and the addendum, "authorizes nothing" stated up front and again in §11). The addendum fits a Reference/Database digest shape with clear scope fences per section. The findings below are localized; neither document needs reshaping.
+
+---
+
+## Pass 1 — STRUCTURE
+
+| Pass | Original Text | Revised Text | Changes |
+|---|---|---|---|
+| structure | PRD §0 baseline list (R1–R22, D1–D8, AD-1–AD-18, brief, epics) — the constraint family **C1–C6** is missing from the list, yet C-IDs are used ~15 times from §1 onward ("per C5 this establishes no unique-feature advantage") and are only defined in §8.3's compressed one-liners near the end | Add one bullet after the AD-1–AD-18 bullet: `**Course/evidence-integrity constraints C1–C6** ([initiative file](../initiative-ai-learning-platform.md)) — settled; one-liners in §8.3.` | Missing scaffolding: one of five ID families (R/D/AD/C/UJ-SM) is never introduced where the others are; a reader hitting "C5" in §1 has nowhere to go until §8.3. +~20 words. |
+| structure | Addendum §D: `epics 2–6 await refinement (PRD OQ-5)` — the PRD's §10 items are a plain numbered list with no `OQ-` prefix, so the label `OQ-5` resolves nowhere | Either label PRD §10 items `**OQ-1:**` … `**OQ-7:**` (recommended — makes the addendum reference and future citations legible), or change the addendum to `(PRD §10 item 5)` | Cross-reference integrity: the only dangling reference found (all file links verified to exist, incl. `.memlog.md`). Word-neutral. |
+| structure | PRD §3 Glossary (611 w) — defines ~15 terms ("confirmed plan", "targeted retest", "exact-version approval", "Needs practice"…) that §2.1 JTBD and §2.3 journeys consume heavily *before* the glossary appears | Light fix (recommended): append to §2.3's italic preamble — `Glossary terms (§3) are used verbatim in these journeys.` Heavier fix: move §3 above §2 (costs renumbering §2↔§3 and updating §12's "§2.2/§2.3" entries) | Dependency-before-use (scaffolding). The light pointer fixes the gap at +11 words without renumbering; the MOVE is only worth it if the author plans other renumbering anyway. Tag: MOVE (light variant recommended). |
+| structure | PRD §8.1 retention bullet restates all four retention numbers already specified in FR-22 consequences and summarized in the §3 "Export / Deletion" entry: `Retention: 7-day active-copy purge (incl. provider copies), 30-day backup expiry with pre-restore deletion replay, 30-day content-free operational-metadata expiry, 90-day post-archive instructor-course deletion with notice/export.` | CONDENSE to the two items unique to §8.1 and cross-reference: `Retention: 30-day content-free operational-metadata expiry and institutional-deviation policy are additional to FR-22's 7-day purge / 30-day backup / 90-day post-archive windows (all verification targets, not present compliance).` — QUESTION: for a course-rigor PRD the triple statement may be deliberate reinforcement of security-critical numbers; author's call | True-redundancy QUESTION. Saves ~20 words if accepted; the unique 30-day metadata expiry and the institutional-deviation rule must survive either way. |
+| structure | Addendum §B: the AD-1–AD-18 digest is one ~230-word paragraph (18 semicolon-chained one-liners) | Split into a bulleted list (one bullet per AD) or two paragraphs (AD-1–AD-9, AD-10–AD-18) | Pacing/scannability: the single longest unbroken block in either document; readers look up individual AD-IDs here. Word-neutral. |
+| structure | PRD §12 Assumptions Index duplicates the inline `[ASSUMPTION]` tags | PRESERVE | Looks cuttable (~99 w) but is the audit surface: a grader/reviewer can verify every assumption in one place. Comprehension value, not redundancy. |
+| structure | PRD §4 subsections number FRs by source R-ID, not sequentially (§4.1 runs FR-1, FR-2, FR-7, FR-21, FR-22) | PRESERVE | Renumbering "for neatness" would break the FR-N ↔ R-N one-to-one mapping that §0 and the initiative depend on; capability grouping + source-order numbering is the right call. Do not renumber. |
+
+## Pass 2 — PROSE (on top of the structure findings)
+
+**Style/voice noted and preserved:** the long single-sentence "whole arc" opener in §1; the vivid house phrases ("never rounds a pass into existence", "synonyms are discipline violations"); the telegraphic digest style of addendum §B/§F; em-dash rhythm throughout. None of the rows below touch these.
+
+| Pass | Original Text | Revised Text | Changes |
+|---|---|---|---|
+| prose | FR-22 consequence: `Owner-only export/delete; deletion revokes access/use/reminders immediately, purges active copies ≤ 7 days (including provider copies), backup expiry ≤ 30 days with deletion reapplied before restore, instructor-course records deleted 90 days after archive with notice/export.` | `Owner-only export/delete; deletion revokes access/use/reminders immediately, purges active copies ≤ 7 days (including provider copies), expires backups within 30 days with deletion reapplied before restore, and deletes instructor-course records 90 days after archive with notice/export.` | Grammar only: parallel verbs under "deletion" (the middle items were noun phrases with no verb). Every number and scope unchanged. |
+| prose | SM-1: `(baseline, first session ≤ 30-min usability target, seven-day delayed check)` | `(baseline, first session against the ≤ 30-min usability target, seven-day delayed check)` | "first session ≤ 30-min usability target" does not parse as a phase name; adds the missing preposition. |
+| prose | FR-18 consequence: `An another-domain topic and a learner-directed path both work` | `A topic from another domain and a learner-directed path both work` | Grammar only ("An another-domain topic"); testable meaning unchanged. |
+| prose | UJ-3 path: `attempts the review unaided → answers with the applicable pass mark → succeeds` | `attempts the review unaided → answers and meets the applicable pass mark → succeeds` | You answer questions, not "answer with a mark"; meaning preserved. |
+| prose | `incl.` in three places — §6.2 (`breadth incl. narration`), SM-2 (`(incl. fresh retests)`), §8.1 (`(incl. provider copies)`) | `including` in all three | Microsoft Writing Style Guide: avoid abbreviating "including". One row per the dedup rule. |
+| prose | UJ-1 path: `previews the extracted text and warnings, acknowledges it as the source` and `skips the optional 3–5-question starting check ("Skip for now" equally visible)` | `previews the extracted text and warnings, acknowledges the material as the source` and `…starting check (with "Skip for now" equally visible)` | Ambiguous antecedent "it"; missing "with" makes the parenthetical dangle. Journey text (PRD-authored, not settled R-text). |
+| prose | Unit inconsistency for the same deadline: FR-1 `by 120 seconds`, §9 `by 120 s`, SM-4 `by 120 s` | Unify to `by 120 seconds` in running prose (keep `120 s` only if a table needs compactness) | Same number, two notations three sections apart. |
+| prose | UJ-5 persona: `Yusuf, curious learner, wants a photography-composition mini-course` | `Yusuf, a curious learner, wants a photography-composition mini-course` | Parallel with the other personas ("Wei, a final-year marketing major…", "Aditi, a CS graduate…"). |
+| prose | Addendum §A, Coursera row: `1M+ learners, ~9.5% higher quiz pass-rate correlation (Coursera blog/IR, 2024–2025)` | Consider: `1M+ learners; ~9.5% higher quiz pass rate (correlational, not causal; Coursera blog/IR, 2024–2025)`? | As written it is ambiguous whether 9.5% is the pass-rate lift or the correlation strength; phrased as a question because only the source can settle which. |
+
+Minor rollup (5 further micro-fixes; ask to expand any): "e.g." → "for example" (§0, FR-7 — style guide); §1 `found no comparable that combines them` → `found no comparable product that combines them` (Consider); §0 `…noted inline from adopted architecture decisions` → `…noted inline from the adopted architecture spine instead` (the "come from there … from adopted architecture decisions" contrast needs "instead"); FR-7 consequence `"Other" route is short` → `the "Other" route is short`; §0 `verbatim-numbered` → `with identical numbering` (Consider — coinage used once).
+
+---
+
+## Summary
+
+- **Recommendations:** 7 structure rows (3 actionable additions/condensations, 1 dangling reference, 1 pacing split, 2 explicit PRESERVEs) + 9 prose rows + 5 minor rollup items. A pass that finds nothing would have been valid; these are the real findings, not padding.
+- **Estimated reduction:** ~20 words (0.3%) if the §8.1 CONDENSE is accepted, offset by ~30 words of scaffolding additions (§0 C-bullet, §2.3 pointer) — net ≈ +10 words. No length target was provided; this is a polish pass and content is sacrosanct.
+- **Comprehension trade-offs:** none of the accepted-together rows conflict; the two PRESERVE rows exist precisely so a future brevity pass does not cut the audit surfaces (§12 index, FR-N ↔ R-N numbering).
+- **Highest-value fixes:** the §0 C1–C6 scaffolding bullet, the `OQ-5` label alignment, and the §2.3 glossary pointer — all three remove places where a course-team reader currently hits an unresolvable reference.

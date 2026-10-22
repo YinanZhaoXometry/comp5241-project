@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<meta name="color-scheme" content="light"/>
+<title>Fieldnotes — Key screen mock · Instructor approvals (R5/D4/R16)</title>
+<style>
+/* =====================================================================
+   Fieldnotes — Key screen mock: instructor studio Approvals (R5/D4/R16)
+   Governing spine sections — check every change against these:
+   · EXPERIENCE.md › Information Architecture — "Instructor — Approvals"
+     row (exact-version inspection and approval queue; pending generated
+     content), "Instructor — Participation" row (scoped report), and the
+     two-role-shell rule (separate instructor navigation, never a mode
+     toggle; the learner never sees instructor surfaces and vice versa).
+   · EXPERIENCE.md › Component Patterns — "Approval inspector"
+     (side-by-side exact-version inspection; approver, time and versions
+     recorded; batch approve only after inspecting the listed versions;
+     fresh generated items enter a pending queue) and "Participation row"
+     (learner, last activity, attempt/pass/recovery status, due reviews;
+     active time only as a labeled estimate; no personal-upload
+     visibility; evidence meter labeled with words).
+   · EXPERIENCE.md › State Patterns — "Pending approval" (existing
+     approved material or honest "Pending instructor approval"; no
+     generation-on-demand bypass), "Version superseded" (learner stays on
+     the studied version until an explicit switch; changed required work
+     shown before switching), "Item under review" honesty (earned passes
+     never revoked when an item is withdrawn).
+   · EXPERIENCE.md › Voice and Tone — "Pending instructor approval" over
+     generated content shown as final; Manual and AI-generated labels;
+     no hype, no exclamation marks.
+   · EXPERIENCE.md › Key Flows — Flow 3 (Dr. Lam) steps 2–5: generate,
+     edit, inspect side by side, approve exact versions, pending feedback
+     variant, withdrawn item, scoped participation report.
+   · DESIGN.md › Components — panel (split columns), pill, callout,
+     feedback, code-block, answer-option (64px rows), evidence-meter,
+     button-primary, sample-badge, notice, focus-ring;
+     Colors/Typography/Layout & Spacing tokens applied verbatim.
+   Layout grammar mirrors src/app/demo/demo.module.css (240px soft
+   sidebar + content column capped at 1400px, topbar, hairline
+   separations, evidence-column dividers).
+   Static mock: inline CSS only, no JavaScript, no network. The spines
+   remain the contract; this file illustrates.
+   ===================================================================== */
+:root {
+  --ink: #193c36;
+  --muted: #52635d;
+  --paper: #f7f6f1;
+  --surface: #fffefa;
+  --soft: #edf0e6;
+  --line: #d7dfd6;
+  --line-strong: #c6d0c3;
+  --lime: #d8e88c;
+  --lime-border: #b7cc6c;
+  --olive: #486600;
+  --olive-soft: #9caf61;
+  --selected-bg: #f0f5de;
+  --danger: #8b2926;
+  --danger-bg: #fff0e9;
+  --hero-muted: #dbe4db;
+  --hero-line: #577067;
+  --code-text: #eff3e4;
+  --disabled-bg: #e2e7db;
+  --disabled-fg: #53645c;
+  --disabled-border: #aab5a5;
+  --input-border: #89998e;
+  --input-border-soft: #aab79e;
+  --r-sm: 0.25rem;
+  --r-md: 0.375rem;
+  --r-pill: 2rem;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 0.875rem/1.6 var(--font-sans);
+}
+:is(a, button, input, meter):focus-visible {
+  outline: 3px solid var(--olive);
+  outline-offset: 4px;
+}
+
+/* ---------- mock-sheet furniture (not a product surface) ---------- */
+.sheetWrap { max-width: 1400px; margin: 0 auto; padding: 2.5rem clamp(1.5rem, 3.5vw, 3.5rem) 3rem; }
+.sheetHero {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 1rem 2rem;
+  padding: 2rem 2.5rem;
+  background: var(--ink);
+  color: var(--surface);
+  border-radius: var(--r-md);
+}
+.heroLabel { color: var(--lime); font-size: 0.625rem; font-weight: 700; letter-spacing: 0.14em; margin: 0; }
+.sheetHero h1 {
+  /* typography.display — the display-xl moment belongs to each framed screen */
+  font: 400 1.75rem/1.2 var(--font-serif);
+  letter-spacing: -0.025em;
+  margin: 0.75rem 0 1rem;
+  text-wrap: balance;
+}
+.sheetHero p { margin: 0; max-width: 34rem; color: var(--hero-muted); font-size: 0.85rem; }
+.sheetHero .heroMeta {
+  align-self: end;
+  font-size: 0.65rem;
+  border-top: 1px solid var(--hero-line);
+  padding-top: 1rem;
+  margin: 0;
+}
+.frames { display: flex; gap: 2rem; overflow-x: auto; align-items: flex-start; padding: 2rem 0 1.5rem; }
+.frameCol { flex: 0 0 auto; }
+.frameCaption { margin-bottom: 0.75rem; max-width: 48rem; }
+.frameCaption .capLabel { font-size: 0.625rem; font-weight: 700; letter-spacing: 0.14em; margin: 0; }
+.frameCaption p { font-size: 0.75rem; color: var(--muted); margin: 0.25rem 0 0; }
+.browser { border: 1px solid var(--line-strong); border-radius: var(--r-md); overflow: hidden; background: var(--surface); }
+.chrome { display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 1rem; background: var(--soft); border-bottom: 1px solid var(--line); }
+.lights { display: flex; gap: 0.375rem; }
+.lights span { width: 0.625rem; height: 0.625rem; border-radius: 50%; border: 1px solid var(--line-strong); background: var(--paper); }
+.urlBox {
+  flex: 1;
+  font: 400 0.65rem/1.5 var(--font-mono);
+  color: var(--muted);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 0.25rem 0.75rem;
+}
+.viewport { overflow: hidden; }
+.sheetFoot { border-top: 1px solid var(--line); padding-top: 1rem; font-size: 0.65rem; color: var(--muted); }
+
+/* ---------- product shell (grammar per demo.module.css) ---------- */
+.app {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  min-height: 640px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.sidebar {
+  background: var(--soft);
+  border-right: 1px solid var(--line);
+  padding: 2rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+}
+.brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  min-height: 44px;
+  font: 400 1.75rem/1.2 var(--font-serif);
+  letter-spacing: -0.025em;
+  color: var(--ink);
+  text-decoration: none;
+}
+.brandCaption {
+  display: block;
+  font: 600 0.5rem/1.6 var(--font-sans);
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-top: 0.5rem;
+}
+.navLabel { font-size: 0.625rem; font-weight: 700; letter-spacing: 0.14em; color: var(--muted); margin: 3rem 0 1rem; }
+.nav { display: grid; gap: 0.5rem; }
+.nav a {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 48px;
+  padding: 0.75rem;
+  color: inherit;
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+}
+.nav a:hover { background: var(--surface); }
+.nav a[aria-current='page'] { background: var(--ink); color: var(--surface); }
+.navArrow { margin-left: auto; color: var(--lime); }
+.navBadge {
+  margin-left: auto;
+  padding: 0.25rem 0.625rem;
+  background: var(--lime);
+  color: var(--ink);
+  border: 1px solid var(--lime-border);
+  border-radius: var(--r-pill);
+  font-size: 0.625rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.sidebarBottom { margin-top: auto; padding-top: 2rem; border-top: 1px solid var(--line-strong); font-size: 0.7rem; color: var(--muted); }
+.sidebarBottom p { margin: 0; }
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  min-height: 80px;
+  padding: 1.25rem 2.5rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.75rem;
+  color: var(--muted);
+  background: var(--paper);
+}
+.topbar .sep { margin: 0 0.75rem; }
+.sampleBadge {
+  display: inline-block;
+  padding: 0.375rem 0.75rem;
+  background: var(--lime);
+  color: var(--ink);
+  border: 1px solid var(--lime-border);
+  border-radius: var(--r-pill);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.main { max-width: 1400px; width: 100%; margin: 0 auto; padding: 2.5rem 2.5rem 2rem; }
+.pageTitle {
+  font: 400 clamp(2rem, 3.1vw, 3.25rem)/1.1 var(--font-serif);
+  letter-spacing: -0.045em;
+  margin: 0.75rem 0 1rem;
+  text-wrap: balance;
+}
+.lead { color: var(--muted); font-size: 0.95rem; max-width: 48rem; margin: 0 0 1.5rem; }
+.overline { font-size: 0.625rem; font-weight: 700; letter-spacing: 0.14em; margin: 0; }
+.meta { font-size: 0.75rem; color: var(--muted); margin: 0.25rem 0 0; }
+.fine { font-size: 0.65rem; line-height: 1.5; color: var(--muted); margin: 0.25rem 0 0; }
+.mono { font: 400 0.85em/1.7 var(--font-mono); }
+.textLink { display: inline-flex; align-items: center; min-height: 44px; font-size: 0.75rem; font-weight: 600; color: inherit; }
+
+/* ---------- components (DESIGN.md tokens) ---------- */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md); padding: 1.5rem 2rem; margin-top: 2rem; }
+.main > .panel:first-of-type { margin-top: 0; }
+.panelHeader {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 1rem;
+}
+.panelTitle { font: 400 1.5rem/1.3 var(--font-serif); margin: 0.5rem 0 0; }
+.pill {
+  display: inline-block;
+  width: fit-content;
+  padding: 0.25rem 0.625rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--soft);
+  color: var(--ink);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1.6;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.75rem 1.125rem;
+  font: 400 0.875rem/1.6 var(--font-sans);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--surface);
+  text-decoration: none;
+  cursor: pointer;
+}
+.btnSecondary { background: transparent; color: var(--ink); }
+.btn:hover { text-decoration: underline; }
+.ringDemo { outline: 3px solid var(--olive); outline-offset: 4px; }
+.callout { background: var(--soft); border-left: 3px solid var(--olive-soft); padding: 0.75rem 1.25rem; margin: 1.5rem 0; }
+.callout p { margin: 0; font-size: 0.75rem; }
+.callout .calloutSerif { font: 400 1.25rem/1.5 var(--font-serif); }
+.callout p.note { font-size: 0.75rem; margin: 0.5rem 0 0; }
+.codeBlock {
+  background: var(--ink);
+  color: var(--code-text);
+  border-radius: var(--r-sm);
+  padding: 1rem 1.25rem;
+  margin: 1rem 0 0;
+  font: 400 0.75rem/1.7 var(--font-mono);
+  white-space: pre;
+  overflow-x: auto;
+}
+.codeBlock .cmt { color: var(--lime); }
+
+/* ---------- approval inspector ---------- */
+.split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem 2rem; margin-top: 1.5rem; }
+.split > div + div { border-left: 1px solid var(--line); padding-left: 1.5rem; }
+.split p { margin: 0.5rem 0 0; font-size: 0.875rem; }
+.split .fine { margin-top: 0.25rem; }
+.changedPillRow { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; }
+
+/* ---------- assessment bundle ---------- */
+.question { font-size: 0.875rem; max-width: 46rem; margin: 1.25rem 0 0; }
+.options { display: grid; gap: 0.5rem; margin: 1rem 0 0; padding: 0; }
+.option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 64px;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--input-border-soft);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  margin: 0;
+  font-size: 0.875rem;
+}
+.option .optLetter { color: var(--muted); }
+.option .pill { margin-left: auto; }
+.feedbackBlock { border-left: 3px solid var(--olive); background: var(--soft); padding: 1rem 1.25rem; margin-top: 1rem; }
+.feedbackBlock + .feedbackBlock { margin-top: 0.75rem; }
+.fbHead { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
+.fbLabel { font-size: 0.625rem; font-weight: 700; letter-spacing: 0.14em; }
+.feedbackBlock p { margin: 0.5rem 0 0; font-size: 0.875rem; }
+.feedbackBlock .fine { margin-top: 0.5rem; }
+
+/* ---------- approve bar + record ---------- */
+.approveBar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem 2rem; }
+.approveBar .fine { max-width: 42rem; margin: 0; }
+.record { border-top: 1px solid var(--line); margin: 1.5rem 0 0; padding-top: 1rem; }
+
+/* ---------- participation teaser ---------- */
+.partRow {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.5fr) minmax(0, 0.8fr) minmax(0, 0.9fr);
+  gap: 1rem 1.5rem;
+  align-items: start;
+  padding: 1.25rem 0;
+  border-top: 1px solid var(--line);
+  margin-top: 1.5rem;
+}
+.partName { font-weight: 600; margin: 0; }
+.partRow p { margin: 0.25rem 0 0; font-size: 0.875rem; }
+.evMeter { width: 100%; height: 0.75rem; accent-color: var(--olive); margin-top: 0.5rem; }
+.evMeter::-webkit-meter-bar { background: var(--soft); border: 0; }
+.evMeter::-webkit-meter-optimum-value { background: var(--olive); }
+.notice { background: var(--danger-bg); border-left: 3px solid var(--danger); padding: 0.75rem 1.25rem; margin-top: 1.5rem; }
+.noticeTitle { color: var(--danger); font-weight: 600; margin: 0; font-size: 0.875rem; }
+.scopeNote { border-top: 1px solid var(--line); margin: 1.5rem 0 0; padding-top: 1rem; }
+
+/* ---------- learner-view frame ---------- */
+.openBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem 2rem;
+  border-top: 1px solid var(--line);
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+}
+.openBar .fine { margin: 0; max-width: 30rem; }
+</style>
+</head>
+<body>
+<div class="sheetWrap">
+
+  <header class="sheetHero">
+    <div>
+      <p class="heroLabel">FIELDNOTES · KEY SCREEN MOCK · INSTRUCTOR STUDIO</p>
+      <h1>Approvals</h1>
+      <p>Exact-version approval in the separate instructor shell (R5/D4/R16). Instructor-facing content never reaches learners without approval; fresh generated items enter a pending queue; enrolled learners see approved material or an honest pending label — never unseen output.</p>
+    </div>
+    <p class="heroMeta">Static 1:1 HTML mock · inline CSS · no JavaScript · no network · sample content. The spines remain the contract: EXPERIENCE.md (behavior) and DESIGN.md (tokens). Governing sections are listed at the top of this file's style block.</p>
+  </header>
+
+  <div class="frames">
+
+    <!-- ============ column 1 · canonical: approval inspector ============ -->
+    <section class="frameCol" style="width: 1180px;">
+      <div class="frameCaption">
+        <p class="capLabel">1 · CANONICAL — EXACT-VERSION APPROVAL INSPECTOR</p>
+        <p>Side-by-side inspection of lesson v4 (approved) against pending draft v5; assessment bundle with a queued AI-generated feedback variant; Approve exact versions with the covered versions listed and the approval record (approver, time, versions); a participation-report teaser scoped to the course. The olive focus ring is illustrated on "Approve exact versions".</p>
+      </div>
+      <div class="browser">
+        <div class="chrome">
+          <span class="lights" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span class="urlBox">fieldnotes — instructor studio — static mock · offline · sample content</span>
+        </div>
+        <div class="viewport">
+          <div class="app">
+            <aside class="sidebar">
+              <a class="brand" href="#">Fieldnotes<span class="brandCaption">A LITTLE MORE UNDERSTOOD.</span></a>
+              <p class="navLabel">INSTRUCTOR STUDIO</p>
+              <nav class="nav">
+                <a href="#">Courses</a>
+                <a href="#" aria-current="page">Approvals <span class="navArrow" aria-hidden="true">&#8594;</span></a>
+                <a href="#">Students</a>
+                <a href="#">Participation</a>
+              </nav>
+              <div class="sidebarBottom">
+                <p>Signed in as Dr. Lam<br/>Unit testing fundamentals</p>
+              </div>
+            </aside>
+            <div>
+              <div class="topbar">
+                <span>Instructor studio<span class="sep">/</span>Courses<span class="sep">/</span>Unit testing fundamentals<span class="sep">/</span>Approvals</span>
+                <span class="sampleBadge">Sample content</span>
+              </div>
+              <main class="main">
+                <h1 class="pageTitle">Approvals</h1>
+                <p class="lead">Material reaches enrolled learners only after you approve exact versions. Pending generated items wait here; the approved versions stay in use meanwhile.</p>
+
+                <section class="panel">
+                  <div class="panelHeader">
+                    <div>
+                      <p class="overline">UNIT TESTING FUNDAMENTALS · LESSON 3</p>
+                      <h2 class="panelTitle">Arrange, Act, Assert</h2>
+                    </div>
+                    <span class="pill">Pending approval</span>
+                  </div>
+                  <div class="split">
+                    <div>
+                      <p class="overline">CURRENT APPROVED · <span class="mono">V4</span></p>
+                      <p class="fine">Approved by Dr. Lam · 14 Oct 2026, 18:05 · in use since 14 Oct</p>
+                      <p>Each test tells one small story: arrange the world the test needs, act on it once, then assert what changed.</p>
+                      <pre class="codeBlock">def test_cart_totals_items(cart):
+    apple = Item("apple", price=1.5)  <span class="cmt"># arrange</span>
+    cart.add(apple, qty=2)            <span class="cmt"># act</span>
+    assert cart.total() == 3.0        <span class="cmt"># assert</span></pre>
+                    </div>
+                    <div>
+                      <p class="overline">PENDING DRAFT · <span class="mono">V5</span></p>
+                      <p class="fine">AI-generated 20 Oct 09:12 · edited manually by Dr. Lam 20 Oct 16:40 · Manual edit</p>
+                      <div class="changedPillRow">
+                        <span class="pill">Changed</span>
+                        <p>Each test tells one small story: arrange the world the test needs, act on it once, assert what changed — and leave the world as you found it.</p>
+                      </div>
+                      <pre class="codeBlock">def test_cart_totals_items(cart):
+    apple = Item("apple", price=1.5)  <span class="cmt"># arrange</span>
+    cart.add(apple, qty=2)            <span class="cmt"># act</span>
+    assert cart.total() == 3.0        <span class="cmt"># assert</span>
+    assert cart.lines() == 1          <span class="cmt"># changed in v5</span></pre>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="panel">
+                  <div class="panelHeader">
+                    <div>
+                      <p class="overline">ASSESSMENT BUNDLE · CHECK YOUR UNDERSTANDING</p>
+                      <h2 class="panelTitle">Question 2 · shared state between calls</h2>
+                    </div>
+                    <span class="pill">Pending approval · <span class="mono">v2</span></span>
+                  </div>
+                  <p class="question">A test calls the function under test twice; the second assertion fails although the inputs match. Which part of the test should you inspect first?</p>
+                  <div class="options" role="list">
+                    <p class="option" role="listitem"><span class="mono optLetter">A</span><span>Whether the assertion compares the value the test expects</span></p>
+                    <p class="option" role="listitem"><span class="mono optLetter">B</span><span>Whether state from the first call was reset before the second</span><span class="pill">Correct</span></p>
+                    <p class="option" role="listitem"><span class="mono optLetter">C</span><span>Whether the language evaluates assertions from left to right</span></p>
+                    <p class="option" role="listitem"><span class="mono optLetter">D</span><span>Whether the test runner executes tests in file order</span></p>
+                  </div>
+                  <div class="callout">
+                    <p><strong>Rubric.</strong> 1 point per question · bundle pass mark 80%, decided on the unrounded score.</p>
+                  </div>
+                  <div class="feedbackBlock">
+                    <div class="fbHead">
+                      <span class="fbLabel">GENERATED FEEDBACK · APPROVED, IN USE</span>
+                    </div>
+                    <p>You noticed the second call reused state from the first. Next time, check the arrange step — resetting shared state there keeps each test independent.</p>
+                    <p class="fine">Approved 14 Oct · AI-generated, instructor-approved · shown to learners after submission</p>
+                  </div>
+                  <div class="feedbackBlock">
+                    <div class="fbHead">
+                      <span class="fbLabel">GENERATED FEEDBACK · VARIANT QUEUED</span>
+                      <span class="pill">Pending approval</span>
+                    </div>
+                    <p>State carried over from the first call. Reset it in arrange, not assert — the fix belongs before the action, not after the check.</p>
+                    <p class="fine">AI-generated 21 Oct 10:42 · waiting in the pending queue · not shown to learners</p>
+                  </div>
+                </section>
+
+                <section class="panel">
+                  <div class="approveBar">
+                    <p class="fine">Approving records these exact versions: Lesson 3 <span class="mono">v5</span> · Assessment bundle <span class="mono">v2</span> · Generated feedback variant queued 21 Oct 10:42. Learners keep the approved versions until this approval takes effect.</p>
+                    <button class="btn ringDemo" type="button">Approve exact versions</button>
+                  </div>
+                  <p class="record fine">Approval record — last approved by Dr. Lam · 14 Oct 2026, 18:05 · Lesson 3 <span class="mono">v4</span> · Assessment bundle <span class="mono">v1</span></p>
+                </section>
+
+                <section class="panel">
+                  <div class="panelHeader">
+                    <div>
+                      <p class="overline">PARTICIPATION · UNIT TESTING FUNDAMENTALS</p>
+                      <h2 class="panelTitle">Report preview · 1 of 12 learners</h2>
+                    </div>
+                    <a class="textLink" href="#">Open Participation</a>
+                  </div>
+                  <div class="partRow">
+                    <div>
+                      <p class="partName">Wen L.</p>
+                      <p class="fine">Last activity Tue 20 Oct, 21:14</p>
+                    </div>
+                    <div>
+                      <p>Test passed 82% · no recovery in progress</p>
+                      <p class="fine">Required items 9 of 12 completed</p>
+                      <meter class="evMeter" aria-label="Required items completed" min="0" max="12" value="9">9 of 12 required items completed</meter>
+                    </div>
+                    <div>
+                      <p>Due review</p>
+                      <span class="pill">Review due 21 Oct</span>
+                    </div>
+                    <div>
+                      <p>Active time &#8776; 3 h 10 m</p>
+                      <p class="fine">estimate, from session activity</p>
+                    </div>
+                  </div>
+                  <div class="notice">
+                    <p class="noticeTitle">One published question was withdrawn 19 Oct.</p>
+                    <p class="fine">Evidence that referenced it is paused for correction. Earned passes are unaffected.</p>
+                  </div>
+                  <p class="scopeNote fine">Participation covers course activity only — learners' private uploads are not visible in this report.</p>
+                </section>
+              </main>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ column 2 · enrolled learner, same pending item ============ -->
+    <section class="frameCol" style="width: 880px;">
+      <div class="frameCaption">
+        <p class="capLabel">2 · ENROLLED LEARNER — SAME PENDING ITEM</p>
+        <p>The learner shell for the same lesson: "Pending instructor approval" with the approved v4 offered instead. No unseen output renders and no generation-on-demand bypass exists.</p>
+      </div>
+      <div class="browser">
+        <div class="chrome">
+          <span class="lights" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span class="urlBox">fieldnotes — personal study — static mock · offline · sample content</span>
+        </div>
+        <div class="viewport">
+          <div class="app">
+            <aside class="sidebar">
+              <a class="brand" href="#">Fieldnotes<span class="brandCaption">A LITTLE MORE UNDERSTOOD.</span></a>
+              <p class="navLabel">PERSONAL STUDY</p>
+              <nav class="nav">
+                <a href="#" aria-current="page">Library <span class="navArrow" aria-hidden="true">&#8594;</span></a>
+                <a href="#">Review inbox <span class="navBadge">Due today</span></a>
+                <a href="#">Privacy &amp; data</a>
+              </nav>
+              <div class="sidebarBottom">
+                <p>Signed in as Wen L.<br/>Reminders appear in this app only.</p>
+              </div>
+            </aside>
+            <div>
+              <div class="topbar">
+                <span>Personal study<span class="sep">/</span>Unit testing fundamentals<span class="sep">/</span>Lesson 3</span>
+                <span class="sampleBadge">Sample content</span>
+              </div>
+              <main class="main">
+                <p class="overline">UNIT TESTING FUNDAMENTALS · LESSON 3</p>
+                <h1 class="pageTitle">Arrange, Act, Assert</h1>
+                <p class="lead">This lesson has an update waiting for instructor approval.</p>
+                <section class="panel" style="margin-top: 0;">
+                  <div class="panelHeader">
+                    <div>
+                      <p class="overline">LESSON UPDATE</p>
+                      <h2 class="panelTitle">Version 5 · pending</h2>
+                    </div>
+                    <span class="pill">Pending instructor approval</span>
+                  </div>
+                  <p style="margin: 1.25rem 0 0;">An updated version of this lesson was edited on 20 Oct. It is not shown here until your instructor approves the exact version.</p>
+                  <div class="callout">
+                    <p class="calloutSerif">The approved lesson is available now.</p>
+                    <p class="note">You stay on the approved version until a new one is approved. If the updated version changes required work, that is shown to you before any switch.</p>
+                  </div>
+                  <div class="openBar">
+                    <p class="fine">Approved version <span class="mono">v4</span> · approved 14 Oct, in use since then</p>
+                    <button class="btn" type="button">Open approved version (v4)</button>
+                  </div>
+                </section>
+              </main>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <footer class="sheetFoot">
+    Sample content: all names, courses, versions and dates are synthetic (Voice and Tone, EXPERIENCE.md). Tokens applied verbatim from DESIGN.md (Fieldnotes); layout grammar mirrors src/app/demo/demo.module.css.
+  </footer>
+
+</div>
+</body>
+</html>

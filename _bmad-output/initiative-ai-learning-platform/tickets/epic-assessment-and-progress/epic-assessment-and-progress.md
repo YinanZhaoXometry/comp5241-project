@@ -3,8 +3,15 @@ type: epic
 title: Learners pass tests and recover targeted gaps
 parent: initiative-ai-learning-platform
 covers: [R10, R13, R14, R20]
-sources: [_bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md]
-companions: [_bmad-output/initiative-ai-learning-platform/product-policies.md, _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md]
+sources:
+  [
+    _bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md,
+  ]
+companions:
+  [
+    _bmad-output/initiative-ai-learning-platform/product-policies.md,
+    _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md,
+  ]
 after: [epic-private-study-setup, epic-grounded-mini-courses]
 refined: false
 risk: high

@@ -1,5 +1,11 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "incremental": false, "plugins": [] },
-  "include": ["src/worker/**/*.ts", "src/modules/**/*.ts", "src/platform/**/*.ts", "src/adapters/**/*.ts", "src/contracts/**/*.ts"]
+  "include": [
+    "src/worker/**/*.ts",
+    "src/modules/**/*.ts",
+    "src/platform/**/*.ts",
+    "src/adapters/**/*.ts",
+    "src/contracts/**/*.ts"
+  ]
 }

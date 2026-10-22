@@ -23,9 +23,9 @@ export function PlanEditor({ study, busy, onBusy, onFailure, onDirty, onSaved }:
     if (!parsed.success) { setStatus(parsed.error.issues.map(issue => issue.message).join(" ")); form.current?.querySelector<HTMLElement>(`[name="${String(parsed.error.issues[0].path[0])}"]`)?.focus(); return; }
     onBusy(true);
     try {
-      const body = JSON.stringify(parsed.data);
+      const body = JSON.stringify({ plan: parsed.data, selectionId: study.selection?.id, extractionId: study.extractionId });
       if (saveIntent.current?.body !== body) saveIntent.current = { body, key: command(study.revision) };
-      const result = await api<Receipt>(`studies/${study.rootId}/plan`, json({ ...saveIntent.current.key, plan: parsed.data, extractionId: study.extractionId }));
+      const result = await api<Receipt>(`studies/${study.rootId}/plan`, json({ ...saveIntent.current.key, plan: parsed.data, extractionId: study.extractionId, selectionId: study.selection?.id }));
       const latest = await api<Study>(`studies/${study.rootId}`); onSaved(latest);
       confirmIntent.current = null;
       if (!latest.draft || latest.draft.id !== result.planRevisionId) {
@@ -56,7 +56,8 @@ export function PlanEditor({ study, busy, onBusy, onFailure, onDirty, onSaved }:
     } catch (error) { onFailure(error); } finally { onBusy(false); }
   }
   return <section className="panel"><p className="eyebrow">MANUAL · NO AI PROCESSING</p><h2 ref={heading} tabIndex={-1}>{editing ? "02–03 · Shape your plan" : "Plan confirmed — course not generated"}</h2><output>{status}</output>
-    {editing ? <form ref={form} onSubmit={event => { void save(event); }}><fieldset disabled={busy} className="plan-fields"><legend className="fine">Review and save your Manual revision before confirmation</legend>
+    {!study.selection && <output>Sources changed or are not acknowledged. Inspect previews and acknowledge the current source selection before saving or confirming. Retained edits are not saved.</output>}
+    {editing ? <form ref={form} onSubmit={event => { void save(event); }}><fieldset disabled={busy || !study.selection} className="plan-fields"><legend className="fine">Review and save your Manual revision before confirmation</legend>
       <label htmlFor="topic">Topic</label><input id="topic" name="topic" required maxLength={160} value={plan.topic} onChange={event => change({ ...plan, topic: event.target.value })} />
       <label htmlFor="goal">Learning goal</label><select id="goal" name="goal" value={plan.goal} onChange={event => change({ ...plan, goal: event.target.value as Plan["goal"] })}>{goals.map(goal => <option key={goal}>{goal}</option>)}</select>
       {plan.goal === "Other" && <><label htmlFor="clarification">Short clarification for Other</label><input id="clarification" name="clarification" required maxLength={240} value={plan.clarification} onChange={event => change({ ...plan, clarification: event.target.value })} /></>}
@@ -66,8 +67,8 @@ export function PlanEditor({ study, busy, onBusy, onFailure, onDirty, onSaved }:
       <label htmlFor="practice">Practice activity</label><textarea id="practice" required maxLength={1000} value={plan.miniCourse.practice} onChange={event => change({ ...plan, miniCourse: { ...plan.miniCourse, practice: event.target.value } })} />
       <label htmlFor="minutes">Estimated effort · minutes, not a guarantee</label><input id="minutes" required type="number" min={1} max={600} value={plan.miniCourse.estimatedMinutes} onChange={event => change({ ...plan, miniCourse: { ...plan.miniCourse, estimatedMinutes: Number(event.target.value) } })} />
       <label htmlFor="missing">Source coverage / missing explanations</label><textarea id="missing" required maxLength={1000} value={plan.missingExplanations} onChange={event => change({ ...plan, missingExplanations: event.target.value })} />
-      <p className="fine">This revision pins the previewed extraction above. Coverage is your assessment; no sources are fetched and no factual verification is implied.</p>
-      <div className="actions"><button disabled={busy}>Save Manual draft</button><button className="quiet" type="button" disabled={busy || dirty || !study.draft} onClick={() => { void confirm(); }}>Confirm exact saved plan</button></div>
+      <p className="fine">This revision pins the exact acknowledged source set above. Coverage is your assessment; no sources are fetched and no factual verification is implied.</p>
+      <div className="actions"><button disabled={busy}>Save Manual draft</button><button className="quiet" type="button" disabled={busy || dirty || !study.draft || study.draft.selectionId !== study.selection?.id} onClick={() => { void confirm(); }}>Confirm exact saved plan</button></div>
       <button className="quiet" type="button" disabled={busy} onClick={() => { void reload(); }}>Reload latest revision · keep my edits</button>
     </fieldset></form> : <><h3>{study.confirmed?.plan.miniCourse.title}</h3><p>{study.confirmed?.plan.topic} · {study.confirmed?.plan.goal}</p><ul>{study.confirmed?.plan.outcomes.map(outcome => <li key={outcome}>{outcome}</li>)}</ul><h3>Lessons</h3><ol>{study.confirmed?.plan.miniCourse.lessons.map(lesson => <li key={lesson}>{lesson}</li>)}</ol><p><strong>Practice:</strong> {study.confirmed?.plan.miniCourse.practice}</p><p>Estimated effort: {study.confirmed?.plan.miniCourse.estimatedMinutes} minutes</p><p>{study.confirmed?.plan.missingExplanations}</p><p className="fine">Manual · exact immutable revision · plan ready for future course generation. Course generation and the optional starting check are unavailable in this tracer. No completion credit.</p><button className="quiet" onClick={() => { setEditing(true); requestAnimationFrame(() => heading.current?.focus()); }}>Edit a new draft revision</button></>}
   </section>;

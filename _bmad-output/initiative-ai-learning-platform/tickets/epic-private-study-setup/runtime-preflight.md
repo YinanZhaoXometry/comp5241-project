@@ -1,7 +1,7 @@
 ---
 title: Story 1 local runtime and security preflight
 created: 2026-10-21
-checked_at: '2026-10-21T10:27:35+08:00'
+checked_at: "2026-10-21T10:27:35+08:00"
 status: local-verified-reviewed-runtime-exception
 gate: F1
 baseline_revision: d123d79317055a801f2957b985e05cfd45b20b1b
@@ -99,11 +99,11 @@ F1 is the project's **runtime, starter and transactions feasibility gate**, not 
 
 The checks are phased; requiring an actual lockfile does not mean all checks must somehow run before a starter exists:
 
-| Phase | Evidence needed | Current state |
-| --- | --- | --- |
-| Before starter or application installation | Supported official Node release, verified artifact/checksum and installed executable; prefer a patch tied to the announced fixes when published | Runtime installed and checksum verified under local exception; regenerate private starter under explicit Node24 after the documented environment-reset error; upstream fix still unverified |
-| After runtime acceptance and starter generation | Actual pinned lockfile, compatible Next/React/TS6/auth/web/worker compilation, separate lint and native dependency audit | Lockfile installed; native audit failed; compile/lint/application checks not run |
-| After isolated local PostgreSQL 18 and queue setup | Real enqueue rollback and duplicate-effect integration tests using the shared SQL client | PostgreSQL18 binaries installed, no isolated project cluster or queue yet; transaction tests not run |
+| Phase                                              | Evidence needed                                                                                                                                 | Current state                                                                                                                                                                               |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Before starter or application installation         | Supported official Node release, verified artifact/checksum and installed executable; prefer a patch tied to the announced fixes when published | Runtime installed and checksum verified under local exception; regenerate private starter under explicit Node24 after the documented environment-reset error; upstream fix still unverified |
+| After runtime acceptance and starter generation    | Actual pinned lockfile, compatible Next/React/TS6/auth/web/worker compilation, separate lint and native dependency audit                        | Lockfile installed; native audit failed; compile/lint/application checks not run                                                                                                            |
+| After isolated local PostgreSQL 18 and queue setup | Real enqueue rollback and duplicate-effect integration tests using the shared SQL client                                                        | PostgreSQL18 binaries installed, no isolated project cluster or queue yet; transaction tests not run                                                                                        |
 
 Full security-gate resolution still requires the published fixed runtime and remaining checks. The explicit exception above permits local implementation before the pending fix; it does not resolve the advisory. The assistant cannot publish the upstream fix or guarantee its release time. No further plan approval, paid service or external account is needed for this authorized local work.
 
@@ -116,15 +116,15 @@ Full security-gate resolution still requires the published fixed runtime and rem
 
 ## Local inventory — observed, not approved
 
-| Component | Observation | Decision |
-| --- | --- | --- |
-| Active Node | 23.10.0 via existing nvm | Reject: official release schedule marks 23 EOL |
-| Active npm | 10.9.2 | Inventory only; no application install performed |
-| Other installed Node lines | 14, 16, 17, 18, 19, 20, 22.21.1, 25.2.1 | No verified replacement for the pending security-fixed supported runtime |
-| Default PostgreSQL binary | 11.22 | Reject for planned PostgreSQL 18 and recorded pg-boss minimum |
-| Additional PostgreSQL binary | 17.7 (Homebrew) | Not the adopted PostgreSQL 18 seed; leave existing installation/data untouched |
-| PostgreSQL 18 | No Homebrew opt entry found | Installation and isolated local cluster still required after runtime gate |
-| Application manifest/lockfile | Absent | Framework/auth/worker compatibility and dependency audit not run |
+| Component                     | Observation                             | Decision                                                                       |
+| ----------------------------- | --------------------------------------- | ------------------------------------------------------------------------------ |
+| Active Node                   | 23.10.0 via existing nvm                | Reject: official release schedule marks 23 EOL                                 |
+| Active npm                    | 10.9.2                                  | Inventory only; no application install performed                               |
+| Other installed Node lines    | 14, 16, 17, 18, 19, 20, 22.21.1, 25.2.1 | No verified replacement for the pending security-fixed supported runtime       |
+| Default PostgreSQL binary     | 11.22                                   | Reject for planned PostgreSQL 18 and recorded pg-boss minimum                  |
+| Additional PostgreSQL binary  | 17.7 (Homebrew)                         | Not the adopted PostgreSQL 18 seed; leave existing installation/data untouched |
+| PostgreSQL 18                 | No Homebrew opt entry found             | Installation and isolated local cluster still required after runtime gate      |
+| Application manifest/lockfile | Absent                                  | Framework/auth/worker compatibility and dependency audit not run               |
 
 No PostgreSQL server was started or connected to; existing clusters and real data were not inspected. Local clock was October 21 at UTC+08:00; UTC was still October 20. A calendar date is not evidence that a scheduled release has shipped.
 
@@ -133,13 +133,14 @@ No PostgreSQL server was started or connected to; existing clusters and real dat
 1. [Official October 2026 security announcement](https://nodejs.org/en/blog/vulnerability/october-2026-security-releases), reread with cache disabled: fixes announced for 26.x, 24.x and 22.x, highest severity **HIGH** on every listed line; releases expected on or shortly after October 21. The retrieved announcement does not name the fixed versions.
 2. [Official distribution index](https://nodejs.org/dist/index.json), independently fetched over HTTPS with `Cache-Control: no-cache`, compacted using `jq` without installing packages:
 
-   | Line | Latest indexed release | Date | Security flag | Last security-tagged release |
-   | --- | --- | --- | --- | --- |
-   | 22 | 22.23.3 | 2026-09-23 | false | 22.23.2, 2026-07-28 |
-   | 24 | 24.22.0 | 2026-10-14 | false | 24.18.1, 2026-07-28 |
-   | 26 | 26.12.0 | 2026-10-14 | false | 26.5.1, 2026-07-28 |
+   | Line | Latest indexed release | Date       | Security flag | Last security-tagged release |
+   | ---- | ---------------------- | ---------- | ------------- | ---------------------------- |
+   | 22   | 22.23.3                | 2026-09-23 | false         | 22.23.2, 2026-07-28          |
+   | 24   | 24.22.0                | 2026-10-14 | false         | 24.18.1, 2026-07-28          |
+   | 26   | 26.12.0                | 2026-10-14 | false         | 26.5.1, 2026-07-28           |
 
    The index's security flag alone is not the acceptance test: none of these releases provides evidence of fixing this later announced batch.
+
 3. [Latest Node 24 distribution checksums](https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt), independently fetched without cache: filenames still identify 24.22.0, corroborating the index. This checked publication identity only; no runtime binary was downloaded or checksum verified.
 4. [Official Node release schedule](https://nodejs.org/en/about/previous-releases): 24 and 22 LTS, 26 Current, 23 EOL. Downgrading to the older installed 22.21.1 does not establish the required fix.
 
@@ -165,3 +166,11 @@ Proceed now under the explicit exception: reconcile official release metadata/ch
 Establish an actual lockfile and prove Next/React/TypeScript 6/Better Auth/web/worker compile together, run separate lint and native lockfile audit without overrides/suppressions, install isolated local PostgreSQL 18, and exercise real pg-boss enqueue rollback and duplicate effects using one checked-out SQL client. These checks require actual application artifacts and have **not passed** by virtue of this document. Stop again on any material incompatibility/security finding.
 
 The [approved implementation plan](tickets/story-private-txt-to-confirmed-plan-tracer-plan.md) preserves S1 scope with the explicit local runtime-risk amendment. F1 is not fully passed; other checks remain binding. Full purge/retention/restore, real GenAI and release gates remain later stories; neither this preflight nor the eventual manual tracer proves them.
+
+## Runtime source switched to nvm — 2026-10-21
+
+- User instruction: load Node through nvm instead of the project-local standalone binary, declare only the version, and delete the standalone copy. No waiver, F1 change or ticket advancement was requested or inferred.
+- Installed Node v24.22.0 through nvm 0.39.3 from the official darwin-arm64 artifact; nvm reported **Checksums matched!** against the official SHASUMS list. Executable `~/.nvm/versions/node/v24.22.0/bin/node`, node 24.22.0, bundled npm 11.19.1 — exactly matching `engines` and the pre-existing `.nvmrc`. This restores the preflight's original "install the selected supported release in a separate nvm version" instruction; the plan-era `.local/runtime` copy (SHA256 `6a9724d9b50a5f22b4816cded441b5a8d9ddae546191a5e5b7efa5a5e2ee26d5`) was a deliberate deviation, now removed.
+- Guard unchanged: `scripts/checks.mjs` still hard-fails unless darwin + Node v24.22.0; it now resolves npm next to the running Node (`npm_execpath` or `process.execPath`) instead of the standalone path, and still injects `NPM_CONFIG_USERCONFIG=/dev/null`, `NEXT_TELEMETRY_DISABLED=1` and the Playwright path into every gate child. Those variables are now documented in `.env.example`. The machine's nvm default remains EOL Node 23; every terminal must `nvm use`.
+- Smoke under the nvm runtime: both typechecks, 110 unit tests and the full lint+coverage/probe run passed. The complete `npm run checks` gate was **not** re-run for this tooling-only change; run it before the next story work.
+- The accepted pending-security-release exception, its recheck obligations and the F1 scope are unchanged by the runtime source.

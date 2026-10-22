@@ -13,13 +13,13 @@ Detailed learning examples, user-confirmed product decisions and proposed journe
 
 These user-supplied contexts overlap; they are not validated market segments or mutually exclusive personas.
 
-| User context | Need | Intended value |
-| --- | --- | --- |
-| Studying a course | Find gaps and make steady progress | A visible knowledge map and targeted mini-lessons instead of repeated full-course rereading |
-| Preparing for an exam | Decide where limited study time should go | An explainable priority list of weak or untested concepts |
-| Non-CS background | Understand software-development ideas without assumed technical background | Plain-language explanations, familiar examples, and explicit prerequisites |
-| CS graduate | Apply ideas to technical and professional situations | Deeper application questions and scenario-based activities |
-| Instructor | Create, adapt, and oversee learning | Editable mini-courses, student import, and participation/learning evidence |
+| User context          | Need                                                                       | Intended value                                                                              |
+| --------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Studying a course     | Find gaps and make steady progress                                         | A visible knowledge map and targeted mini-lessons instead of repeated full-course rereading |
+| Preparing for an exam | Decide where limited study time should go                                  | An explainable priority list of weak or untested concepts                                   |
+| Non-CS background     | Understand software-development ideas without assumed technical background | Plain-language explanations, familiar examples, and explicit prerequisites                  |
+| CS graduate           | Apply ideas to technical and professional situations                       | Deeper application questions and scenario-based activities                                  |
+| Instructor            | Create, adapt, and oversee learning                                        | Editable mini-courses, student import, and participation/learning evidence                  |
 
 Software development/engineering is the main domain; other subjects and learner-generated topics/paths remain supported. The user's objective is a suitable course for the chosen theme, not merely readable source material. Broader audience/problem discovery is deferred. Course study has been suggested as a pilot context, but neither it nor exam preparation has been selected.
 
@@ -122,11 +122,11 @@ The user wants to understand why TCP normally establishes a connection through t
 
 For the basic client-initiated handshake, omitting options and application data:
 
-| Message | Information exchanged |
-| --- | --- |
-| Client → server: SYN, sequence x | Announces the client's initial sequence number. |
+| Message                                                  | Information exchanged                                                             |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Client → server: SYN, sequence x                         | Announces the client's initial sequence number.                                   |
 | Server → client: SYN+ACK, sequence y, acknowledgment x+1 | Acknowledges the client's SYN and announces the server's initial sequence number. |
-| Client → server: ACK, acknowledgment y+1 | Acknowledges the server's SYN. |
+| Client → server: ACK, acknowledgment y+1                 | Acknowledges the server's SYN.                                                    |
 
 SYN occupies one sequence number, which explains the +1 acknowledgments in this no-data example. Each peer must both announce its own initial sequence number and have it acknowledged. The server combines its acknowledgment and its SYN into the second message, producing three messages rather than four separate ones.
 
@@ -135,6 +135,7 @@ After only the first two messages, the server has not received confirmation that
 This is not an assertion that three messages create perfect shared certainty, authenticate the peer cryptographically, or guarantee future delivery. Human conversations do not impose the same explicit sequence synchronization and stale-message handling requirements. This example covers the basic exchange, not simultaneous open or every TCP extension.
 
 Sources, consulted 2026-10-19:
+
 - [RFC 9293 §3.4.1 — Initial Sequence Number Selection](https://www.rfc-editor.org/rfc/rfc9293.html#section-3.4.1): sequence synchronization, acknowledgments, and combination of the middle two operations.
 - [RFC 9293 §3.5 — Establishing a Connection](https://www.rfc-editor.org/rfc/rfc9293.html#section-3.5): basic handshake and recovery from old duplicate SYNs.
 

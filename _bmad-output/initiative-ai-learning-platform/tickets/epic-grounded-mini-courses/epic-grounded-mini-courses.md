@@ -3,8 +3,15 @@ type: epic
 title: Learners study source-backed personalized mini-courses
 parent: initiative-ai-learning-platform
 covers: [R1, R6, R8, R11, R12]
-sources: [_bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md]
-companions: [_bmad-output/initiative-ai-learning-platform/product-policies.md, _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md]
+sources:
+  [
+    _bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md,
+  ]
+companions:
+  [
+    _bmad-output/initiative-ai-learning-platform/product-policies.md,
+    _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md,
+  ]
 after: [epic-private-study-setup]
 refined: false
 risk: high

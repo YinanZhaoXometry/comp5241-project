@@ -3,8 +3,17 @@ type: epic
 title: Learners privately turn materials into a study plan
 parent: initiative-ai-learning-platform
 covers: [R2, R7, R21, R22]
-sources: [_bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md]
-companions: [_bmad-output/initiative-ai-learning-platform/product-policies.md, _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md]
+sources:
+  [
+    _bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md,
+  ]
+companions:
+  [
+    _bmad-output/initiative-ai-learning-platform/product-policies.md,
+    _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md,
+    _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md,
+    _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md,
+  ]
 after: []
 refined: true
 risk: high

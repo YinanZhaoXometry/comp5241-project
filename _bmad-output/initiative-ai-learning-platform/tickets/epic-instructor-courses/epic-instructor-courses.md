@@ -3,9 +3,22 @@ type: epic
 title: Instructors publish approved courses to enrolled learners
 parent: initiative-ai-learning-platform
 covers: [R3, R4, R5, R16]
-sources: [_bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md]
-companions: [_bmad-output/initiative-ai-learning-platform/product-policies.md, _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md]
-after: [epic-private-study-setup, epic-grounded-mini-courses, epic-assessment-and-progress, epic-spaced-review]
+sources:
+  [
+    _bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md,
+  ]
+companions:
+  [
+    _bmad-output/initiative-ai-learning-platform/product-policies.md,
+    _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md,
+  ]
+after:
+  [
+    epic-private-study-setup,
+    epic-grounded-mini-courses,
+    epic-assessment-and-progress,
+    epic-spaced-review,
+  ]
 refined: false
 risk: high
 ---

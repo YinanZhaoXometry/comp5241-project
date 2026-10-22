@@ -3,7 +3,8 @@ import * as files from "../../adapters/private-files";
 import { transactionQueue, EXTRACTION_QUEUE, transactionDb } from "../../adapters/queue";
 import { commandSchema, uuid, type Command, type Identity } from "../../contracts/setup";
 import { authorize } from "../identity-access/access";
-import { material, purgeMaterial } from "../materials-setup/repository";
+import { purgeMaterial, purgeObjects } from "../materials-setup/repository";
+import { touchSource } from "../materials-setup/batches";
 import { parse, requestHash } from "../materials-setup/service";
 import { fail } from "../../platform/errors";
 import * as repository from "./repository";
@@ -19,12 +20,25 @@ export async function removeRoot(identity: Identity, rawId: string, raw: Command
     const repeated = await repository.replay(client, identity.userId, command, "delete", hash);
     if (repeated) return repeated;
     if (root.deleted_at) fail("CONFLICT");
-    const item = await material(client, rootId);
+    const batch = await client.query<{ revision: number }>("SELECT revision FROM app.study_batch WHERE id=$1", [rootId]);
+    const item = batch.rows[0] ?? (await client.query<{ revision: number }>("SELECT revision FROM app.material WHERE id=$1", [rootId])).rows[0] ?? { revision: 0 };
     if (item.revision !== command.expectedRevision) fail("CONFLICT");
-    await client.query("UPDATE app.lifecycle_root SET deleted_at=clock_timestamp(),generation=generation+1,cleanup_state='pending' WHERE id=$1", [rootId]);
-    const jobs = await client.query<{ id: string }>("UPDATE app.operation SET state='canceled',lease_until=NULL,updated_at=clock_timestamp() WHERE root_id=$1 RETURNING id", [rootId]);
+    const roots = [rootId, ...(await client.query<{ root_id: string }>("SELECT root_id FROM app.batch_slot WHERE batch_id=$1 AND root_id<>$1", [rootId])).rows.map(row => row.root_id)];
+    await client.query("UPDATE app.lifecycle_root SET deleted_at=COALESCE(deleted_at,clock_timestamp()),generation=generation+1,cleanup_state='pending' WHERE id=ANY($1::uuid[])", [roots]);
+    await client.query(`WITH RECURSIVE affected AS (
+      SELECT id FROM app.lifecycle_object WHERE root_id=ANY($1::uuid[])
+      UNION SELECT c.id FROM app.lifecycle_object c JOIN affected a ON a.id=ANY(c.parent_ids)
+    ) UPDATE app.lifecycle_object SET invalidated_at=clock_timestamp() WHERE id IN(SELECT id FROM affected)`, [roots]);
+    await client.query("UPDATE app.batch_slot SET removed=true WHERE root_id=ANY($1::uuid[])", [roots]);
+    for (const id of roots) await touchSource(client, id);
+    const jobs = await client.query<{ id: string }>("UPDATE app.operation SET state='canceled',lease_until=NULL,updated_at=clock_timestamp() WHERE root_id=ANY($1::uuid[]) RETURNING id", [roots]);
     for (const job of jobs.rows) await transactionQueue(client).cancel(EXTRACTION_QUEUE, job.id, { db: transactionDb(client) });
-    return repository.receipt(client, identity, command, "delete", hash, { rootId, revision: item.revision + 1, state: "pending" });
+    // touchSource runs once per slot root, so the pre-loop revision undershoots
+    // by N; re-read the affected batch (the deleted batch root, or the parent
+    // batch of a deleted slot material) so the token matches its final value.
+    const final = await client.query<{ revision: number }>("SELECT revision FROM app.study_batch WHERE id=$1 OR id IN (SELECT batch_id FROM app.batch_slot WHERE root_id=$1) ORDER BY id<>$1 LIMIT 1", [rootId]);
+    const revision = final.rows[0]?.revision ?? item.revision + 1;
+    return repository.receipt(client, identity, command, "delete", hash, { rootId, revision, state: "pending" });
   });
   // Revocation is already durable. Cleanup failure must not restore access.
   try { await purgeRoot(identity.userId, rootId); } catch { /* Worker retries registered pending cleanup. */ }
@@ -39,10 +53,15 @@ export async function purgeRoot(ownerId: string, rootId: string) {
     // Without root-level staging lineage, conservatively remain pending rather
     // than claim every copy is erased. Other roots remain readable/usable.
     if ((await client.query("SELECT 1 FROM app.lifecycle_staging WHERE owner_id=$1 LIMIT 1", [ownerId])).rowCount) return;
-    const copies = await client.query<{ storage_key: string | null }>("SELECT storage_key FROM app.lifecycle_object WHERE root_id=$1", [rootId]);
+    const copies = await client.query<{ id: string; storage_key: string | null }>(`WITH RECURSIVE affected AS (
+      SELECT * FROM app.lifecycle_object WHERE root_id=$1
+      UNION SELECT c.* FROM app.lifecycle_object c JOIN affected a ON a.id=ANY(c.parent_ids)
+    ) SELECT id,storage_key FROM affected`, [rootId]);
     for (const copy of copies.rows) if (copy.storage_key) await files.erase(copy.storage_key);
+    const ids = copies.rows.map(row => row.id);
+    await purgeObjects(client, ids);
     await purgeMaterial(client, rootId);
-    await client.query("DELETE FROM app.lifecycle_object WHERE root_id=$1", [rootId]);
+    await client.query("DELETE FROM app.lifecycle_object WHERE id=ANY($1::uuid[])", [ids]);
     await client.query("UPDATE app.lifecycle_root SET cleanup_state='purged' WHERE id=$1", [rootId]);
   });
 }
