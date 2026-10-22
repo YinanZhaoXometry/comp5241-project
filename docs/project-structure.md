@@ -40,6 +40,7 @@ project-new/
 │   │   ├── private-files.ts private object storage + protected streaming
 │   │   ├── txt-extractor.ts    Seatbelt TXT helper wrapper
 │   │   ├── document-extractor.ts · document-sandbox.ts   four-format parser dispatch/admission
+│   │   ├── protected-journal.ts  protective journal store/delivery/replay (S13)
 │   │   └── openai-compatible.ts  dormant Chat Completions adapter (see docs/ai-provider-adapter.md)
 │   ├── platform/           config (loopback-only enforcement), errors, HTTP helpers
 │   └── worker/             worker process; never imports app/next
@@ -49,10 +50,12 @@ project-new/
 │                             seccomp.json, disable_xmp.py (sandbox 2 of 2; Docker/Colima,
 │                             fails closed without fresh admission — see
 │                             docs/bounded-document-extraction.md)
+├── docs/backup-restore.md  S13 encrypted local snapshot + protective restore procedure
 ├── migrations/             ordered SQL, applied only by scripts/migrate.ts at dev time;
 │   │                       runtime cannot migrate; additive changes must preserve v1 data
 ├── scripts/                dev-time tooling, run via package.json scripts
 │   ├── checks.mjs          orchestrates the full local gate (npm run checks)
+│   ├── backup.ts · restore.ts   encrypted local snapshot + protective restore (S13)
 │   ├── check-boundaries.mjs   machine-enforced import-direction rules
 │   ├── check-lint-coverage.mjs · lint-policy.mjs · lint-baseline.mjs   lint stack coverage
 │   ├── migrate.ts · local-db.ts          schema runner; .local/pg18 cluster start/stop

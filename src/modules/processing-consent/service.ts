@@ -18,6 +18,7 @@ import { transaction } from "../../adapters/postgres/database";
 import { authorize } from "../identity-access/access";
 import { objectsActive } from "../lifecycle-platform/repository";
 import { fail } from "../../platform/errors";
+import { deliverPendingJournalEvents, journalConsentWithdrawal } from "../../adapters/protected-journal";
 import * as repository from "./repository";
 
 function requestHash(value: unknown) {
@@ -104,7 +105,7 @@ export async function decide(identity: Identity, raw: unknown): Promise<Decision
 export async function withdraw(identity: Identity, raw: unknown): Promise<DecisionReceipt> {
   const command = parse(withdrawSchema, raw);
   const hash = requestHash({ withdrawal: true });
-  return transaction(async (client) => {
+  const result = await transaction(async (client) => {
     await authorize(client, identity);
     const repeated = await repository.decisionByKey(client, identity.userId, command.commandKey);
     if (repeated) {
@@ -125,8 +126,23 @@ export async function withdraw(identity: Identity, raw: unknown): Promise<Decisi
       hash,
       identity.sessionId,
     );
-    return { decision: "withdrawn", disclosureVersion: configuration.version };
+    // S13 hook: journal the withdrawal atomically — a failed append rolls the withdrawal back.
+    await journalConsentWithdrawal(client, {
+      ownerId: identity.userId,
+      sessionId: identity.sessionId,
+      receipt: {
+        commandKey: command.commandKey,
+        configurationId: configuration.id,
+        disclosureVersion: configuration.version,
+        requestHash: hash,
+      },
+    });
+    return { decision: "withdrawn" as const, disclosureVersion: configuration.version };
   });
+  // S13 hook: best-effort independent-store delivery; healed by the next delivery/backup.
+  try { await transaction((client) => deliverPendingJournalEvents(client)); }
+  catch { console.error(JSON.stringify({ event: "journal-delivery-pending" })); }
+  return result;
 }
 
 // Admission runs INSIDE the caller's transaction, before any enqueue/dispatch.

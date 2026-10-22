@@ -24,6 +24,8 @@
     "extractor:build": "tsx scripts/build-extractor.ts",
     "provision": "tsx scripts/provision-synthetic.ts",
     "worker": "tsx src/worker/main.ts",
+    "backup": "tsx scripts/backup.ts",
+    "restore": "tsx scripts/restore.ts",
     "test:restart": "tsx scripts/restart-smoke.ts",
     "boundaries": "node scripts/check-boundaries.mjs",
     "checks": "node scripts/checks.mjs",

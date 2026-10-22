@@ -190,31 +190,56 @@ export async function checkSchemaCompatibility(targetPool: Pool): Promise<number
   referenceUrl.pathname = `/${refName}`;
   const adminClient = admin();
   await adminClient.connect();
+  // The reference inventory must run while the migrated scratch database
+  // exists: create → migrate → inventory → compare-order, drop last.
   try {
     await adminClient.query(`CREATE DATABASE ${refName} OWNER ${owner.username}`);
-    await migrate(referenceUrl.href);
+    try {
+      await migrate(referenceUrl.href);
+      const referencePool = new Pool({ connectionString: referenceUrl.href, max: 1 });
+      let reference: Awaited<ReturnType<typeof schemaInventory>>;
+      try {
+        const referenceClient = await referencePool.connect();
+        try {
+          reference = await schemaInventory(referenceClient);
+        } finally {
+          referenceClient.release();
+        }
+      } finally {
+        await referencePool.end();
+      }
+      const restoredClient = await targetPool.connect();
+      let restored: Awaited<ReturnType<typeof schemaInventory>>;
+      try {
+        restored = await schemaInventory(restoredClient);
+      } finally {
+        restoredClient.release();
+      }
+      return compareInventories(reference, restored);
+    } finally {
+      await adminClient.query(`DROP DATABASE IF EXISTS ${refName} WITH (FORCE)`).catch(() => undefined);
+    }
   } finally {
-    await adminClient.query(`DROP DATABASE IF EXISTS ${refName} WITH (FORCE)`).catch(() => undefined);
     await adminClient.end();
   }
-  const referencePool = new Pool({ connectionString: referenceUrl.href, max: 1 });
-  const referenceClient = await referencePool.connect();
-  let reference: Awaited<ReturnType<typeof schemaInventory>>;
-  try {
-    reference = await schemaInventory(referenceClient);
-  } finally {
-    referenceClient.release();
-    await referencePool.end();
-  }
-  const restoredClient = await targetPool.connect();
-  let restored: Awaited<ReturnType<typeof schemaInventory>>;
-  try {
-    restored = await schemaInventory(restoredClient);
-  } finally {
-    restoredClient.release();
-  }
-  const keys = new Set(restored.map(row => `${row.schema}.${row.table}.${row.column}:${row.dataType}`));
-  const missing = reference.filter(row => !keys.has(`${row.schema}.${row.table}.${row.column}:${row.dataType}`));
+}
+
+function compareInventories(
+  reference: Awaited<ReturnType<typeof schemaInventory>>,
+  restored: Awaited<ReturnType<typeof schemaInventory>>,
+): number {
+  // pg-boss creates daily `queue_stats_<yyyymmdd>` partitions at runtime, not
+  // through migrations; their presence/absence says nothing about restore
+  // compatibility and the fresh reference cannot have today's partition.
+  const runtimePartition = (table: string) => /^queue_stats_\d{8}$/.test(table);
+  const keys = new Set(
+    restored
+      .filter(row => !runtimePartition(row.table))
+      .map(row => `${row.schema}.${row.table}.${row.column}:${row.dataType}`),
+  );
+  const missing = reference
+    .filter(row => !runtimePartition(row.table))
+    .filter(row => !keys.has(`${row.schema}.${row.table}.${row.column}:${row.dataType}`));
   if (missing.length) {
     console.error(
       JSON.stringify({

@@ -168,16 +168,17 @@ integration:
   purged, repeat purge a no-op). The suite prints the real pg_dump/openssl
   timings.
 - One Manual `npm run backup` followed by one Manual
-  `npm run restore -- <id>` on the integration workspace records the timed
-  operator path (redacted content-free JSON events). Paste those two JSON
-  event lines here as the recorded timing evidence:
+  `npm run restore -- 75273b77-c1e9-4f41-89ff-543017e57379` ran on the
+  integration workspace on 2026-10-23 (content-free JSON events, redacted;
+  synthetic data only, ~4k private files, journal cut 258 / 252 events):
 
 ```
-<!-- Integration evidence placeholder — replace with the recorded events:
-{"event":"backup-complete",...,"timings":[...]}
-{"event":"restore-complete",...,"rtoMinutes":N,"rtoBudgetOk":true,"timings":[...]}
--->
+{"event":"backup-complete","backupId":"75273b77-c1e9-4f41-89ff-543017e57379","journalCut":258,"journalEvents":252,"fileCount":4139,"expiresAt":"2026-11-21T21:19:07.217Z","timings":[{"step":"purge-expired","ms":1},{"step":"pg-dump","ms":345},{"step":"journal-export","ms":9},{"step":"private-files-snapshot","ms":1664},{"step":"encrypt","ms":2531},{"step":"register-retention","ms":2},{"step":"total","ms":4587}]}
+{"event":"restore-complete","backupId":"75273b77-c1e9-4f41-89ff-543017e57379","target":"tracer_synthetic_restored","sessionsInvalidated":2661,"journalImported":0,"replay":{"reconciled":210,"unchanged":30,"fixtureNoOp":12,"skipped":0,"events":252},"rtoMinutes":0,"rtoBudgetOk":true,"timings":[{"step":"decrypt-verify-journal","ms":2092},{"step":"pg-restore","ms":348},{"step":"schema-compat","ms":335},{"step":"invalidate-sessions","ms":47},{"step":"journal-replay","ms":93},{"step":"files-restore","ms":1885},{"step":"total","ms":4800}]}
 ```
+
+  These timings certify only this synthetic local dataset on this machine —
+  they say nothing about a production-sized RPO/RTO.
 
 - Expiry proof: the retention registry rows for `protective-backup-*` carry
   the 30-day expiry at creation; the integration test backdates them and

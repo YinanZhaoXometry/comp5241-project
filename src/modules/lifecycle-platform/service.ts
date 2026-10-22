@@ -8,6 +8,7 @@ import { purgeMaterial, purgeObjects } from "../materials-setup/repository";
 import { touchSource } from "../materials-setup/batches";
 import { parse, requestHash } from "../materials-setup/service";
 import { fail } from "../../platform/errors";
+import { deliverPendingJournalEvents, journalDeletion } from "../../adapters/protected-journal";
 import * as repository from "./repository";
 import { failedOperation } from "./operations";
 import { denyDerivatives, purgeDerivatives, type DeletionScope } from "./derivatives";
@@ -42,6 +43,13 @@ export async function removeRoot(identity: Identity, rawId: string, raw: Command
       UNION SELECT c.id FROM app.lifecycle_object c JOIN affected a ON a.id=ANY(c.parent_ids)
     ) UPDATE app.lifecycle_object SET invalidated_at=clock_timestamp() WHERE id IN(SELECT id FROM affected) RETURNING id`, [roots]);
     scope = { ownerId: identity.userId, rootIds: roots, objectIds: affected.rows.map(row => row.id), personal: false };
+    // S13 hook: journal the deletion atomically with the tombstone commit.
+    await journalDeletion(client, {
+      ownerId: identity.userId,
+      rootIds: roots,
+      objectIds: scope.objectIds,
+      receipt: { scope: "root" },
+    });
     await client.query("UPDATE app.batch_slot SET removed=true WHERE root_id=ANY($1::uuid[])", [roots]);
     for (const id of roots) await touchSource(client, id);
     const jobs = await client.query<{ id: string }>("UPDATE app.operation SET state='canceled',lease_until=NULL,updated_at=clock_timestamp() WHERE root_id=ANY($1::uuid[]) RETURNING id", [roots]);
@@ -53,6 +61,9 @@ export async function removeRoot(identity: Identity, rawId: string, raw: Command
     const revision = final.rows[0]?.revision ?? item.revision + 1;
     return repository.receipt(client, identity, command, "delete", hash, { rootId, revision, state: "pending" });
   });
+  // S13 hook: best-effort independent-store delivery (journal row is durable).
+  try { await transaction(client => deliverPendingJournalEvents(client)); }
+  catch { console.error(JSON.stringify({ event: "journal-delivery-pending", rootId })); }
   // Registered derivative ports deny before the accepted request returns. The
   // lineage invalidation above has already committed, so a failing port never
   // restores access; the reconciler retries port deny/purge until it succeeds.
@@ -157,6 +168,13 @@ export async function personalRemoval(identity: Identity, raw: unknown) {
     for (const job of jobs.rows) await transactionQueue(client).cancel(EXTRACTION_QUEUE, job.id, { db: transactionDb(client) });
     await client.query("UPDATE app.batch_slot SET removed=true WHERE root_id=ANY($1::uuid[])", [roots]);
     for (const id of roots) await touchSource(client, id);
+    // S13 hook: journal the personal deletion atomically with the durable denial.
+    await journalDeletion(client, {
+      ownerId: identity.userId,
+      rootIds: roots,
+      objectIds: affected.rows.map(row => row.id),
+      receipt: { scope: "personal" },
+    });
     const preview = await previewPersonal(client, identity.userId);
     return { id: crypto.randomUUID(), roots, objectIds: affected.rows.map(row => row.id), categories: preview.categories };
   });
@@ -177,6 +195,9 @@ export async function personalRemoval(identity: Identity, raw: unknown) {
     fail("RETRYABLE_FAILURE");
   }
   const scope: DeletionScope = { ownerId: identity.userId, rootIds: denial.roots, objectIds: denial.objectIds, personal: true };
+  // S13 hook: best-effort independent-store delivery.
+  try { await transaction(client => deliverPendingJournalEvents(client)); }
+  catch { console.error(JSON.stringify({ event: "journal-delivery-pending", requestId: denial.id })); }
   try { await transaction(client => denyDerivatives(client, scope)); }
   catch { console.error(JSON.stringify({ event: "derivative-deny-pending", requestId: denial.id })); }
   try { await purgePersonal(identity.userId); } catch { /* Reconciler retries pending cleanup. */ }
