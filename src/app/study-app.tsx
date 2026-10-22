@@ -6,6 +6,7 @@ import { api, command, json } from "./client";
 import { PlanEditor } from "./plan-editor";
 import { FilePicker, Materials } from "./materials";
 import { PrivacyPanel } from "./privacy-panel";
+import { GoalStage } from "./goal-stage";
 import { errorCode, messages } from "../platform/errors";
 import type { Study } from "../modules/materials-setup/service";
 import type { Receipt } from "../contracts/setup";
@@ -162,6 +163,7 @@ export function StudyApp() {
           {study && <>
             <div className="section-heading"><h2>Your materials</h2><button className="quiet" onClick={() => { if (!dirty || globalThis.confirm("Leave unsaved edits?")) { setStudy(null); setDirty(false); } }}>Back to library</button></div>
             <Materials key={`${session.user.id}:${study.rootId}`} study={study} busy={busy} onWork={act} onUpload={upload} onSaved={value => { if (viewGeneration === generation.current) { setStudy(value); void load(); } }} />
+            <GoalStage key={session.user.id} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onDirty={value => { if (viewGeneration === generation.current) setDirty(value); }} />
             {study.extractionId && <PlanEditor key={`${session.user.id}:${study.rootId}:${study.slots.filter(slot => slot.state === "removed").map(slot => slot.slotId).join(":")}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onDirty={value => { if (viewGeneration === generation.current) setDirty(value); }} onSaved={value => { if (viewGeneration === generation.current) { setStudy(value); void load(); } }} />}
             <section className="danger-zone"><h2>Remove this material</h2><p>Deletes this original, extracted text and every dependent plan revision. Unrelated material stays available.</p>{!removing ? <button ref={deleteButton} className="danger" onClick={() => setRemoving(true)}>Review removal</button> : <fieldset><legend>Confirm material removal</legend><p>Access will stop immediately. Cleanup can remain pending. This cannot be undone.</p><button className="quiet" onClick={() => { setRemoving(false); requestAnimationFrame(() => deleteButton.current?.focus()); }}>Cancel removal</button><button className="danger" disabled={busy} onClick={() => { void remove(); }}>Delete material and dependent plans</button></fieldset>}</section>
           </>}

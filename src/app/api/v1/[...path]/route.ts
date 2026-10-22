@@ -6,9 +6,11 @@ import { fail } from "../../../../platform/errors";
 import { getOperation, getOriginal, getPreview } from "../../../../modules/materials-setup/queries";
 import { createBatch, addInputs, uploadSlot, acknowledge, controlSlot } from "../../../../modules/materials-setup/batches";
 import { getDisclosure, decide, withdraw } from "../../../../modules/processing-consent/service";
+import { getPreferences, savePreferences } from "../../../../modules/setup-preferences/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
+import type { SavePreferences } from "../../../../contracts/preferences";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -89,6 +91,10 @@ async function handle(request: Request, context: Context) {
         if (result) return Response.json(result, { headers: privateHeaders });
       }
     }
+    if (path[0] === "preferences" && path.length === 1) {
+      if (request.method === "GET") return Response.json(await getPreferences(identity), { headers: privateHeaders });
+      if (request.method === "PUT") return Response.json(await savePreferences(identity, await jsonBody(request) as SavePreferences), { headers: privateHeaders });
+    }
     if (path[0] === "processing" && path.length === 1 && request.method === "GET") {
       return Response.json(await getDisclosure(identity), { headers: privateHeaders });
     }
@@ -103,3 +109,4 @@ async function handle(request: Request, context: Context) {
 }
 export const GET = handle;
 export const POST = handle;
+export const PUT = handle;
