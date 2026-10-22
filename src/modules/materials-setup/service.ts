@@ -9,6 +9,7 @@ import * as lifecycle from "../lifecycle-platform/repository";
 import { createOperation } from "../lifecycle-platform/operations";
 import { fail } from "../../platform/errors";
 import * as repository from "./repository";
+import { preferenceRevision } from "./handoff";
 import { getBatch, batchRow } from "./batches";
 
 export function requestHash(value: unknown) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
@@ -104,7 +105,9 @@ export async function savePlan(identity: Identity, rawId: string, raw: SavePlan)
     if (!selection.rowCount) fail("CONFLICT");
     await lifecycle.assertObjects(client, identity.userId, [item.selection_id]);
     const id = await lifecycle.registerObject(client, rootId, "plan", [item.selection_id]);
-    await repository.insertPlan(client, id, rootId, command.extractionId, command.plan, item.selection_id);
+    // Record the preference revision this draft is saved against (P2 pin); a later
+    // goal/topic change then conflicts when confirming this older draft.
+    await repository.insertPlan(client, id, rootId, command.extractionId, command.plan, item.selection_id, await preferenceRevision(client, identity.userId));
     return lifecycle.receipt(client, identity, command, "save-plan", hash, { rootId, planRevisionId: id, revision: item.revision + 1 });
   });
 }
@@ -118,6 +121,13 @@ export async function confirmPlan(identity: Identity, rawId: string, raw: Confir
     const item = await batchRow(client, rootId);
     const draft = await repository.planRevision(client, item.draft_id);
     if (item.revision !== command.expectedRevision || item.draft_id !== command.planRevisionId || !item.selection_id || draft?.selectionId !== item.selection_id) fail("CONFLICT");
+    // P2 pin: a goal/topic preference change after this draft was saved invalidates
+    // confirming the older draft. Guarded both ways: drafts saved before the column
+    // existed and owners without a preference row carry NULL and skip the check —
+    // legacy history is never erased and stays confirmable.
+    const recorded = (await client.query<{ preference_revision: number | null }>("SELECT preference_revision FROM app.plan_revision WHERE id=$1", [command.planRevisionId])).rows[0]?.preference_revision;
+    const current = await preferenceRevision(client, identity.userId);
+    if (recorded !== null && recorded !== undefined && current !== null && recorded !== current) fail("CONFLICT");
     await lifecycle.assertObjects(client, identity.userId, [command.planRevisionId]);
     await repository.confirmRevision(client, rootId, command.planRevisionId);
     return lifecycle.receipt(client, identity, command, "confirm-plan", hash, { rootId, planRevisionId: command.planRevisionId, revision: item.revision + 1, state: "confirmed" });
