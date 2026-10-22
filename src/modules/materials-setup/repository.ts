@@ -21,8 +21,11 @@ export async function insertExtraction(client: PoolClient, id: string, rootId: s
   await client.query("INSERT INTO app.extraction_revision(id,root_id,text_hash,metadata) VALUES($1,$2,$3,$4)", [id, rootId, hash, metadata]);
   await client.query("UPDATE app.material SET extraction_id=$2,revision=revision+1 WHERE id=$1", [rootId, id]);
 }
-export async function insertPlan(client: PoolClient, id: string, rootId: string, extractionId: string, plan: Plan, selectionId: string) {
-  await client.query("INSERT INTO app.plan_revision(id,root_id,extraction_id,plan,selection_id) VALUES($1,$2,$3,$4,$5)", [id, rootId, extractionId, plan, selectionId]);
+// preferenceRevision (005-plan-handoff.sql, nullable) pins the setup-preference
+// revision this draft was saved against so a later goal/topic change conflicts on
+// confirming this older draft; NULL (legacy drafts, no preference row) skips that check.
+export async function insertPlan(client: PoolClient, id: string, rootId: string, extractionId: string, plan: Plan, selectionId: string, preferenceRevision: number | null = null) {
+  await client.query("INSERT INTO app.plan_revision(id,root_id,extraction_id,plan,selection_id,preference_revision) VALUES($1,$2,$3,$4,$5,$6)", [id, rootId, extractionId, plan, selectionId, preferenceRevision]);
   await client.query("UPDATE app.material SET draft_id=$2,revision=revision+1 WHERE id=$1", [rootId, id]);
   await client.query("UPDATE app.study_batch SET draft_id=$2,revision=revision+1 WHERE id=$1", [rootId, id]);
 }
