@@ -3,7 +3,7 @@ title: 'Optional starting check infrastructure (S7 infrastructure subset)'
 type: 'feature'
 ticket: 7
 created: '2026-10-22'
-status: 'planned'
+status: 'built'
 baseline_revision: 'd851f8f77314ab8f7d8f38e84cac266f7f31916e'
 route: 'full'
 route_source: 'auto'
