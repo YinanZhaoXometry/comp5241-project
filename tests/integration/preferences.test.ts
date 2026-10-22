@@ -144,13 +144,16 @@ describe("real PostgreSQL setup preferences", () => {
     const identical = await save(d, first.revision, { goal: "Understand a topic", topic: "First topic" });
     expect(identical.revision).toBe(1);
     // Optional preference and stage navigation changes never invalidate confirmation.
+    // Saves are full-replace, so plan-relevant fields are carried unchanged here.
+    const unchangedIntent = { goal: "Understand a topic", topic: "First topic" };
     const optional = await save(d, identical.revision, {
+      ...unchangedIntent,
       background: "Self-taught synthetic learner",
       timePreference: "morning",
       timezone: "Asia/Shanghai",
     });
     expect(optional.revision).toBe(1);
-    const stageMove = await save(d, optional.revision, { stage: "plan" });
+    const stageMove = await save(d, optional.revision, { ...unchangedIntent, stage: "plan" });
     expect(stageMove.revision).toBe(1);
     expect((await getPreferences(d)).revision).toBe(1);
     // A plan-relevant change advances the pinned revision exactly once.

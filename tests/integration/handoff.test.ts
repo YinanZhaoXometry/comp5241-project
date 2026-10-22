@@ -15,7 +15,7 @@ import type { Command, Identity, Plan } from "../../src/contracts/setup";
 // All fixtures below are original synthetic content exercised against the isolated
 // local PG cluster; nothing here processes real data or calls any provider.
 const cmd = (expectedRevision = 0): Command => ({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision });
-const input = (name: string): InputsCommand["inputs"][number] => ({ slotId: crypto.randomUUID(), filename: name, mime: "text/plain", byteLength: 16 });
+const input = (name: string): InputsCommand["inputs"][number] => ({ slotId: crypto.randomUUID(), filename: name, mime: "text/plain", byteLength: 24 });
 const data = () => new Blob(["Synthetic handoff source"]).stream();
 const plan: Plan = { topic: "Handoff", goal: "Apply a skill", clarification: "", outcomes: ["Confirm exact revisions"], miniCourse: { title: "Handoff course", lessons: ["One lesson"], practice: "Check identities", estimatedMinutes: 10 }, missingExplanations: "Coverage unchecked; flags only for future supplementation" };
 
@@ -71,7 +71,7 @@ describe("exact-revision plan handoff (S5)", () => {
 
     // Duplicate confirmation: the same command replays one receipt; a different
     // command for the already-confirmed revision inserts no second confirmation.
-    const confirmation = { ...cmd(study.saved.revision), planRevisionId: study.saved.planRevisionId! };
+    const confirmation = { ...cmd(study.confirmed.revision), planRevisionId: study.saved.planRevisionId! };
     const first = await confirmPlan(study.a, study.batch.rootId, confirmation);
     expect(await confirmPlan(study.a, study.batch.rootId, confirmation)).toEqual(first);
     const [raced, replayed] = await Promise.all([
@@ -100,9 +100,9 @@ describe("exact-revision plan handoff (S5)", () => {
     await expect(getHandoff(b, study.batch.rootId)).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
     const revision = (await getBatch(study.a, study.batch.rootId)).revision;
     await removeRoot(study.a, study.batch.rootId, cmd(revision));
-    // Transitive purge clears the confirmation pointer: the study no longer has a
-    // confirmed revision to hand off, so the query conflicts instead of substituting.
-    await expect(getHandoff(study.a, study.batch.rootId)).rejects.toMatchObject({ code: "CONFLICT" });
+    // Transitive purge removes the study: like every other read of a purged
+    // root, the handoff is simply unavailable — never a substituted draft.
+    await expect(getHandoff(study.a, study.batch.rootId)).rejects.toMatchObject({ code: "FORBIDDEN_OR_NOT_FOUND" });
   });
 
   it("two-tab edit/confirm: an unconfirmed draft never substitutes; the handoff tracks only real confirmations", async () => {
@@ -173,7 +173,7 @@ describe("exact-revision plan handoff (S5)", () => {
       // Draft 2 records the preference revision it was saved against; changing the
       // preference afterwards conflicts confirming that older draft, while a fresh
       // save against the new revision confirms and hands off exactly.
-      await transaction(client => client.query("INSERT INTO app.setup_preference(owner_id,revision) VALUES($1,$2) ON CONFLICT (owner_id) DO UPDATE SET revision=EXCLUDED.revision", [study.a.userId, 41]));
+      await transaction(client => client.query("INSERT INTO app.setup_preference(owner_id,stage,revision) VALUES($1,'plan',$2) ON CONFLICT (owner_id) DO UPDATE SET revision=EXCLUDED.revision", [study.a.userId, 41]));
       const draft2 = await savePlan(study.a, study.batch.rootId, { ...cmd(confirmedDraft1.revision), plan: { ...plan, topic: "Pinned draft" }, selectionId: study.ack.selectionId!, extractionId: study.extractionIds[0] });
       expect((await database().query<{ preference_revision: number | null }>("SELECT preference_revision FROM app.plan_revision WHERE id=$1", [draft2.planRevisionId])).rows[0].preference_revision).toBe(41);
       await transaction(client => client.query("UPDATE app.setup_preference SET revision=42 WHERE owner_id=$1", [study.a.userId]));

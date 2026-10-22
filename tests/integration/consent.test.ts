@@ -151,6 +151,7 @@ describe('fail-closed processing consent and dispatch admission', () => {
       disclosureVersion: configuration.version,
     });
     const { objectId } = await registeredObject(c.userId);
+    const dispatchedBefore = spy.calls; // the spy counter accumulates across the file's tests
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const admitted = await transaction((client) =>
         admitDispatch(client, c, { commandKey: crypto.randomUUID(), objectIds: [objectId] }),
@@ -162,7 +163,7 @@ describe('fail-closed processing consent and dispatch admission', () => {
       admitDispatch(client, c, { commandKey: crypto.randomUUID(), objectIds: [objectId] }),
     );
     expect(blocked.outcome).toBe('blocked-quota');
-    expect(spy.calls).toBe(2);
+    expect(spy.calls).toBe(dispatchedBefore + 2);
     expect(
       await count("SELECT 1 FROM app.dispatch_admission WHERE owner_id=$1 AND outcome='admitted'", [c.userId]),
     ).toBe(2);
