@@ -22,12 +22,16 @@ async function apiLogin(request: APIRequestContext, account: Awaited<ReturnType<
   expect(response.status(), `Synthetic sign-in HTTP status ${response.status()}`).toBe(200);
 }
 async function upload(page: Page, name = "synthetic.txt") {
-  await page.getByLabel("Synthetic TXT material").setInputFiles({ name, mimeType: "text/plain", buffer: Buffer.from(text) });
-  const response = page.waitForResponse(value => value.url().endsWith("/api/v1/studies") && value.request().method() === "POST");
-  await page.getByRole("button", { name: "Upload TXT", exact: true }).click();
+  await page.getByLabel("Synthetic study materials").setInputFiles({ name, mimeType: "text/plain", buffer: Buffer.from(text) });
+  const response = page.waitForResponse(value => /\/slots\/[^/]+$/u.test(value.url()) && value.request().method() === "POST");
+  await page.getByRole("button", { name: "Upload materials", exact: true }).click();
   const receipt = await (await response).json() as Receipt;
-  await expect(page.getByLabel("Topic", { exact: true })).toBeVisible();
-  return receipt;
+  await page.getByRole("button", { name: `Inspect preview · ${name}`, exact: true }).click();
+  await page.getByRole("checkbox", { name: `Acknowledge and select ${name}`, exact: false }).check();
+  await page.getByRole("button", { name: "Continue with acknowledged selection", exact: true }).click();
+  await expect(page.getByLabel("Topic", { exact: true })).toBeEnabled();
+  const study = await (await page.request.get(`/api/v1/studies/${receipt.rootId}`)).json();
+  return { ...receipt, operationId: study.slots[0].operationId } as Receipt;
 }
 
 test("keyboard/360px/desktop journey: upload, escaped preview, four goals, exact Manual confirmation, reopen and removal", async ({ page }, info) => {
@@ -152,7 +156,7 @@ test("pending save locks fields; reload keeps edits unconfirmed; a second root c
   await expect(page.getByText(/Saved Manual draft · revision/)).toBeVisible();
   await page.unroute(`**/api/v1/studies/${root.rootId}/plan`);
   const current = await (await page.request.get(`/api/v1/studies/${root.rootId}`)).json();
-  expect((await page.request.post(`/api/v1/studies/${root.rootId}/plan`, { headers: { Origin: origin }, data: { ...command(current.revision), extractionId: current.extractionId, plan: { ...current.draft.plan, miniCourse: { ...current.draft.plan.miniCourse, title: "Unseen plan Q" } } } })).status()).toBe(200);
+  expect((await page.request.post(`/api/v1/studies/${root.rootId}/plan`, { headers: { Origin: origin }, data: { ...command(current.revision), extractionId: current.extractionId, selectionId: current.selection.id, plan: { ...current.draft.plan, miniCourse: { ...current.draft.plan.miniCourse, title: "Unseen plan Q" } } } })).status()).toBe(200);
   await page.getByRole("button", { name: "Reload latest revision · keep my edits" }).click();
   await expect(page.getByLabel("One mini-course title")).toHaveValue("Visible plan P");
   await expect(page.getByRole("button", { name: "Confirm exact saved plan" })).toBeDisabled();
@@ -169,8 +173,20 @@ test("pending save locks fields; reload keeps edits unconfirmed; a second root c
   expect((await page.request.get("/api/v1/studies")).ok()).toBe(true);
 });
 
-test("an authorized old response cannot restore A's private view under B's session", async ({ page }) => {
-  const a = await provisionSynthetic("late-a", "learner"); const b = await provisionSynthetic("late-b", "learner");
+test("study polling stops once every slot has finished extraction work", async ({ page }) => {
+  await login(page, await provisionSynthetic("poll-idle", "learner"));
+  const root = await upload(page, "poll-idle.txt");
+  await page.getByRole("button", { name: "Back to library" }).click();
+  await page.getByRole("button", { name: "Resume", exact: true }).click();
+  await expect(page.getByLabel("Topic", { exact: true })).toBeVisible();
+  await page.waitForTimeout(1100); // Let any straggling pre-gating poll fire before counting.
+  let reads = 0;
+  page.on("request", request => { if (request.method() === "GET" && request.url().endsWith(`/api/v1/studies/${root.rootId}`)) reads += 1; });
+  await page.waitForTimeout(2600);
+  expect(reads).toBe(0);
+});
+
+test("an authorized old response cannot restore A's private view under B's session", async ({ page }) => {  const a = await provisionSynthetic("late-a", "learner"); const b = await provisionSynthetic("late-b", "learner");
   await login(page, a); const root = await upload(page, "late-private-a.txt");
   await page.getByRole("button", { name: "Back to library" }).click();
   let reached!: () => void; let release!: () => void;
@@ -194,8 +210,10 @@ test("retryable extraction keeps polling until a real worker success appears", a
   await page.route(`**/api/v1/studies/${root.rootId}`, async route => {
     // The first response represents the observable interval between real attempts;
     // later responses are the actual already-committed worker result, not AI output.
+    // Poll-activeness derives from slot state, so the mask covers the slot too.
     reads += 1;
-    await route.fulfill({ json: reads === 1 ? { ...actual, extractionId: null, text: null, draft: null, confirmed: null, operation: { ...actual.operation, state: "retryable-failed" } } : actual });
+    const masked = { ...actual, extractionId: null, text: null, draft: null, confirmed: null, slots: [{ ...actual.slots[0], state: "retryable-failed", extractionId: null, metadata: null, pending: false }], operation: actual.operation ? { ...actual.operation, state: "retryable-failed" } : null };
+    await route.fulfill({ json: reads === 1 ? masked : actual });
   });
   await page.getByRole("button", { name: "Resume", exact: true }).click();
   await expect(page.getByLabel("Topic", { exact: true })).toBeVisible();
@@ -213,7 +231,7 @@ test("a concurrent draft saved between command and reload is never silently conf
   });
   await page.getByRole("button", { name: "Save Manual draft", exact: true }).click(); await committed;
   const current = await (await page.request.get(`/api/v1/studies/${root.rootId}`)).json();
-  expect((await page.request.post(`/api/v1/studies/${root.rootId}/plan`, { headers: { Origin: origin }, data: { ...command(current.revision), extractionId: current.extractionId, plan: { ...current.draft.plan, topic: "Unseen topic from another client" } } })).status()).toBe(200);
+  expect((await page.request.post(`/api/v1/studies/${root.rootId}/plan`, { headers: { Origin: origin }, data: { ...command(current.revision), extractionId: current.extractionId, selectionId: current.selection.id, plan: { ...current.draft.plan, topic: "Unseen topic from another client" } } })).status()).toBe(200);
   release();
   await expect(page.getByLabel("One mini-course title")).toBeEnabled();
   await expect(page.getByLabel("Topic", { exact: true })).toHaveValue("Synthetic race testing");

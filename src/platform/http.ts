@@ -3,7 +3,7 @@ import { config } from "./config";
 import { fail, errorCode, messages } from "./errors";
 import { identify, authorize } from "../modules/identity-access/access";
 import { transaction } from "../adapters/postgres/database";
-import { scopedRoot } from "../modules/lifecycle-platform/repository";
+import { scopedRoot, assertObjects } from "../modules/lifecycle-platform/repository";
 
 export const privateHeaders = { "Cache-Control": "no-store, private", "X-Content-Type-Options": "nosniff", Vary: "Cookie" };
 export function trustedMutation(request: Request) {
@@ -24,10 +24,10 @@ export async function jsonBody(request: Request): Promise<unknown> {
     return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch { fail("INVALID_INPUT"); } finally { reader.releaseLock(); }
 }
-export function uploadCommand(request: Request) {
+export function uploadCommand(request: Request, binary = false) {
   const revision = request.headers.get("x-expected-revision");
   const parsed = commandSchema.safeParse({ schemaVersion: Number(request.headers.get("x-schema-version")), commandKey: request.headers.get("idempotency-key"), expectedRevision: revision === null ? NaN : Number(revision) });
-  if (!parsed.success || !request.body || !request.headers.get("content-type")?.startsWith("text/plain")) fail("INVALID_INPUT");
+  if (!parsed.success || !request.body || !(binary ? request.headers.get("content-type") === "application/octet-stream" : request.headers.get("content-type")?.startsWith("text/plain"))) fail("INVALID_INPUT");
   if (Number(request.headers.get("content-length")) > MAX_BYTES) fail("INVALID_INPUT");
   return parsed.data;
 }
@@ -43,17 +43,17 @@ export async function authenticated(request: Request) {
 }
 // The only streaming response path. Reauthorize every controlled 16KiB chunk;
 // cancel stops transmission. Bytes already delivered cannot be recalled.
-export function protectedResponse(identity: Identity, rootId: string, value: unknown, signal: AbortSignal, text = false) {
-  const bytes = new TextEncoder().encode(text ? String(value) : JSON.stringify(value));
+export function protectedResponse(identity: Identity, rootId: string, value: unknown, signal: AbortSignal, text = false, objectIds: string[] = [], attachment = false) {
+  const bytes = value instanceof Uint8Array ? value : new TextEncoder().encode(text ? String(value) : JSON.stringify(value));
   let offset = 0;
   return new Response(new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
         if (signal.aborted) { controller.close(); return; }
-        await transaction(async client => { await authorize(client, identity); await scopedRoot(client, identity.userId, rootId); });
+        await transaction(async client => { await authorize(client, identity); await scopedRoot(client, identity.userId, rootId); await assertObjects(client, identity.userId, objectIds); });
         if (offset >= bytes.length) { controller.close(); return; }
         controller.enqueue(bytes.slice(offset, offset + 16384)); offset += 16384;
       } catch { controller.error(new Error("This item is unavailable")); }
     },
-  }, { highWaterMark: 0 }), { headers: { ...privateHeaders, "Content-Type": text ? "text/plain; charset=utf-8" : "application/json" } });
+  }, { highWaterMark: 0 }), { headers: { ...privateHeaders, "Content-Type": attachment ? "application/octet-stream" : text ? "text/plain; charset=utf-8" : "application/json", ...(attachment ? { "Content-Disposition": 'attachment; filename="original.bin"', "Content-Security-Policy": "sandbox; default-src 'none'" } : {}) } });
 }

@@ -5,7 +5,19 @@ A narrow real Next.js/PostgreSQL/worker journey: **sign in → upload synthetic 
 the exact revision → remove its root and dependent copies**. This is not yet the
 full GenAI learning platform. The [approved plan](_bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/tickets/story-private-txt-to-confirmed-plan-tracer-plan.md)
 defines scope; the [lint coverage record](docs/lint-coverage.md) explains the
-user-authorized tool replacement.
+user-authorized tool replacement. New developers start with
+[CONTRIBUTING.md](CONTRIBUTING.md) for the reading order, environment setup and the
+one-story-per-session BMad workflow.
+
+**Story 2 — local synthetic verification passed; independent review pending:**
+four-format/batch/explicit-preview code now uses source-built lxml/libxml2/libxslt
+instead of Expat. The former admission remains quarantined; fresh matching local
+synthetic admission was issued only after audit and isolation/resource probes.
+The complete gate passed **110 unit, 52 integration and 27 browser cases**, plus
+real queued-PDF restart/replay. See the [replacement assessment and F2 evidence](docs/bounded-document-extraction.md),
+including libxml2's upstream warning against untrusted-data use. No real uploads,
+live AI, deployment or release approval is implied. The historical Story 1 results
+below remain separate evidence, not a claim that Story 2 has completed review.
 
 An additional [dormant provider foundation](docs/ai-provider-adapter.md) now defines
 a provider-neutral text-completion port and a bounded, server-side Chat Completions
@@ -74,15 +86,20 @@ remain pending; test results alone do not satisfy that separate review step.
 
 ## Local prerequisites and operation
 
-macOS arm64 only for this first TXT sandbox. Verified Node24.22.0/npm11.19.1 is
-under the ignored project-local runtime. PostgreSQL18.6 binaries are installed
-separately under Homebrew. Do not use default EOL Node23 or start the Homebrew
-default database cluster. In each terminal select the project runtime explicitly:
+macOS arm64 only for this first TXT sandbox. Node is managed with nvm: `.nvmrc`
+pins 24.22.0 (matching `engines`; nvm verifies the official-artifact checksums at
+install). PostgreSQL18.6 binaries are installed separately under Homebrew. Do not
+use default EOL Node23 — this machine's nvm default may still be 23, so run
+`nvm use` in every project terminal — and never start the Homebrew default
+database cluster. First time: copy the environment template; every terminal:
+load it (it isolates npm/Next from personal configuration; `scripts/checks.mjs`
+also injects these values into every gate child process):
 
 ```sh
-export PATH="$PWD/.local/runtime/node-v24.22.0-darwin-arm64/bin:$PATH"
-export NPM_CONFIG_USERCONFIG=/dev/null NEXT_TELEMETRY_DISABLED=1
-export PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright"
+nvm install 24.22.0        # first time only
+nvm use                    # selects 24.22.0 from .nvmrc
+cp .env.example .env       # first time only; .env is git-ignored
+source .env
 npm ci --ignore-scripts --no-fund
 npm run db:start
 npm run migrate
@@ -103,7 +120,12 @@ selection; open http://127.0.0.1:3000. Stop web/worker with Ctrl-C; stop this pr
 database with `npm run db:stop`. All listeners bind loopback. Development mode is
 `npm run dev`, but the recorded browser tests use the production build.
 
-Use only generated non-personal TXT, UTF-8, nonempty, at most 20MiB. The source is
+Use only original generated non-personal fixtures: extractable-text PDF, DOCX,
+UTF-8 TXT or Markdown, nonempty, at most 20 MiB each and ten active inputs per
+batch. Docker/Colima and Trivy are additional four-format prerequisites; read the
+[source-build and sandbox requirements](docs/bounded-document-extraction.md#local-prerequisites-and-recovery).
+Inspect each successful preview and acknowledge exact revisions; explicitly
+exclude or remove failed inputs before saving a Manual plan. The source is
 never evaluated as code/HTML. Files are private server-generated UUID objects;
 original/extracted/plan lineage is registered. Deletion immediately fences access
 and removes this tracer's copies; pending cleanup is retried. Unrelated roots
@@ -117,6 +139,26 @@ setup/migration, real PostgreSQL integration, production build, Playwright brows
 journeys and a real web+worker restart smoke. It stops on any failed command.
 The manual-only workflow runs the same local gate on a separately approved prepared
 macOS runner; no remote workflow or deployment has been run or authorized.
+
+Epic 1 local implementation status (recorded 2026-10-22/23): stories 3 (consent and
+fail-closed processor admission), 4 (short goals and resumable preferences), 5
+(editable immutable plan handoff), 7-infrastructure (skip-first optional check), 8
+(authenticated export), 9 (root-scoped deletion), 10 (bounded retention and archive
+contract) and 13 (isolated encrypted backup and protective restore) are built and
+gated locally on top of stories 1–2, and the S11 refactor sweep + closure
+bookkeeping ran (stale INVALID_INPUT message text corrected to the four-format
+admission; wave-duplicated `requestHash`/`parse` command helpers consolidated into
+`src/platform/commands.ts`; no behavior, schema or test-strength change). The full
+gate after the sweep passed with **131 unit, 103 PostgreSQL integration and 45
+browser cases**, both typechecks, the 113-rule lint coverage and probes, module
+boundaries, the production build (documented typegen dance; development imports
+restored), the real web/worker restart smoke and the recorded Manual
+`npm run backup`/`restore` drill ([docs/backup-restore.md](docs/backup-restore.md)).
+**This does not close the epic:** S6 (eligible live-AI inference), the S7 take-path
+closure and S12 (integrated suite and separately authorized release) remain blocked
+on F3/F6 authorization, and independent review of the wave-1–3 and sweep work is
+still pending. Local passes are synthetic-only evidence and imply no release
+readiness.
 
 Recorded on 2026-10-21; independent review findings corrected and regression-tested:
 
@@ -164,6 +206,9 @@ the earlier tracer review above is separate from this foundation review.
 
 ## Structure and security boundaries
 
+The full annotated directory map is in [docs/project-structure.md](docs/project-structure.md);
+the list below stays focused on security-relevant boundaries.
+
 - [src/app](src/app/page.tsx): minimal local study interface and thin HTTP adapters.
 - [src/modules](src/modules/materials-setup/service.ts): shared web/worker services,
   identity/session fences, immutable plan revisions and lifecycle orchestration.
@@ -186,22 +231,29 @@ Bun is not an application runtime and is never installed or executed here.
 The TXT helper is trusted bounded copying, not a general hostile-document or
 learner-code execution sandbox. Its RSS guard is not a kernel hard memory cap;
 only the fixed-buffer TXT implementation is admitted. Linux/other platforms fail
-closed. Four-format parsing and dedicated learner-code isolation remain later work.
+closed. Four-format extraction now uses the separate externally limited Linux
+container documented above; dedicated learner-code isolation remains later work.
 
 ## Known limits and accepted risk
 
-- Node24.22.0 archive SHA256 verified as
-  `6a9724d9b50a5f22b4816cded441b5a8d9ddae546191a5e5b7efa5a5e2ee26d5`.
-  The pending HIGH-security Node release is still accepted **only for local
-  synthetic development**. Recheck/update when published and before broader use;
-  neither F1 nor release readiness is declared fully passed.
+- Node24.22.0 comes from nvm (official darwin-arm64 artifact, checksum-verified by
+  nvm at install; bundled npm11.19.1 matches `engines`). The former project-local
+  standalone copy was manually verified as SHA256
+  `6a9724d9b50a5f22b4816cded441b5a8d9ddae546191a5e5b7efa5a5e2ee26d5` before its
+  removal on 2026-10-21. The pending HIGH-security Node release is still accepted
+  **only for local synthetic development**. Recheck/update when published and
+  before broader use; neither F1 nor release readiness is declared fully passed.
 - Starter generation was repeated privately under explicit verified Node24 after
   an earlier terminal-export reset accidentally selected Node23. Every application
   check here explicitly used Node24. The verified copy is ignored local evidence.
 - Cookies are HTTP-only/SameSite-strict but not Secure for this exact loopback HTTP
   origin. No hosted/production auth configuration is offered.
-- No activated providers, accounts, costs, deployment, real data, pilot, full generation,
-  diagnostics, exports, general retention/backup/restore or completion awards.
+- No activated providers, accounts, costs, deployment, real data, pilot, full
+  generation or completion awards. Export, retention and backup/restore exist as
+  local synthetic implementations only. Live-AI inference (S6), the
+  eligible-generator diagnostic take path (S7 closure) and the integrated
+  authorized release (S12) remain blocked on F3/F6; the epic is not closed, and
+  independent review of the 2026-10-22/23 wave and sweep work is pending.
 - The prior user-approved Homebrew installation changed shared OpenSSL/Kerberos
   dependencies. Existing PG17 data was not used; unrelated consumers may need
   checking. No privileged Command Line Tools repair was attempted.

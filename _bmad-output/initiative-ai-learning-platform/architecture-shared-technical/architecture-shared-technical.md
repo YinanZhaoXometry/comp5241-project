@@ -8,8 +8,37 @@ scope: Shared contracts for all six epics and R1–R22
 status: final
 created: 2026-10-21
 updated: 2026-10-21
-binds: [R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15, R16, R17, R18, R19, R20, R21, R22]
-sources: [_bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md, _bmad-output/initiative-ai-learning-platform/product-policies.md, project-overview.md]
+binds:
+  [
+    R1,
+    R2,
+    R3,
+    R4,
+    R5,
+    R6,
+    R7,
+    R8,
+    R9,
+    R10,
+    R11,
+    R12,
+    R13,
+    R14,
+    R15,
+    R16,
+    R17,
+    R18,
+    R19,
+    R20,
+    R21,
+    R22,
+  ]
+sources:
+  [
+    _bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md,
+    _bmad-output/initiative-ai-learning-platform/product-policies.md,
+    project-overview.md,
+  ]
 ---
 
 # Architecture Spine — AI Learning Platform
@@ -38,16 +67,16 @@ flowchart TD
   Lifecycle[Lifecycle coordinator] --> App
 ```
 
-| Module | Single write authority |
-| --- | --- |
-| Identity/access | Accounts, sessions, capabilities, enrollment and authorization epochs |
-| Materials/setup | Scoped uploads, extraction revisions, goals, plan and setup diagnostic |
-| Learning/content | Source claims, objectives, content/activity revisions, conversations, generation |
-| Publication | Draft dependencies, inspected approvals, release manifests, withdrawals |
-| Assessment/progress | Attempts, grades, recovery ledgers, evidence and completion awards |
-| Review | Review schedules, preferences, in-app reminders |
-| Instructor/reporting | Course metadata, roster-import orchestration; read-only scoped reporting projections |
-| Lifecycle/platform | Scope tombstones, derivative registry, exports/purge orchestration; jobs and operations |
+| Module               | Single write authority                                                                  |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| Identity/access      | Accounts, sessions, capabilities, enrollment and authorization epochs                   |
+| Materials/setup      | Scoped uploads, extraction revisions, goals, plan and setup diagnostic                  |
+| Learning/content     | Source claims, objectives, content/activity revisions, conversations, generation        |
+| Publication          | Draft dependencies, inspected approvals, release manifests, withdrawals                 |
+| Assessment/progress  | Attempts, grades, recovery ledgers, evidence and completion awards                      |
+| Review               | Review schedules, preferences, in-app reminders                                         |
+| Instructor/reporting | Course metadata, roster-import orchestration; read-only scoped reporting projections    |
+| Lifecycle/platform   | Scope tombstones, derivative registry, exports/purge orchestration; jobs and operations |
 
 Epic ownership is delivery accountability, not a permission to duplicate a module. Epic 1 supplies the first setup-inference/diagnostic adapter, versioned processor configuration/eligibility evidence and reusable consent/dispatch/accounting/lifecycle ports; epic 2 extends them for full generation/retrieval and re-gates changed model/endpoint/features/purpose/location/retention. No blanket eligibility or consent is inherited. Epic 5 integrates publication/enrollment without redefining assessment or review.
 
@@ -171,32 +200,32 @@ Epic ownership is delivery accountability, not a permission to duplicate a modul
 
 ## Consistency Conventions
 
-| Concern | Convention |
-| --- | --- |
-| Identity | UUID opaque resource/revision IDs; immutable scope reference on every private row; IDs are not authorization |
-| Wire data | JSON camelCase, explicit discriminated `schemaVersion`; SQL snake_case; no secrets in URLs |
-| Time | UTC ISO-8601 instants; IANA timezone + local date for review/reminder policy; server/injected clock is authoritative |
-| Numbers | Integer-scaled rubric points and rational pass marks; wire-safe integer strings where needed; display never decides pass |
-| Revisions | Stable logical objective/group IDs plus immutable revision IDs; no cross-release recovery without a new explicit mapping decision |
-| Events | Named past-tense domain facts with ID/scope/generation/version/time; transactionally persisted jobs, not an event-sourcing mandate |
-| Modules | Lowercase kebab-case folders; public application interfaces only across modules; server-only provider/storage credentials |
-| Access failures | Do not reveal another owner's resource existence; scope filters and fresh auth checks cover all adapters |
+| Concern         | Convention                                                                                                                         |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Identity        | UUID opaque resource/revision IDs; immutable scope reference on every private row; IDs are not authorization                       |
+| Wire data       | JSON camelCase, explicit discriminated `schemaVersion`; SQL snake_case; no secrets in URLs                                         |
+| Time            | UTC ISO-8601 instants; IANA timezone + local date for review/reminder policy; server/injected clock is authoritative               |
+| Numbers         | Integer-scaled rubric points and rational pass marks; wire-safe integer strings where needed; display never decides pass           |
+| Revisions       | Stable logical objective/group IDs plus immutable revision IDs; no cross-release recovery without a new explicit mapping decision  |
+| Events          | Named past-tense domain facts with ID/scope/generation/version/time; transactionally persisted jobs, not an event-sourcing mandate |
+| Modules         | Lowercase kebab-case folders; public application interfaces only across modules; server-only provider/storage credentials          |
+| Access failures | Do not reveal another owner's resource existence; scope filters and fresh auth checks cover all adapters                           |
 
 ## Stack
 
 Cold-start candidates verified on 2026-10-21; exact pins below are a planning seed, not an installed/tested lockfile. Node's pending security release is a blocking recheck, not an endorsed vulnerable runtime. Patch replacements are recorded before scaffold; no automatic `latest` production resolution.
 
-| Name | Version |
-| --- | --- |
+| Name                                                            | Version |
+| --------------------------------------------------------------- | ------- |
 | Node.js — latest verified 24 LTS baseline; security update gate | 24.22.0 |
-| create-next-app / Next.js | 16.4.2 |
-| React / react-dom | 19.3.1 |
-| TypeScript | 6.0.3 |
-| Better Auth | 1.7.12 |
-| PostgreSQL | 18.6 |
-| node-postgres (`pg`) | 8.23.1 |
-| pg-boss | 12.38.0 |
-| Zod | 4.6.7 |
+| create-next-app / Next.js                                       | 16.4.2  |
+| React / react-dom                                               | 19.3.1  |
+| TypeScript                                                      | 6.0.3   |
+| Better Auth                                                     | 1.7.12  |
+| PostgreSQL                                                      | 18.6    |
+| node-postgres (`pg`)                                            | 8.23.1  |
+| pg-boss                                                         | 12.38.0 |
+| Zod                                                             | 4.6.7   |
 
 Use the official Next starter with TypeScript, App Router, ESLint, Tailwind and a source directory; no React Compiler/Cache Components in the initial seed. Record generated ancillary package pins/lockfile and starter differences at scaffold time. TypeScript 6.0.3 is deliberately selected over observed 7.0.2 to retain the starter ESLint compiler-API compatibility; no dual compiler, peer overrides or lint suppressions. Auth/framework/worker compilation and lint are explicit compatibility checks, not inferred from registry peer ranges. Testing, extraction, media and infrastructure SDK patch selections belong to their first consuming stories, behind the fixed contracts above.
 
@@ -252,42 +281,42 @@ Relationships show ownership/pinning, not a complete physical schema. Multi-pare
 
 ## Capability → Architecture Map
 
-| Capability | Lives in | Governed by |
-| --- | --- | --- |
-| R1 Personal material → mini-course | Materials/setup, Learning/content | AD-2, AD-4, AD-9–AD-11 |
-| R2 Private uploads | Identity/access, scoped repositories/storage | AD-3, AD-4, AD-11 |
-| R3 Instructor authoring | Learning/content, Publication, Instructor | AD-5, AD-6, AD-10 |
-| R4 Import/enrollment | Instructor, Identity/access | AD-3, AD-14, AD-15 |
-| R5 Personal approval | Publication and every output adapter | AD-5, AD-6 |
-| R6 Checked supplementation | Learning/content, source fetch | AD-5, AD-10, AD-11 |
-| R7 Selection-first goals | Materials/setup, web UI | AD-7, AD-15, D2 |
-| R8 Background adaptation | Learning/content | AD-5–AD-7, AD-10 |
-| R9 Three subject areas | Learning/content and breadth fixtures | AD-12, AD-18 |
-| R10 Evidence-based guidance | Assessment/progress, Learning/content | AD-7, AD-8, AD-14 |
-| R11 Successive why | Learning/content, Publication | AD-6, AD-10, AD-11 |
-| R12 Attempt-before-answer | Activity renderers, Assessment/progress | AD-7, AD-8, AD-12 |
-| R13 Completion/80% | Assessment/progress | AD-5, AD-8 |
-| R14 Targeted retests | Assessment/progress, Publication | AD-5, AD-6, AD-8 |
-| R15 Spaced review | Review, job adapter | AD-3, AD-9, AD-13 |
-| R16 Participation reporting | Instructor/reporting query interfaces | AD-3, AD-14 |
-| R17 All activity families | Activity adapters, media, isolated runner | AD-6, AD-10, AD-12, AD-18 |
-| R18 Other domains/self-learning | Materials/setup, Learning/content | AD-3, AD-7, AD-10, AD-12 |
-| R19 Final 4D presentation | Epic 6 evidence/presentation artifacts | AD-18; actual delegation, prompts, checks and accountability |
-| R20 Whole-mini-course roadmap | Release manifests, Assessment/progress UI | AD-5, AD-8, AD-13 |
-| R21 Confirm plan/optional diagnostic | Materials/setup | AD-7, AD-15, D2 |
-| R22 Consent/export/delete | Lifecycle, all module/provider ports | AD-2–AD-4, AD-9, AD-10, AD-16, AD-17 |
+| Capability                           | Lives in                                     | Governed by                                                  |
+| ------------------------------------ | -------------------------------------------- | ------------------------------------------------------------ |
+| R1 Personal material → mini-course   | Materials/setup, Learning/content            | AD-2, AD-4, AD-9–AD-11                                       |
+| R2 Private uploads                   | Identity/access, scoped repositories/storage | AD-3, AD-4, AD-11                                            |
+| R3 Instructor authoring              | Learning/content, Publication, Instructor    | AD-5, AD-6, AD-10                                            |
+| R4 Import/enrollment                 | Instructor, Identity/access                  | AD-3, AD-14, AD-15                                           |
+| R5 Personal approval                 | Publication and every output adapter         | AD-5, AD-6                                                   |
+| R6 Checked supplementation           | Learning/content, source fetch               | AD-5, AD-10, AD-11                                           |
+| R7 Selection-first goals             | Materials/setup, web UI                      | AD-7, AD-15, D2                                              |
+| R8 Background adaptation             | Learning/content                             | AD-5–AD-7, AD-10                                             |
+| R9 Three subject areas               | Learning/content and breadth fixtures        | AD-12, AD-18                                                 |
+| R10 Evidence-based guidance          | Assessment/progress, Learning/content        | AD-7, AD-8, AD-14                                            |
+| R11 Successive why                   | Learning/content, Publication                | AD-6, AD-10, AD-11                                           |
+| R12 Attempt-before-answer            | Activity renderers, Assessment/progress      | AD-7, AD-8, AD-12                                            |
+| R13 Completion/80%                   | Assessment/progress                          | AD-5, AD-8                                                   |
+| R14 Targeted retests                 | Assessment/progress, Publication             | AD-5, AD-6, AD-8                                             |
+| R15 Spaced review                    | Review, job adapter                          | AD-3, AD-9, AD-13                                            |
+| R16 Participation reporting          | Instructor/reporting query interfaces        | AD-3, AD-14                                                  |
+| R17 All activity families            | Activity adapters, media, isolated runner    | AD-6, AD-10, AD-12, AD-18                                    |
+| R18 Other domains/self-learning      | Materials/setup, Learning/content            | AD-3, AD-7, AD-10, AD-12                                     |
+| R19 Final 4D presentation            | Epic 6 evidence/presentation artifacts       | AD-18; actual delegation, prompts, checks and accountability |
+| R20 Whole-mini-course roadmap        | Release manifests, Assessment/progress UI    | AD-5, AD-8, AD-13                                            |
+| R21 Confirm plan/optional diagnostic | Materials/setup                              | AD-7, AD-15, D2                                              |
+| R22 Consent/export/delete            | Lifecycle, all module/provider ports         | AD-2–AD-4, AD-9, AD-10, AD-16, AD-17                         |
 
 ## Deferred
 
 These are bounded feasibility/implementation gates, not permission for epics to invent incompatible alternatives. Core scope, ownership and mutation rules above remain fixed.
 
-| Gate / decision | Owner and revisit condition |
-| --- | --- |
-| G1 Runtime/starter compatibility | Epic 1 before scaffold use: recheck Node October 21 security release; pin fixed runtime/lockfile, compile and lint Next/React/TypeScript 6/auth/web/worker together; verify managed PostgreSQL major 18/observed patch and queue transaction rollback |
-| G2 Real-data processors/regions | Epic 1 setup/diagnostic adapter+policy/configuration, epic 2 full-generation/retrieval extensions: before any live AI verify actual model snapshot, feature exceptions, no-training/deletion terms, consent, location, budgets and applicable account/operator approval. Before G5/G6 pass only separately authorized synthetic non-personal external evaluation; real-data/deployed use still requires complete lifecycle/hosting/backup proof. Re-gate changed configuration/purpose; blocked until compatible, no silent D5 change |
-| G3 Extraction/source support | Epic 1 extraction, epic 2 retrieval before untrusted documents/live fetch: parser pins/licenses, resource limits, malformed/DOCX-bomb/SSRF fixtures, scoped retrieval and manual factual support checks |
-| G4 Narration and isolated code | Epic 6 before corresponding activation: offline engine/voice license, resource quality; runner engine/host deployment proof, no egress/secrets, escape/resource/cleanup tests. Ordinary containers or browser threads are not sufficient evidence |
-| G5 Operations/deletion | Epic 1 baseline and every epic's derivatives, before real-data deployment: provider/location/cost review, complete retention inventory, per-root/multi-parent purge races, backup expiry and protective-state replay including revocations/consent/withdrawal, restore targets, secrets and operational ownership |
-| G6 Quality/pilot capacity | Each epic before acceptance; initiative before D8: real test harness, cost/load limits and measured latency, fixture rights/manual rubric, accessibility, full breadth and seven-day protocol. No efficacy/PMF inference |
-| Physical schema and UI composition | At epic refinement under AD-1–AD-15: table indexes, component/library choices, exact route list, item-bank layouts and responsive presentation; cannot change scoped ownership, revision or evidence semantics |
-| Scale changes | Revisit only after measured queue/database/runner bottlenecks; a new cache, vector store, service, public marketplace or external notification channel needs an explicit architecture/policy revision first |
+| Gate / decision                    | Owner and revisit condition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| G1 Runtime/starter compatibility   | Epic 1 before scaffold use: recheck Node October 21 security release; pin fixed runtime/lockfile, compile and lint Next/React/TypeScript 6/auth/web/worker together; verify managed PostgreSQL major 18/observed patch and queue transaction rollback                                                                                                                                                                                                                                                                                 |
+| G2 Real-data processors/regions    | Epic 1 setup/diagnostic adapter+policy/configuration, epic 2 full-generation/retrieval extensions: before any live AI verify actual model snapshot, feature exceptions, no-training/deletion terms, consent, location, budgets and applicable account/operator approval. Before G5/G6 pass only separately authorized synthetic non-personal external evaluation; real-data/deployed use still requires complete lifecycle/hosting/backup proof. Re-gate changed configuration/purpose; blocked until compatible, no silent D5 change |
+| G3 Extraction/source support       | Epic 1 extraction, epic 2 retrieval before untrusted documents/live fetch: parser pins/licenses, resource limits, malformed/DOCX-bomb/SSRF fixtures, scoped retrieval and manual factual support checks                                                                                                                                                                                                                                                                                                                               |
+| G4 Narration and isolated code     | Epic 6 before corresponding activation: offline engine/voice license, resource quality; runner engine/host deployment proof, no egress/secrets, escape/resource/cleanup tests. Ordinary containers or browser threads are not sufficient evidence                                                                                                                                                                                                                                                                                     |
+| G5 Operations/deletion             | Epic 1 baseline and every epic's derivatives, before real-data deployment: provider/location/cost review, complete retention inventory, per-root/multi-parent purge races, backup expiry and protective-state replay including revocations/consent/withdrawal, restore targets, secrets and operational ownership                                                                                                                                                                                                                     |
+| G6 Quality/pilot capacity          | Each epic before acceptance; initiative before D8: real test harness, cost/load limits and measured latency, fixture rights/manual rubric, accessibility, full breadth and seven-day protocol. No efficacy/PMF inference                                                                                                                                                                                                                                                                                                              |
+| Physical schema and UI composition | At epic refinement under AD-1–AD-15: table indexes, component/library choices, exact route list, item-bank layouts and responsive presentation; cannot change scoped ownership, revision or evidence semantics                                                                                                                                                                                                                                                                                                                        |
+| Scale changes                      | Revisit only after measured queue/database/runner bottlenecks; a new cache, vector store, service, public marketplace or external notification channel needs an explicit architecture/policy revision first                                                                                                                                                                                                                                                                                                                           |

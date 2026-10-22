@@ -17,38 +17,38 @@ The [refined epic](epic-private-study-setup.md) owns this contract. [D2/D5/D7](.
 
 ## U0 — Sign-in and access boundary
 
-| State | What the learner sees and can do | Required behavior |
-| --- | --- | --- |
-| Signed out | Sign-in form; contact operator for account/recovery | No private previews/thumbnails in public shell; generic invalid-account/credential message |
-| Signing in / invalid input / refused | Named fields, progress, specific field-format error or generic authentication refusal | One submission; no credentials in URL/logs; accessible error summary |
-| Signed in | Own library and account identity | Real database session; role/owner supplied by server, not client |
-| Session expired / revoked | Sign-in prompt and “Sign in again to continue” | Clear private UI/cache immediately, stop requests and do not show previous user's draft on account change; after reauth reload only authorized server-saved data |
-| Forbidden or missing | “This item is unavailable” and safe Library link | No existence/owner/content leak; same rule for direct/download/job-result routes |
+| State                                | What the learner sees and can do                                                      | Required behavior                                                                                                                                                |
+| ------------------------------------ | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Signed out                           | Sign-in form; contact operator for account/recovery                                   | No private previews/thumbnails in public shell; generic invalid-account/credential message                                                                       |
+| Signing in / invalid input / refused | Named fields, progress, specific field-format error or generic authentication refusal | One submission; no credentials in URL/logs; accessible error summary                                                                                             |
+| Signed in                            | Own library and account identity                                                      | Real database session; role/owner supplied by server, not client                                                                                                 |
+| Session expired / revoked            | Sign-in prompt and “Sign in again to continue”                                        | Clear private UI/cache immediately, stop requests and do not show previous user's draft on account change; after reauth reload only authorized server-saved data |
+| Forbidden or missing                 | “This item is unavailable” and safe Library link                                      | No existence/owner/content leak; same rule for direct/download/job-result routes                                                                                 |
 
 No persistent browser storage of material text, plans or answers. Unsaved edits live in memory only; leaving with unsaved work warns, but security clearing on logout/revocation takes priority. Do not promise recovery of unsent changes.
 
 ## U1 — Library and resumable setup
 
-| State | Primary action | Visible distinction |
-| --- | --- | --- |
-| Empty | Start a study plan | Explain private ownership; no invented progress |
-| Loading / load failed | Wait / Retry | Keep safe navigation, no stale content from another session |
-| Draft setup | Resume | Current stage, saved time, material count and latest saved revision |
-| Confirmed plan | View / Edit a new revision | “Plan confirmed — course not generated”; no pass/completion credit |
-| Processing / pending | View operation | Durable status, cancel if available, return later |
-| Deleted target | View deletion receipt | No content access; purge status/deadline only while receipt retained |
+| State                 | Primary action             | Visible distinction                                                  |
+| --------------------- | -------------------------- | -------------------------------------------------------------------- |
+| Empty                 | Start a study plan         | Explain private ownership; no invented progress                      |
+| Loading / load failed | Wait / Retry               | Keep safe navigation, no stale content from another session          |
+| Draft setup           | Resume                     | Current stage, saved time, material count and latest saved revision  |
+| Confirmed plan        | View / Edit a new revision | “Plan confirmed — course not generated”; no pass/completion credit   |
+| Processing / pending  | View operation             | Durable status, cancel if available, return later                    |
+| Deleted target        | View deletion receipt      | No content access; purge status/deadline only while receipt retained |
 
 ## U2 — Materials, extraction and preview
 
-| State | Learner action | Checkable response |
-| --- | --- | --- |
-| No files / selected | Choose files or keyboard file picker | Explain PDF/DOCX/TXT/Markdown, 20 MiB each, ten files per generation; no remote URL/OCR/archive option |
-| Uploading / upload failed | Cancel / Retry | File-level status, no false extraction-ready message; retry does not duplicate committed material |
-| Quarantined / extracting | Wait or leave and return | Original is private; no unsafe download/render or parser activity in browser |
-| Preview ready / warnings | Inspect text and warnings; acknowledge selected usable revisions | Per-file source identity/location and warnings; partial extraction never described as complete |
-| Rejected / unreadable / protected / no usable text | Remove or replace that file | Distinguish unsupported format, size/count limit, password protection, missing text, corrupt/unsafe input and service/resource failure without exposing parser internals |
-| Mixed batch | Remove/replace failed files, explicitly continue with successful selection | No silent file omission; confirmation lists exact selected extracted revisions |
-| Pending at 120 seconds | Return later or retry when safe | Preserve saved input and operation ID, state “Still processing” or retryable failure; no arbitrary percent-complete claim |
+| State                                              | Learner action                                                             | Checkable response                                                                                                                                                       |
+| -------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| No files / selected                                | Choose files or keyboard file picker                                       | Explain PDF/DOCX/TXT/Markdown, 20 MiB each, ten files per generation; no remote URL/OCR/archive option                                                                   |
+| Uploading / upload failed                          | Cancel / Retry                                                             | File-level status, no false extraction-ready message; retry does not duplicate committed material                                                                        |
+| Quarantined / extracting                           | Wait or leave and return                                                   | Original is private; no unsafe download/render or parser activity in browser                                                                                             |
+| Preview ready / warnings                           | Inspect text and warnings; acknowledge selected usable revisions           | Per-file source identity/location and warnings; partial extraction never described as complete                                                                           |
+| Rejected / unreadable / protected / no usable text | Remove or replace that file                                                | Distinguish unsupported format, size/count limit, password protection, missing text, corrupt/unsafe input and service/resource failure without exposing parser internals |
+| Mixed batch                                        | Remove/replace failed files, explicitly continue with successful selection | No silent file omission; confirmation lists exact selected extracted revisions                                                                                           |
+| Pending at 120 seconds                             | Return later or retry when safe                                            | Preserve saved input and operation ID, state “Still processing” or retryable failure; no arbitrary percent-complete claim                                                |
 
 Reject the eleventh selected input before generation and revalidate count/bytes on the server. Do not fetch Markdown images, document external relationships, macros or embedded resources. Extraction acknowledgment selects source revisions; it does not assert factual agreement or award learning progress.
 
@@ -56,14 +56,14 @@ Reject the eleventh selected input before generation and revalidate count/bytes 
 
 Processor policy is a separate axis from learner consent. A checkbox cannot override an ineligible provider.
 
-| State | UI and actions | Result |
-| --- | --- | --- |
-| Processor unavailable/ineligible | “AI processing is unavailable under the current privacy policy”; manual setup, save, export and delete remain available | No request dispatched; do not solicit consent to a noncompliant configuration |
-| Eligible, not yet consented | Provider/model configuration, purpose, categories, retention/exception notice, link to terms; Allow / Not now | No preselected checkbox, bundled consent or data sent before opt-in |
-| Declined | Manual topic/plan editing, explicit Enable AI later | No external AI/search/TTS call; saved work remains |
-| Allowed | Current disclosure version and Withdraw control | Minimized allowed data only; still requires scope, lineage, budget and policy checks |
-| Disclosure changed | Re-consent prompt, saved manual work intact | Old opt-in cannot authorize changed processor/purpose/categories/retention |
-| Withdraw pending / withdrawn | Explain future processing stopped, prior disclosed processing cannot be undone; offer deletion | Fail closed immediately; late outputs discarded and retained copies tracked for purge |
+| State                            | UI and actions                                                                                                          | Result                                                                                |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Processor unavailable/ineligible | “AI processing is unavailable under the current privacy policy”; manual setup, save, export and delete remain available | No request dispatched; do not solicit consent to a noncompliant configuration         |
+| Eligible, not yet consented      | Provider/model configuration, purpose, categories, retention/exception notice, link to terms; Allow / Not now           | No preselected checkbox, bundled consent or data sent before opt-in                   |
+| Declined                         | Manual topic/plan editing, explicit Enable AI later                                                                     | No external AI/search/TTS call; saved work remains                                    |
+| Allowed                          | Current disclosure version and Withdraw control                                                                         | Minimized allowed data only; still requires scope, lineage, budget and policy checks  |
+| Disclosure changed               | Re-consent prompt, saved manual work intact                                                                             | Old opt-in cannot authorize changed processor/purpose/categories/retention            |
+| Withdraw pending / withdrawn     | Explain future processing stopped, prior disclosed processing cannot be undone; offer deletion                          | Fail closed immediately; late outputs discarded and retained copies tracked for purge |
 
 Local storage/extraction is disclosed separately from external AI; private visibility is not a claim that infrastructure never processes data. For synthetic test configurations, prominently label the test mode; do not present it as compliant live AI.
 
@@ -76,28 +76,28 @@ Local storage/extraction is disclosed separately from external AI; private visib
 
 ## U5 — Plan preview, edit and confirmation
 
-| State | UI/action | Invariant |
-| --- | --- | --- |
-| Manual draft | Add/edit outcomes, mini-courses/lessons, practice and estimated effort | Estimates labeled estimates; source coverage/missing explanations visible, not fabricated claims |
-| AI request queued/running | View operation, leave/resume | Only allowed under U3; all selected source/goal revisions pinned |
-| AI draft ready / invalid output / failed | Inspect/edit / Reject invalid result / Retry or manual edit | AI label, uncertainty and source coverage; invalid schema/support cannot silently become confirmed |
-| Saving / saved / save failed | Wait / Continue / Retry | Show actual saved time/revision; retry same command cannot create duplicate plans |
-| Revision conflict | Compare/reload latest saved version, then reapply edits | Preserve accessible in-memory edits while authorized; never silently overwrite another tab's confirmation |
-| Confirmed | Explicit Confirm plan, then view immutable confirmed revision | Selected source/outcome/mini-course/practice/effort view is what is confirmed; no auto-confirmation |
-| Edited after confirmation | “New changes need confirmation” | New draft does not replace old confirmation; future generation references exact authorized confirmed revision, never latest draft |
-| Source deleted/replaced | “This plan needs updated sources and confirmation” | Reject stale/deleted-source handoff; no automatic substitute |
+| State                                    | UI/action                                                              | Invariant                                                                                                                         |
+| ---------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Manual draft                             | Add/edit outcomes, mini-courses/lessons, practice and estimated effort | Estimates labeled estimates; source coverage/missing explanations visible, not fabricated claims                                  |
+| AI request queued/running                | View operation, leave/resume                                           | Only allowed under U3; all selected source/goal revisions pinned                                                                  |
+| AI draft ready / invalid output / failed | Inspect/edit / Reject invalid result / Retry or manual edit            | AI label, uncertainty and source coverage; invalid schema/support cannot silently become confirmed                                |
+| Saving / saved / save failed             | Wait / Continue / Retry                                                | Show actual saved time/revision; retry same command cannot create duplicate plans                                                 |
+| Revision conflict                        | Compare/reload latest saved version, then reapply edits                | Preserve accessible in-memory edits while authorized; never silently overwrite another tab's confirmation                         |
+| Confirmed                                | Explicit Confirm plan, then view immutable confirmed revision          | Selected source/outcome/mini-course/practice/effort view is what is confirmed; no auto-confirmation                               |
+| Edited after confirmation                | “New changes need confirmation”                                        | New draft does not replace old confirmation; future generation references exact authorized confirmed revision, never latest draft |
+| Source deleted/replaced                  | “This plan needs updated sources and confirmation”                     | Reject stale/deleted-source handoff; no automatic substitute                                                                      |
 
 The handoff here is “Plan ready for course generation,” not functioning full mini-course generation (epic 2). A disabled course action must explain that capability is unavailable in this release; do not imply an accepted generation job exists.
 
 ## U6 — Optional starting check
 
-| State | Primary / secondary action | Meaning |
-| --- | --- | --- |
-| Offered after confirmed plan | Take 3–5-question starting check / Skip for now | Equally visible skip; no completion exemption either way |
-| Unavailable / waiting / invalid items | Retry when safe / Skip | Manual/declined/ineligible paths still finish setup; unavailable is not a pass or evidence of weakness |
-| In progress | Submit answer; Leave/Skip remaining | No answer/rationale exposed until that item is submitted; unsent answer is not performance evidence |
-| Submitted / result | View result, relevant objective/source and uncertainty; flag unclear item | Distinguish unaided/assisted evidence; self-report separate; no certain-cause diagnosis or mastery claim |
-| Skipped / partial / finished | Return to confirmed plan | Unassessed objectives Unknown; diagnostic never creates completion awards, scored-course attempts or recovery credit |
+| State                                 | Primary / secondary action                                                | Meaning                                                                                                              |
+| ------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Offered after confirmed plan          | Take 3–5-question starting check / Skip for now                           | Equally visible skip; no completion exemption either way                                                             |
+| Unavailable / waiting / invalid items | Retry when safe / Skip                                                    | Manual/declined/ineligible paths still finish setup; unavailable is not a pass or evidence of weakness               |
+| In progress                           | Submit answer; Leave/Skip remaining                                       | No answer/rationale exposed until that item is submitted; unsent answer is not performance evidence                  |
+| Submitted / result                    | View result, relevant objective/source and uncertainty; flag unclear item | Distinguish unaided/assisted evidence; self-report separate; no certain-cause diagnosis or mastery claim             |
+| Skipped / partial / finished          | Return to confirmed plan                                                  | Unassessed objectives Unknown; diagnostic never creates completion awards, scored-course attempts or recovery credit |
 
 Check revision is pinned to the confirmed plan and validated item bundle. Editing the plan invalidates future use of the old check for the new revision, not its historical evidence. No dependency on epic 2 lessons or epic 3 scoring workflow is permitted; reuse only shared pure answer/evidence contracts.
 

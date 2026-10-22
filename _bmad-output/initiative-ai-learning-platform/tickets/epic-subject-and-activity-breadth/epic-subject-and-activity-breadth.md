@@ -3,9 +3,21 @@ type: epic
 title: Learners use all required subjects and activity formats
 parent: initiative-ai-learning-platform
 covers: [R9, R17, R18, R19]
-sources: [_bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md]
-companions: [_bmad-output/initiative-ai-learning-platform/product-policies.md, _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md]
-after: [epic-grounded-mini-courses, epic-assessment-and-progress, epic-instructor-courses]
+sources:
+  [
+    _bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md,
+  ]
+companions:
+  [
+    _bmad-output/initiative-ai-learning-platform/product-policies.md,
+    _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md,
+  ]
+after:
+  [
+    epic-grounded-mini-courses,
+    epic-assessment-and-progress,
+    epic-instructor-courses,
+  ]
 refined: false
 risk: high
 ---

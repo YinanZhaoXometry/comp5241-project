@@ -1,0 +1,128 @@
+# Ordered grounded-mini-courses stories, 2026-10-23; no leaf files or execution plans yet.
+# covers uses THIS epic's R1-R5 (parent R1/R6/R8/R11/R12), not initiative R IDs. Details in delivery-checks.md.
+# One lane protects shared generation/content/provenance surfaces; the whole-epic-1 gate still applies to execution.
+# unknown gates the start; hitl identifies actual human work but is not a readiness gate.
+next_id = 11
+
+[[entry]]
+id = 1
+type = "story"
+title = "Confirmed-plan-to-generated-course tracer"
+description = "Consume epic 1's authorized exact-revision confirmed-plan handoff and versioned processor configuration/dispatch/accounting ports to generate one source-linked mini-course — one lesson with per-section source locations and an AI-generated/unreviewed label plus one recall item — persisted as versioned course/objective/source lineage. Local synthetic processor fixtures drive the pipeline by default; live dispatch waits for F-A evidence. No supplementation, adaptation variants or full player."
+verify = "With two test accounts, A's confirmed plan yields a generated course A can open and study: the lesson shows source locations and the unreviewed label, the recall item withholds its answer until submission, B and stale/unconfirmed/deleted-plan requests get honest denial, and generation jobs survive web/worker restart with one tracked result per command."
+covers = ["R1", "R5"]
+after = ["1.3", "1.5", "1.6"]
+hitl = true
+risk = "high"
+unknown = "F-A live processor eligibility is unverified: a D5-compatible provider/model/endpoint with retention/deletion/non-training/location proof and operator authorization for synthetic non-personal tests (the epic-1 S6 blocker, re-gated for generation purpose). Synthetic-fixture development proceeds; live dispatch and live acceptance stay blocked."
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-grounded-mini-courses/delivery-checks.md, S1 and F-A", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Component Patterns and State Patterns"]
+
+[[entry]]
+id = 2
+type = "story"
+title = "Bounded source retrieval and attributed supplementation"
+description = "Introduce the epic's bounded authoritative-source retrieval path under the architecture's fetch-boundary rules (AD-11: allowlisted public-source fetch adapter, DNS/IP-bound validation, redirect revalidation, private/loopback/metadata-network and non-HTTPS/oversize denial, identity/passage/time/hash records) with per-source identity/location, a supplement badge distinguishing supplements from the learner's uploads, side-by-side conflict display and unsupported-answer stopping without silent replacement or scored items. AI-proposed citations are never verification; every supplement is checked against its fetched source. Live fetch waits for F-B; fixture development proceeds without egress."
+verify = "A plan whose material lacks a needed explanation receives an attributed supplement with a reachable source location; a conflicting claim renders both sources side by side; an unverifiable claim stops with an honest unsupported state and no scored item; fetch failures are honest and retryable; zero fetch happens without its authorized bounded configuration and no fetch reaches a private, loopback or metadata address."
+covers = ["R2"]
+after = [1]
+hitl = false
+risk = "high"
+unknown = "F-B bounded external source retrieval is unproven and unauthorized: network scope, source licensing/terms, rate limits, verification tooling and operator authorization need feasibility evidence before any live fetch."
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-grounded-mini-courses/delivery-checks.md, S2 and F-B", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, State Patterns"]
+
+[[entry]]
+id = 3
+type = "story"
+title = "Mini-course player shell and content-item tracking"
+description = "Extend generation from the tracer's single lesson to the plan's full lesson/objective set and the tracer's single-lesson view to the spine's player shell: numbered lesson sequence, sticky sidebar collapsing under 850px, content-item tracker with explicit required mark-done and labeled non-blocking optional enrichment, honest processing/empty/version-superseded states, media floor and shared help/footer furniture. No per-family activity interaction contract (spine defers those to epic 6)."
+verify = "A generated multi-lesson course navigates keyboard-only with visible focus at 360px and desktop; required items are marked done explicitly by the learner with no dwell/scroll tracking; optional items are labeled and never block; 'Plan confirmed — course not generated' and ≥120-second processing states render honestly."
+covers = ["R1"]
+after = [1, 2]
+hitl = false
+risk = "medium"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-grounded-mini-courses/delivery-checks.md, S3", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Information Architecture, Component Patterns, Interaction Primitives, Accessibility Floor"]
+
+[[entry]]
+id = 4
+type = "story"
+title = "Background and goal adaptation"
+description = "Consume epic-1 S4's saved background/goal/timezone preferences so generation pitches the same objective per track — plain language, familiar examples and explicit prerequisites for non-CS beginners; application scenarios and trade-off depth for CS graduates — with identical factual claims and source links. Personalization never weakens requirements or hides sources."
+verify = "Side-by-side generation of the same objective for a non-CS beginner and a CS graduate track shows distinct suitable treatment with unchanged factual claims and sources; changed preferences regenerate honestly on the next confirmed revision without rewriting earned progress; missing preferences default neutrally."
+covers = ["R3"]
+after = [1, 2, "1.4"]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-grounded-mini-courses/delivery-checks.md, S4", "PRD — _bmad-output/initiative-ai-learning-platform/prd-ai-learning-platform/prd-ai-learning-platform.md, FR-8 consequences"]
+
+[[entry]]
+id = 5
+type = "story"
+title = "Active recall practice set and typed feedback"
+description = "Generate and serve the practice set across the plan's objectives: recall cards withholding answer and rationale until submission, feedback blocks stating correctness, rationale, source and evidence kind, assisted practice labeled separately from unaided evidence, and retries that never double-count. Practice evidence is recorded typed for later epics without course-attempt semantics."
+verify = "Attempt-before-answer holds for every card including keyboard-only runs; feedback appears only after submission and names its source; assisted items carry their distinct label; retries produce fresh attempts without duplicate evidence; deletion removes practice derivatives."
+covers = ["R5"]
+after = [3, 4]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-grounded-mini-courses/delivery-checks.md, S5", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Recall card and Feedback block patterns"]
+
+[[entry]]
+id = 6
+type = "story"
+title = "Learner-controlled why exploration with honest stopping"
+description = "Build the spine's why-stepper on lesson content: successive deeper levels addressing purpose, assumptions or trade-offs beyond restatement, each tied to visible sources including fetched supplements; a stop control always visible; exhaustion stated honestly with no invented cause; depth never unlocks content or credit."
+verify = "Two successive why levels on a fixture lesson show non-restatement depth with sources; a request past available evidence states exhaustion and stops; the stop control is keyboard-operable at every depth; why responses carry the unreviewed label and their derivative lineage."
+covers = ["R4"]
+after = [2, 3, 4]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-grounded-mini-courses/delivery-checks.md, S6", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Why-stepper pattern"]
+
+[[entry]]
+id = 7
+type = "story"
+title = "Versioned provenance and downstream handoff surface"
+description = "Expose the authorized, versioned query surface over generated courses — objectives with versions, source-linked units, practice items and attempt-independent provenance — as the contract epics 3/5/6 consume, with synthetic consumer contract tests proving version pinning, revision supersession and scope denial."
+verify = "A synthetic downstream consumer resolves a course's objectives/units/items pinned to exact revisions; a superseding revision leaves pinned reads stable while new reads see the change; out-of-scope and cross-owner reads are denied."
+covers = ["R1"]
+after = [1, 4, 5]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-grounded-mini-courses/delivery-checks.md, S7"]
+
+[[entry]]
+id = 8
+type = "story"
+title = "Generation honesty, consent denial and descendant lifecycle"
+description = "Integrate the epic's failure and lifecycle surface: honest generation errors/retries/timeouts with saved input by 120 seconds and no success-by-timeout; consent denial and processor ineligibility degrading to honest AI-unavailable states while manual work stands; generated-course derivatives — including S2 supplements and per-track adaptation variants — registered in epic-1 S8/S9/S10 export/deletion/retention classes with late-generation-vs-deletion races suppressed."
+verify = "Race generation against root and all-personal deletion: no late-recommitted course, complete derivative purge inside deadlines, exports include or honestly exclude per snapshot scope; declined consent performs zero external calls and zero supplement fetch with manual study intact; duplicate/retry commands yield one tracked effect; expiry clocks cover course derivatives; post-deletion provenance reads stay stable or scope-denied."
+covers = ["R1", "R2", "R3"]
+after = [1, 2, "1.8", "1.9", "1.10"]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-grounded-mini-courses/delivery-checks.md, S8", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, State Patterns (AI unavailable/declined, Processing ≥120 s)"]
+
+[[entry]]
+id = 9
+type = "story"
+title = "Refactor sweep"
+description = "Inspect completed-story plans and deferred review findings for cleanup only, preserve all accepted UX/privacy/lifecycle/contract semantics and run unchanged regressions; record a no-op if no cleanup is justified. Unfinished functionality requires a separate planned entry."
+verify = "Compare accepted behaviors and all existing compile/lint/domain/database/browser/denial/lifecycle checks before and after; no checks are weakened or new requirements hidden in cleanup."
+covers = []
+after = [1, 2, 3, 4, 5, 6, 7, 8]
+hitl = false
+risk = "medium"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-grounded-mini-courses/delivery-checks.md, S9"]
+
+[[entry]]
+id = 10
+type = "story"
+title = "Integrated study suite and authorized release verification"
+description = "Close the epic with integrated allowed/denied/error/accessibility/lifecycle and actual-AI study-journey checks across the Done-when paths, including non-CS/CS side-by-side study, attributed supplementation, why depth with honest stopping and recall withholding. An explicitly authorized operator deploys/smoke-checks the selected environment only after the relevant gates pass; a blocked release cannot be recorded Done."
+verify = "Run the complete confirmed-plan → generated-course → study/practice/why journeys with keyboard/360px/desktop and failure/race/deletion checks; attach actual F-A/F-B evidence and separately authorized deployed smoke results."
+covers = ["R1", "R2", "R3", "R4", "R5"]
+after = [9]
+hitl = true
+risk = "high"
+unknown = "F-C deployment authorization: actual provisioning/deployment scope, region/plan/budget, operator responsibilities and managed copy/backup retention evidence need separate approval and verification; current authorization permits story planning only."
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-grounded-mini-courses/delivery-checks.md, S10, F-A/F-B/F-C"]

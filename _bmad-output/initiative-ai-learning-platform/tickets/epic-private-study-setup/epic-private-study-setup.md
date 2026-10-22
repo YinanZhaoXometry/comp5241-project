@@ -3,8 +3,17 @@ type: epic
 title: Learners privately turn materials into a study plan
 parent: initiative-ai-learning-platform
 covers: [R2, R7, R21, R22]
-sources: [_bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md]
-companions: [_bmad-output/initiative-ai-learning-platform/product-policies.md, _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md]
+sources:
+  [
+    _bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md,
+  ]
+companions:
+  [
+    _bmad-output/initiative-ai-learning-platform/product-policies.md,
+    _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md,
+    _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md,
+    _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md,
+  ]
 after: []
 refined: true
 risk: high
@@ -74,3 +83,5 @@ These local IDs refine the four owned parent capabilities; they do not replace i
 - Decision: 2026-10-21 — live inference before complete lifecycle/release gates is limited to separately authorized synthetic, non-personal evaluation with eligible processor/account/region/budget/operator evidence. No such permission exists now; all actual personal data and deployed use still wait for F5/F6. Epic 1 owns the first setup/diagnostic adapter/configuration; epic 2 extends generation/retrieval and re-gates changed purposes/models rather than inheriting blanket consent.
 - Decision: 2026-10-21 — extraction remains the next implementation uncertainty after the tracer: parsing limits/isolation must establish usable safe source revisions before consent/setup integration. The existential F3 processor issue is explicitly visible now as a blocker; it is not deferred for discovery until S6 or bypassed by manual output.
 - Open question: **F1/F2/F3/F5/F6:** capture actual runtime, extraction, processor, lifecycle/restore and authorized-hosting/cost evidence in the named story before activation. Story 1 waits for build/start permission; story 6 waits for an eligible live processor/terms/budget authorization; story 12 waits for provisioning/deployment approval. F4 records that coding/narration remains epic 6's gate. No upload or preference interview is required now.
+- Decision: 2026-10-22 — recorded deviation under delegated planning (flagged for the next human review): S8 (export), S9 (deletion), S10 (retention) and S13 (backup/restore) proceed over the derivative types that exist (originals, extractions, plan revisions/confirmations, consent/decision records, dispatch admissions, diagnostic evidence) instead of waiting on blocked S6/S7; their contracts explicitly anticipate ports that later epics extend. S7 is built as infrastructure + skip path only; its take-path acceptance (validated 3–5-item check on an eligible generator) stays open pending S6 eligibility. The epic tickets.toml `after` edges among these entries are treated as review-time context, not runtime gates, for exactly these entries — recorded here and in the epic memlog, never silently.
+- Status: 2026-10-22/23 — stories 3, 4, 5, 7 (infrastructure), 8, 9, 10 and 13 are built and passed the full local synthetic gate (S11 sweep + closure bookkeeping executed 2026-10-22). S6, S7 closure and S12 remain blocked on F3/F6 authorization; "Done when" #5 is unmet and the epic is NOT closed. Leaf ticket `status: built` fields record local gate evidence only; no ticket metadata beyond that was advanced, and local passes neither close F1's accepted runtime-security exception nor authorize release.

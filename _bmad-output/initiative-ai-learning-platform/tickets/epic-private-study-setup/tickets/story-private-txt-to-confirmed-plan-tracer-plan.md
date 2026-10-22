@@ -10,15 +10,15 @@ baseline_revision: d123d79317055a801f2957b985e05cfd45b20b1b
 route: full
 route_source: auto
 risk: high
-review: 'quick'
-review_source: 'pinned'
+review: "quick"
+review_source: "pinned"
 lenses_ran: [quick]
 review_loop_iteration: 0
 context:
-  - '{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/runtime-preflight.md'
-  - '{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md'
-  - '{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md'
-  - '{project-root}/_bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md'
+  - "{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/runtime-preflight.md"
+  - "{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md"
+  - "{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md"
+  - "{project-root}/_bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md"
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -37,13 +37,13 @@ context:
 
 ## I/O & Edge-Case Matrix
 
-| Scenario | Input / state | Expected behavior | Error |
-| --- | --- | --- | --- |
-| Tracer | A, valid TXT | Queued/extracting/preview; topic/four goals; save/confirm Manual mini-course | Honest pending/failure by 120s |
-| Invalid | >20 MiB, empty/binary/non-TXT, malformed DTO | Reject; no orphan copies/jobs | INVALID_INPUT |
-| Privacy | B/instructor/admin, revoked/expired session | Deny material/text/plan/operation/stream; clear controlled UI | Generic denial/authentication |
-| Replay | Duplicate command, changed body, stale revision | One committed result or conflict | CONFLICT |
-| Delete | Root removal racing extraction | Immediate denial; cancel/discard late output; remove copies; unrelated root survives | Safe pending cleanup |
+| Scenario | Input / state                                   | Expected behavior                                                                    | Error                          |
+| -------- | ----------------------------------------------- | ------------------------------------------------------------------------------------ | ------------------------------ |
+| Tracer   | A, valid TXT                                    | Queued/extracting/preview; topic/four goals; save/confirm Manual mini-course         | Honest pending/failure by 120s |
+| Invalid  | >20 MiB, empty/binary/non-TXT, malformed DTO    | Reject; no orphan copies/jobs                                                        | INVALID_INPUT                  |
+| Privacy  | B/instructor/admin, revoked/expired session     | Deny material/text/plan/operation/stream; clear controlled UI                        | Generic denial/authentication  |
+| Replay   | Duplicate command, changed body, stale revision | One committed result or conflict                                                     | CONFLICT                       |
+| Delete   | Root removal racing extraction                  | Immediate denial; cancel/discard late output; remove copies; unrelated root survives | Safe pending cleanup           |
 
 </frozen-after-approval>
 
@@ -63,6 +63,7 @@ Latest instruction, 2026-10-21: **Replace the lint stack, preserve the required 
 ## Tasks & Acceptance
 
 **Execution:**
+
 - [x] Runtime/preflight — local checksum-verified Node24 exception, official starter regeneration, clean pinned install/audit/provenance; pending Node fix remains open, not F1 fully passed.
 - [x] Root configs/scripts/lint coverage/manual-only CI — replacement coverage and separate Vitest/Playwright/type/lint/build/audit checks; no remote fonts/Compiler/Cache Components.
 - [x] Migrations/platform/PostgreSQL — isolated PG18; ordered migration owner, no runtime DDL, scoped single-client transactions.
@@ -73,6 +74,7 @@ Latest instruction, 2026-10-21: **Replace the lint stack, preserve the required 
 - [x] Tests/docs — full local gate and independent review corrections pass; no ticket advance or broader-use claim.
 
 **Acceptance Criteria:**
+
 - Given approved runtime/lockfile/PG18, when separate checks run, then web/auth/worker compile, lint/audit and all test layers pass without overrides, with versioned evidence.
 - Given synthetic actors/TXT, when A finishes and processes restart, then the exact Manual plan reopens without fake course generation/completion; unauthorized direct results remain denied.
 - Given rollback/duplicates/deletion/revocation races, when independent clients inspect responses/ownership/copies, then no orphan job, duplicate effect, stale commit or resurrected copy exists; unrelated data survives.
@@ -98,18 +100,18 @@ Latest instruction, 2026-10-21: **Replace the lint stack, preserve the required 
 
 ## Review Triage Log
 
-| Finding | Verdict | Checked evidence and route |
-| --- | --- | --- |
-| Late A responses restore UI after session change | high | Verified async open/upload/editor callbacks omit the existing generation fence; polling alone cannot protect their later writes. Patch: apply the already-present generation check to these demonstrated completions. |
-| Editable fields during save confirm different content | high | Verified pending save clears dirty unconditionally while inputs stay editable. Patch: disable the existing form fieldset for the pending command; no new state/protocol. |
-| Reload confirms unseen latest revision | high | Verified reload retains local plan but leaves clean flag unchanged. Patch: retained edits must be dirty until explicitly resaved. |
-| Removal key shared between unrelated roots | medium | Verified map key is constant and upload does not clear it. Patch: use root-specific key, preserving same-root retry idempotency. |
-| Retryable-failed view no longer polls | medium | Verified retry state excluded from existing polling predicate. Patch: include it so automatic recovery remains visible. |
-| Purged receipt ignores unregistered staged output | medium | Verified staging has owner but no root and leases survive crashes. Patch: conservatively keep cleanup pending while that owner's staging exists; existing expiry reconciliation clears it before final purge. No new lineage schema/claim. |
-| Root-specific cleanup failure prevents worker/supervision | high | Verified first thrown purge aborts entire maintenance/startup. Patch: isolate existing per-root/per-copy cleanup failure, retain pending rows and continue unrelated reconciliation/supervision. |
-| Exhausted retry remains advertised retryable | medium | Verified failedOperation never considers already-configured queue retryCount/limit. Patch: use existing queue metadata through same-client adapter when setting terminal failure. No new retry endpoint or policy. |
-| Follow-up: save's post-command read can substitute another client's draft | high | Reproduced in browser: P's response held, Q saved independently, completion enabled confirmation while P displayed. Patch: compare the receipt's immutable draft ID with post-command read, preserve dirty edits on mismatch. |
-| Follow-up: killed final attempt bypasses catch | medium | Reproduced durable crash boundary in PG: app extracting, queue failed, reconciliation did not settle it. Patch: existing maintenance reconciles terminal/missing queue state through existing failedOperation; no new retry surface or policy. |
+| Finding                                                                   | Verdict | Checked evidence and route                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Late A responses restore UI after session change                          | high    | Verified async open/upload/editor callbacks omit the existing generation fence; polling alone cannot protect their later writes. Patch: apply the already-present generation check to these demonstrated completions.                          |
+| Editable fields during save confirm different content                     | high    | Verified pending save clears dirty unconditionally while inputs stay editable. Patch: disable the existing form fieldset for the pending command; no new state/protocol.                                                                       |
+| Reload confirms unseen latest revision                                    | high    | Verified reload retains local plan but leaves clean flag unchanged. Patch: retained edits must be dirty until explicitly resaved.                                                                                                              |
+| Removal key shared between unrelated roots                                | medium  | Verified map key is constant and upload does not clear it. Patch: use root-specific key, preserving same-root retry idempotency.                                                                                                               |
+| Retryable-failed view no longer polls                                     | medium  | Verified retry state excluded from existing polling predicate. Patch: include it so automatic recovery remains visible.                                                                                                                        |
+| Purged receipt ignores unregistered staged output                         | medium  | Verified staging has owner but no root and leases survive crashes. Patch: conservatively keep cleanup pending while that owner's staging exists; existing expiry reconciliation clears it before final purge. No new lineage schema/claim.     |
+| Root-specific cleanup failure prevents worker/supervision                 | high    | Verified first thrown purge aborts entire maintenance/startup. Patch: isolate existing per-root/per-copy cleanup failure, retain pending rows and continue unrelated reconciliation/supervision.                                               |
+| Exhausted retry remains advertised retryable                              | medium  | Verified failedOperation never considers already-configured queue retryCount/limit. Patch: use existing queue metadata through same-client adapter when setting terminal failure. No new retry endpoint or policy.                             |
+| Follow-up: save's post-command read can substitute another client's draft | high    | Reproduced in browser: P's response held, Q saved independently, completion enabled confirmation while P displayed. Patch: compare the receipt's immutable draft ID with post-command read, preserve dirty edits on mismatch.                  |
+| Follow-up: killed final attempt bypasses catch                            | medium  | Reproduced durable crash boundary in PG: app extracting, queue failed, reconciliation did not settle it. Patch: existing maintenance reconciles terminal/missing queue state through existing failedOperation; no new retry surface or policy. |
 
 All findings concern demonstrated states and admit bounded corrections using
 existing fences/commands/queue metadata; no intent change or new public surface.
@@ -141,13 +143,13 @@ not hidden. Screenshot inspected: legible layout/statuses and focus tested; no
 WCAG certification claim. Bun types supply only the imported `bun:sqlite` declaration
 required by Better Auth core; Bun is not installed/run and skipLibCheck stays false.
 
-| Frozen matrix row | Ran-and-passed covering evidence |
-| --- | --- |
-| Tracer | Browser full upload/preview/four-goal/Manual save+confirm+reopen journey; integration persistence and121-second pending; actual web+worker restart smoke |
-| Invalid | Unit strict/authority/UTF8 contracts; PG invalid extension/empty/binary/oversize rejects with identical file/job/staging inventories; browser malformed DTO400 |
-| Privacy | Browser captured material/text/plan/operation requests replayed as B/instructor/admin and after revocation, UI cleared; integration expiry/mutation/late-worker denial |
-| Replay | PG identical/changed upload, duplicate/simultaneous confirmation and stale save checks; one queue/effect/revision/receipt |
-| Delete | PG paused extraction/deletion race: immediate denial, canceled operation, no late rows/physical copies, unrelated root usable; browser confirmation/cancel/removal |
+| Frozen matrix row | Ran-and-passed covering evidence                                                                                                                                       |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tracer            | Browser full upload/preview/four-goal/Manual save+confirm+reopen journey; integration persistence and121-second pending; actual web+worker restart smoke               |
+| Invalid           | Unit strict/authority/UTF8 contracts; PG invalid extension/empty/binary/oversize rejects with identical file/job/staging inventories; browser malformed DTO400         |
+| Privacy           | Browser captured material/text/plan/operation requests replayed as B/instructor/admin and after revocation, UI cleared; integration expiry/mutation/late-worker denial |
+| Replay            | PG identical/changed upload, duplicate/simultaneous confirmation and stale save checks; one queue/effect/revision/receipt                                              |
+| Delete            | PG paused extraction/deletion race: immediate denial, canceled operation, no late rows/physical copies, unrelated root usable; browser confirmation/cancel/removal     |
 
 Full staged unified diff was read, including source/test/config/docs and lock root
 metadata; generated lockfile integrity/resolution is independently checked by clean
