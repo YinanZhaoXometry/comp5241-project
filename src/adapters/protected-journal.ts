@@ -297,7 +297,16 @@ export async function importJournalRows(client: PoolClient, rows: JournalExportR
   return imported;
 }
 
-export type ReplaySummary = { reconciled: number; unchanged: number; fixtureNoOp: number; events: number };
+export type ReplaySummary = {
+  reconciled: number;
+  unchanged: number;
+  fixtureNoOp: number;
+  /** Events whose owner does not exist in the restored snapshot at all —
+   * foreign or stale store content with nothing to reconcile; skipped with an
+   * honest count, never applied. */
+  skipped: number;
+  events: number;
+};
 
 // Restore-path reconciliation in seq order, idempotent by construction:
 // pre-snapshot events already reflected in the dump converge to no-ops, while
@@ -305,7 +314,7 @@ export type ReplaySummary = { reconciled: number; unchanged: number; fixtureNoOp
 // Every statement is guarded (COALESCE, state checks) and nothing here can
 // restore access — it can only deny.
 export async function replayJournal(client: PoolClient, rows: JournalExportRow[]): Promise<ReplaySummary> {
-  const summary: ReplaySummary = { reconciled: 0, unchanged: 0, fixtureNoOp: 0, events: rows.length };
+  const summary: ReplaySummary = { reconciled: 0, unchanged: 0, fixtureNoOp: 0, skipped: 0, events: rows.length };
   for (const row of rows) {
     const event = eventShapeOf(row);
     if (event.eventType === 'deletion') {
@@ -338,8 +347,17 @@ export async function replayJournal(client: PoolClient, rows: JournalExportRow[]
       }
     } else if (event.eventType === 'consent-withdrawal') {
       // Mirror withdraw: the restored snapshot must not resurrect consent that
-      // was withdrawn after it was taken. A missing configuration row means
-      // the restored schema cannot hold the decision — fail closed.
+      // was withdrawn after it was taken. An event whose OWNER does not exist
+      // in the restored world is foreign or stale store content (another
+      // database generation): there is nothing of theirs to reconcile, so it
+      // is skipped with an honest count — never applied, never a failure. An
+      // owner that EXISTS but whose configuration row is missing means the
+      // restored schema cannot hold the decision — fail closed.
+      const owner = await client.query('SELECT 1 FROM auth."user" WHERE id=$1', [event.ownerId]);
+      if (!owner.rowCount) {
+        summary.skipped += 1;
+        continue;
+      }
       const configuration = await client.query('SELECT 1 FROM app.processor_configuration WHERE id=$1', [
         event.receipt.configurationId,
       ]);
@@ -485,13 +503,18 @@ export async function pruneProtectiveJournalFile(now = new Date()): Promise<numb
 
 export type JournalInput = { rows: JournalExportRow[]; source: 'independent' | 'embedded' };
 
-// Restore-time journal resolution, fail-closed: prefer the independent store
-// (it may contain post-snapshot events the embedded copy predates), require it
-// to verify against its own completeness state AND to cover the embedded
-// copy's prefix, and refuse the restore when completeness cannot be proved.
-// A missing store with an empty embedded cut is a fresh system; falling back
-// to the embedded copy alone is an explicit operator revalidation, because
-// post-snapshot revocations would then be unknown.
+// Restore-time journal resolution, fail-closed. The replay set is the VERIFIED
+// UNION of the independent store and the snapshot's embedded cut (deduplicated
+// by event id, seq-ordered): the embedded cut is proven against the backup
+// manifest, the store is proven against its own completeness state, and the
+// union only ever grows coverage. A store head that predates the snapshot
+// (stale segments from an earlier database generation) or a delivery gap that
+// leaves some embedded events undelivered can therefore never spuriously fail
+// a restore, while every event that exists anywhere provably reaches replay —
+// events already reflected in the dump replay as guarded no-ops, and foreign
+// events are skipped by replay's owner-presence guard. A store that exists but
+// cannot be verified still refuses the restore (post-cut revocations would be
+// unknown) unless the operator passes the explicit embedded fallback.
 export async function resolveJournalInput(
   embedded: JournalExportRow[],
   embeddedCut: JournalExpectation,
@@ -502,17 +525,15 @@ export async function resolveJournalInput(
   if (!emptyEmbedded) verifyJournalCompleteness(embedded, embeddedCut);
   if (store.rows && store.state) {
     verifyJournalCompleteness(store.rows, store.state);
-    if (embeddedCut.count > 0) {
-      if (store.rows.length < embeddedCut.count) {
-        console.error(JSON.stringify({ event: 'journal-store-shorter-than-snapshot' }));
-        fail('RETRYABLE_FAILURE');
-      }
-      if (journalDigest(store.rows.slice(0, embeddedCut.count)) !== journalDigest(embedded)) {
-        console.error(JSON.stringify({ event: 'journal-store-prefix-mismatch' }));
-        fail('RETRYABLE_FAILURE');
-      }
+    const seen = new Set(store.rows.map(row => row.id));
+    const merged = [...store.rows];
+    for (const row of embedded) {
+      if (seen.has(row.id)) continue;
+      merged.push(row);
+      seen.add(row.id);
     }
-    return { rows: store.rows, source: 'independent' };
+    merged.sort((a, b) => a.seq - b.seq);
+    return { rows: merged, source: 'independent' };
   }
   if (emptyEmbedded) return { rows: embedded, source: 'embedded' };
   if (options.allowEmbeddedJournalFallback) {

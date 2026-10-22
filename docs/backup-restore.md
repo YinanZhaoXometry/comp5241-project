@@ -65,12 +65,22 @@ is logged (`journal-delivery-pending` in the hook snippets) and the next
 backup or delivery re-syncs the tail from the durable table — a delivery
 failure never claims success and never loses an event a later backup proves.
 The store prunes content-free segments past the 30-day AD-4 ceiling but is
-never deleted outright. Restore prefers the independent store (it may contain
-post-snapshot events the snapshot predates), requires it to verify against its
-own completeness state AND to cover the snapshot's embedded-cut prefix, and
-fails closed otherwise; falling back to the snapshot-time copy alone is an
-explicit operator decision (`allowEmbeddedJournalFallback`) that leaves
-post-snapshot revocations unknown.
+never deleted outright.
+
+At restore, the replay set is the **verified union** of the store and the
+snapshot's embedded cut (deduplicated by event id, seq-ordered): the embedded
+cut is proven against the backup manifest, the store is proven against its own
+completeness state, and the union only ever grows coverage. A store head that
+predates the snapshot (stale segments from an earlier database generation) or
+a delivery gap can therefore never spuriously fail a restore, while every
+event that exists anywhere provably reaches replay. A store that exists but
+cannot be verified still refuses the restore (post-cut revocations would be
+unknown); falling back to the snapshot-time copy alone is an explicit operator
+decision (`allowEmbeddedJournalFallback`) that leaves post-snapshot
+revocations unknown. During replay, an event whose OWNER does not exist in
+the restored snapshot (foreign or stale content) is skipped with an honest
+`skipped` count — never applied; an owner that exists but whose configuration
+row is missing still fails the restore closed.
 
 ## Restore procedure (ordered; every step aborts before later steps run)
 
@@ -93,10 +103,11 @@ post-snapshot revocations unknown.
    queued jobs), journaled as one system-scope revocation.
 6. **Import + replay the journal** — deletion (re-tombstone roots, invalidate
    objects, cancel operations; purged roots never regress), consent
-   withdrawal (re-apply the durable withdrawn decision), session revocation
-   (expire listed sessions), fixture types recorded without pretending.
-   Replay only denies; it never grants. Still before any traffic, reminders,
-   queue dispatch or egress.
+   withdrawal (re-apply the durable withdrawn decision; events whose owner is
+   absent from the restored snapshot are foreign/stale and are skipped with
+   an honest count), session revocation (expire listed sessions), fixture
+   types recorded without pretending. Replay only denies; it never grants.
+   Still before any traffic, reminders, queue dispatch or egress.
 7. Private-file snapshot staged back with no-clobber copies; bytes belonging
    to post-snapshot deletions are removed by the standard reconciler at worker
    start (their roots replay to `cleanup_state='pending'` and their reads are
