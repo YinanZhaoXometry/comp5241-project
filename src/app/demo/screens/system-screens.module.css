@@ -1,0 +1,376 @@
+/* Screen-specific styles for the two demo system screens — SetupFlow
+   (setup.tsx, ported from temp/setup-flow.html) and SystemStates
+   (states.tsx, ported from temp/states.html). Shared recipes live in
+   kit.module.css; everything here adapts the reference pages' own CSS to
+   the live token sheet in globals.css :root — no raw hex, var() tokens and
+   color-mix() on tokens only. Selectors are deliberately scoped under the
+   screen root class (.setup / .states) so shell element rules such as
+   `.demo h1` / `.demo p` cannot bleed into these cards. */
+
+/* ── Setup & lifecycle flow (setup.tsx) ──────────────────────────────── */
+.setup {
+  max-width: 820px;
+  margin-inline: auto;
+}
+.setup .flowHead {
+  padding: 32px 0 24px;
+  max-width: 640px;
+}
+.setup .flowTitle {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 32px;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: var(--fg);
+  margin: 12px 0;
+  text-wrap: balance;
+}
+.setup .flowSub {
+  color: var(--muted);
+  font-size: 15px;
+  margin: 0 0 16px;
+}
+.setup .scopeNote {
+  font-size: 13px;
+  color: var(--fg-2);
+  background: var(--surface-warm);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin: 0;
+}
+.setup .flow {
+  display: flex;
+  flex-direction: column;
+  margin-top: 24px;
+}
+.setup .stateCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  min-width: 0;
+}
+.setup .stateConnector {
+  width: 1px;
+  height: 20px;
+  background: var(--border-soft);
+  margin-left: 32px;
+  flex: none;
+}
+.setup .stateTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.setup .stateId {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--meta);
+}
+.setup .stateTitle {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: var(--fg);
+  margin: 0 0 8px;
+  text-wrap: balance;
+}
+.setup .sees {
+  font-size: 15px;
+  color: var(--fg-2);
+  margin: 0 0 8px;
+}
+.setup .seesLabel,
+.setup .honestyLabel {
+  color: var(--meta);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 2px;
+}
+.setup .honesty {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+.setup .stateLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-soft);
+  color: var(--fg-2);
+  font-size: 14px;
+  font-weight: 500;
+  text-decoration: none;
+  background: transparent;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.setup .stateLink:hover {
+  background: var(--surface-warm);
+}
+.setup .stateTrace {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--meta);
+  margin: 8px 0 0;
+}
+.setup .stateNolink {
+  font-size: 13px;
+  color: var(--meta);
+}
+
+/* ── System states gallery (states.tsx) ──────────────────────────────── */
+.states {
+  max-width: 880px;
+  margin-inline: auto;
+}
+.states .statesHead {
+  padding: 32px 0 24px;
+  max-width: 640px;
+}
+.states .statesTitle {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 32px;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: var(--fg);
+  margin: 12px 0;
+  text-wrap: balance;
+}
+.states .statesSub {
+  color: var(--muted);
+  font-size: 15px;
+  margin: 0;
+}
+.states .stateSection {
+  padding: 32px 0;
+  border-top: 1px solid var(--border-soft);
+}
+.states .sectionTitle {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 25px;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: var(--fg);
+  margin: 0 0 8px;
+  text-wrap: balance;
+}
+.states .usage {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 20px;
+  max-width: 64ch;
+}
+.states .example {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  min-width: 0;
+}
+.states .frameTitle {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--meta);
+  margin: 0 0 16px;
+}
+
+/* loading skeletons — quiet warm-sand/ivory shimmer, CSS only */
+.states .skelList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.states .skelRow {
+  display: grid;
+  grid-template-columns: 1fr 140px;
+  gap: 24px;
+  align-items: center;
+  padding: 20px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.states .skel {
+  border-radius: var(--radius-sm);
+  background: var(--surface-warm);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .states .skel {
+    animation: skelPulse 1.6s var(--ease-standard) infinite;
+  }
+}
+@keyframes skelPulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+.states .skelTitle {
+  height: 18px;
+  width: 55%;
+  margin-bottom: 8px;
+}
+.states .skelLine {
+  height: 12px;
+  width: 80%;
+}
+/* loaded sample rows share the skeleton row shape so nothing jumps */
+.states .loadTitle {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--fg);
+  margin: 0 0 4px;
+}
+.states .loadMeta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--meta);
+  margin: 0;
+}
+.states .noteBelow {
+  margin: 12px 0 0;
+}
+
+/* empty example (kit.empty provides the plate; typography scoped here so
+   shell element rules cannot restyle it) */
+.states .emptyTitle {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 25px;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: var(--fg);
+  margin: 0 0 8px;
+}
+.states .emptyBody {
+  color: var(--muted);
+  font-size: 15px;
+  max-width: 46ch;
+  margin: 0 auto 20px;
+}
+
+/* error example body */
+.states .errBody {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.states .errTitle {
+  font-weight: 500;
+  color: var(--fg);
+  margin: 0 0 2px;
+  font-size: 15px;
+}
+.states .errText {
+  color: var(--fg-2);
+  font-size: 14px;
+  margin: 0;
+}
+
+/* offline example */
+.states .offlineStrong {
+  flex: none;
+}
+
+/* confirm dialog — native <dialog> element: kit.dialogPanel styles the
+   surface (whisper shadow); the top-layer ::backdrop mirrors
+   kit.dialogBackdrop's tint, tokens only */
+.states .nativeDialog::backdrop {
+  background: color-mix(in oklab, var(--fg) 32%, transparent);
+}
+.states .dialogTitle {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 20px;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: var(--fg);
+  margin: 0 0 8px;
+}
+.states .dialogBody {
+  margin: 0 0 20px;
+  color: var(--fg-2);
+  font-size: 15px;
+}
+.states .dialogActions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* danger zone — quiet until armed */
+.states .dangerZone {
+  border: 1px solid color-mix(in oklab, var(--danger) 35%, transparent);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+.states .dangerTitle {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 17px;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: var(--fg);
+  margin: 0 0 8px;
+}
+.states .dangerText {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0 0 16px;
+  max-width: 56ch;
+}
+.states .dangerCheck {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  font-size: 14px;
+  color: var(--fg-2);
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+.states .dangerCheckInput {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  accent-color: var(--danger);
+}
+.states .dangerNote {
+  display: block;
+  font-size: 13px;
+  color: var(--fg-2);
+  margin: 16px 0 0;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+@media (max-width: 850px) {
+  .setup .stateCard {
+    padding: 20px;
+  }
+  .states .example {
+    padding: 20px;
+  }
+}
+@media (max-width: 640px) {
+  .states .skelRow {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
