@@ -91,6 +91,19 @@ Verified 2026-10-23 on the implementation pass:
 
 Pure visual layer: revert is `git revert` of the phase commits. Token swap (phase 0) is a single file; keep the old token block in git history only — do not ship both sheets side by side behind a flag (no theming infrastructure is authorized).
 
+## 10. Addendum — 2026-10-23 follow-up direction: demo retired → static product pages
+
+After the implementation above landed, the user directed: "we do not need demo any more, we need pages built with designed styles as per temp/, as for those pages without implementation of business logic, implement for now only static page with styles."
+
+Recorded decisions:
+
+- The `/demo` area (shell, catch-all route, sample-study nav, demo spec) is **removed**. Its twelve browser cases are replaced by `tests/browser/pages.spec.ts`.
+- The designed screens live as **static product pages** at real routes under product/instructor shells (`src/app/shell/`): `/library`, `/course`, `/practice`, `/progress`, `/recovery`, `/roadmap`, `/review`, `/why`, `/starting-check`, `/plan-ai`, `/data`, `/instructor/{courses,approvals,students,participation}`. Content components sit in `src/app/screens/`.
+- Screens without business logic are static styled pages: no API calls, memory-only in-page interactions, local-Blob downloads only. The functional tracer flow stays at `/` and links from the product nav ("New study") and library CTA.
+- Meta/design artifacts from `temp/` (index launcher, foundations spec, setup-flow map, states gallery, and the demo-specific overview/lesson/practice samples superseded by the full versions) are not product pages and were not given routes; they remain preserved under `temp/` and in git history.
+- The shells keep the spine's honesty labels ("Sample prototype · No live AI" / "Instructor sample · No live data") as designed in the reference shells.
+- This supersedes §7's "existing tests pass unchanged" for the demo spec specifically: the demo area itself was removed, so its spec was replaced; all tracer tests remain unchanged and green.
+
 ## 9. Governance cross-references
 
 - Spine revision record: `DESIGN.md` §8 changelog, §9 memlog stubs (6 entries — file them in the ux folder when this plan is approved).
