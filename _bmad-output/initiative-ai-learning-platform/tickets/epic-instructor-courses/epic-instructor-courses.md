@@ -11,15 +11,12 @@ companions:
   [
     _bmad-output/initiative-ai-learning-platform/product-policies.md,
     _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md,
+    _bmad-output/initiative-ai-learning-platform/prd-ai-learning-platform/prd-ai-learning-platform.md,
+    _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md,
+    _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/DESIGN.md,
   ]
-after:
-  [
-    epic-private-study-setup,
-    epic-grounded-mini-courses,
-    epic-assessment-and-progress,
-    epic-spaced-review,
-  ]
-refined: false
+after: [epic-private-study-setup, epic-grounded-mini-courses, epic-assessment-and-progress, epic-spaced-review]
+refined: true
 risk: high
 ---
 
@@ -27,33 +24,53 @@ risk: high
 
 ## Description
 
-Deliver instructor-managed learning as one integrated boundary: author/edit manually or with AI, personally approve exact versions, import/manage verified enrollment and inspect scoped participation. Apply the existing learning, assessment, review and lifecycle contracts without weakening private-study boundaries.
+Deliver instructor-managed learning as one integrated boundary: author/edit manually or with AI, personally approve exact versions, import/manage verified enrollment and inspect scoped participation. Consume the existing learning, assessment, review and lifecycle contracts (epics 1–4) without weakening private-study boundaries or duplicating their modules. The instructor studio is a separate shell from personal study; the whole instructor route ships as one protected release, never a partially exposed authoring/student path.
 
 ## Outcome
 
 An instructor can provide and oversee an approved mini-course for their enrolled students; students cannot use unseen AI variants, and instructors cannot browse personal uploads.
 
+## Requirements
+
+Each line carries its parent requirement's words at this epic's altitude; `covers` and each parenthetical resolve to the parent ids. The PRD companion's §4.5 consequences and the UX spine's instructor surfaces bind the stories through References.
+
+- **R1 — Instructor authoring** (parent R3): instructors can upload/edit teaching material, customize existing content/activities manually or with AI, and generate/refine new mini-courses from topics, requirements and teaching content, with instructor-controlled outcomes, versioned drafts and affected reapproval rather than silent published-content replacement. Verify manual creation and iterative editing, course-scoped teaching-material upload through the bounded four-format extraction contract, and draft-versus-published separation with pinned published releases.
+- **R2 — Student import and enrollment access** (parent R4): course owners import students using previewed/confirmed name-and-email CSV and manage enrollment. Verify verified invited/enrolled student access, duplicate/row-error handling before any commit, denied non-enrolled and cross-course access, and immediate access/reminder revocation after removal, with a restricted self-history export under D5.
+- **R3 — Instructor approval before student use** (parent R5): the instructor personally approves exact versions of learner-visible AI lessons/explanations, tests/answer/rubric/feedback bundles and supplementary sources. Verify unapproved or stale-draft content is unavailable — including fresh tailored retests and why responses — with approver/version records, dependency reapproval, withdrawal/correction handling, batch approval only over inspected listed versions, and subjective AI grades remaining provisional until instructor confirmation.
+- **R4 — Instructor participation tracking** (parent R16): show enrolled learner, last activity, required-item progress, attempt/pass/recovery status and due/overdue reviews for the instructor's course; label active-time estimates if shown. Verify scoped reports and denied cross-course/personal-study access, without equating engagement with mastery.
+
+## Constraints
+
+- Parent C1–C7 (especially C4 — no access or approval shortcuts), D1–D8 (especially D3 provisional grades and correction, D4 exact-version approval, D5 CSV/enrollment/retention, D6 reporting) and shared AD-1–AD-18 (especially AD-3 subject/action authorization, AD-5 immutable publication, AD-6 exact-version gate, AD-13 review cancellation, AD-14 scoped reporting, AD-17 audit) remain binding; downstream work cites these ids rather than inventing parallel contracts.
+- Whole-epic execution gates stand: no entry runs before epics 1–4 complete; this refinement changes no gate, authorizes no build, and grants no live-provider, deployment or real-data permission. Entry-level `after` pins name the providing entries directly (numeric ids across epics 1–4; sibling pins repointed 2026-10-24 — see Notes).
+- Instructor capability is admin-assigned (AD-3); no self-service promotion, no public course directory, no public self-enrollment. Accounts remain operator-provisioned — enrollment is not a public directory or email service (initiative touch point): invitations create course-scoped records and associate only with verified accounts, matched server-side, never by client assertion.
+- CSV import is UTF-8 name-and-email only, previewed before confirmation; no imported passwords or grades; the roster is never exposed to learners or sent to generation providers. Reminders stay in-app (D6); no email/SMS/push surface is added.
+- Personal study does not inherit instructor enrollment/approval requirements, and instructor mode never reads private-study evidence; the same denial treatment covers another learner, another instructor, an ordinary admin and a revoked session, without existence leaks.
+- The static designed `/instructor/*` product pages (2026-10-23 visual-spine port under `src/app/shell`/`src/app/screens`) are the visual reference the live instructor routes port; the honesty label is preserved and no new visual spine is invented here.
+
 ## Done when
 
-1. Instructor upload/topic/requirements → manual or AI creation/edit → personal version approval → enrolled student study works. Published versions and attempt/rubric/mark snapshots remain stable; required outcomes remain instructor-controlled.
-2. Name/email CSV preview, row errors, deduplication, verified invitation and enrollment removal are demonstrable. Non-enrolled/cross-course accounts are denied; removal ends future access and course reminders while permitted learner history export does not expose restricted content.
-3. Exact-version AI lessons/sources/question-answer-rubric-feedback bundles and deeper why variants require actual approval; approved-bank retests work and fresh variants wait. Edited dependencies and withdrawn errors follow D4/D3 without unseen-output permission or retroactive loss of earned progress; subjective AI grades remain provisional until instructor confirmation.
-4. Scoped progress/participation/pass/recovery/review reports, instructor-record archive notice/export/deletion, private-upload denial and role audit controls work together. Labels distinguish activity/estimated time from mastery and private study from instructor evidence.
-5. Deploy the complete authorized instructor route to production only after the earlier privacy/version/review integrations pass; run enrolled, revoked, unapproved, cross-owner and cross-course end-to-end checks with role test accounts. Test accounts are not additional pilot participants or real instructor-usability evidence.
+1. The instructor sign-in → manual course/mini-course authoring → exact-version approval → verified enrollment → student study path works end to end, including iterative editing with versioned drafts, affected-draft reapproval and stable pinned published versions; required outcomes and pass marks remain instructor-controlled.
+2. Name/email CSV preview with row errors, deduplication and explicit confirmation, verified invitation association, and enrollment removal are demonstrable. Non-enrolled and cross-course accounts are denied; removal immediately ends future access and that course's reminders while the removed learner's self-history export excludes restricted content; the instructor's legitimate course records are not silently deleted.
+3. Exact-version approval holds for AI lessons, supplementary sources, question/answer/rubric/feedback bundles and deeper-why variants: approved-bank tailored retests work, fresh generated variants wait in a pending queue, edited dependencies invalidate affected draft approvals, and withdrawn erroneous items stop new use and follow D3 correction without unseen-output permission or retroactive loss of earned progress; subjective AI grades stay provisional until instructor confirmation.
+4. Scoped progress/participation/pass/recovery/review reports, instructor-record archive notice/export/deletion, private-upload denial and content-free role/approval/revocation audit controls work together. Labels distinguish activity/estimated time from mastery and private study from instructor evidence.
+5. Deploy the complete authorized instructor route to production only after the earlier privacy/version/review integrations pass and a separate release authorization exists; run enrolled, revoked, unapproved, cross-owner and cross-course end-to-end checks with role test accounts. Test accounts are functional checks, not additional pilot participants or real instructor-usability evidence.
 
 ## Boundaries
 
 - Owns instructor authoring/publication/approval, CSV enrollment and scoped reporting, plus integration of course lifecycle and review cancellation. These are coupled into one safe instructor-mode release; do not expose a partially protected authoring/student route.
-- Consumes epic 1 authenticated roles/consent/ownership/retention, epic 2 versioned source-linked teaching, epic 3 assessment/evidence/provisional-grade contracts and epic 4 due/reminder cancellation contracts.
+- Consumes epic 1 authenticated roles/consent/ownership/retention, epic 2 versioned source-linked teaching, epic 3 assessment/evidence/provisional-grade contracts and epic 4 due/reminder-cancellation contracts — via their contracts, without redefining assessment, review or lifecycle semantics.
 - Supplies the restricted instructor authoring/approval shell to epic 6 required-subject/activity demonstrations. Personal-study generation does not inherit enrollment/approval requirements.
 - No public course directory, self-promotion to instructor, bypass for generated retests/why/feedback, roster exposure to learners/AI providers, or instructor access to private learner materials.
 
 ## References
 
 - parent — [initiative requirements](../../initiative-ai-learning-platform.md), R3/R4/R5/R16; integration duties under R2/R6/R8/R13–R15/R22; Constraints C1–C7 and G1/G2. Integration references do not duplicate requirement ownership.
-- policy companion — [product policies](../../product-policies.md), D1–D7, especially D3 provisional grades, D4 exact-version approval, D5 enrollment/retention and D6 reporting.
-- architecture companion — [shared technical architecture](../../architecture-shared-technical/architecture-shared-technical.md), all AD-1–AD-18; especially AD-3–AD-8, AD-13/AD-14 and AD-17 for subject/action authorization, exact approvals and retained-history/restore rules.
-- delivery breakdown — [instructor prerequisite and consumer contracts](../tickets.toml), epic 5 and epics 1–4 dependencies.
+- policy companion — [product policies](../../product-policies.md), D1–D7, especially D3 provisional grades and correction, D4 exact-version approval, D5 enrollment/retention and D6 reporting; D7 milestone 2 is this epic's exit evidence.
+- architecture companion — [shared technical architecture](../../architecture-shared-technical/architecture-shared-technical.md), all AD-1–AD-18; especially AD-3–AD-8, AD-13/AD-14 and AD-17 for subject/action authorization, exact approvals, retained-history/restore and audit rules.
+- PRD companion (adopted) — [consolidated PRD](../../prd-ai-learning-platform/prd-ai-learning-platform.md), §4.5 FR-3/FR-4/FR-5/FR-16 consequences, UJ-4 and SM-5.
+- UX companions (adopted) — [experience spine](../../ux-ai-learning-platform/EXPERIENCE.md), instructor-shell IA rows (Courses/Approvals/Students/Participation), Approval inspector, CSV import preview and Participation row patterns, State Patterns (Pending approval, Provisional grade, forbidden access) and the shared interaction/accessibility floor; [visual identity](../../ux-ai-learning-platform/DESIGN.md), Fieldnotes tokens and component kit.
+- delivery breakdown — [epic plan](../tickets.toml), epic 5 and epics 1–4 dependencies; [ordered entries](tickets/tickets.toml), local R1–R4 coverage and per-provider `after` pins.
 
 ## Notes
 
@@ -63,4 +80,13 @@ An instructor can provide and oversee an approved mini-course for their enrolled
 - Waits on epic-assessment-and-progress because: instructor grades, pass marks, retests and reports require stable attempts/evidence/completion semantics.
 - Waits on epic-spaced-review because: reports and immediate enrollment revocation require course-scoped due/cancellation behavior.
 - Decision: 2026-10-21 — adopt shared role/enrollment/subject, publication/approval and report/lifecycle contracts; keep whole-epic prerequisites and unrefined state.
-- Open question: refine relevant UX and prove institution/provider retention compatibility plus denied/revoked/unapproved paths before real student data. Shared architecture is not permission to activate a partially protected instructor route.
+- Decision: 2026-10-24 — refined under the user's standing delegation ("finish them" product-wide adoption of the PRD and UX spine); adopt the consolidated PRD and the Fieldnotes UX companions for this epic. The spine's open item "refine instructor sections when epic 5 is refined" is resolved by this refinement: the four instructor IA surfaces and the Approval inspector / CSV import preview / Participation row patterns are this epic's binding UX baseline, and the static `/instructor/*` product pages are the porting reference — no second visual spine.
+- Decision: 2026-10-24 — tracer bullet is entry 1 "Manual-course approval-enrollment tracer": the thinnest full path — an instructor signs in on the synthetic instructor principal, creates one course, drafts one mini-course version manually (no AI), approves that exact version with approver/time/version recorded, owner-enrolls one verified learner through a single-row preview/confirm action (CSV import is entry 4), the learner studies the approved lesson, and every other synthetic account — non-enrolled learner, second instructor, ordinary admin — is denied. It crosses every layer (instructor shell UI, contracts, modules, worker, adapters, database); no AI, no scored tests, no reports — later entries add them.
+- Decision: 2026-10-24 — staging the four-provider dependency: entries pin providers individually rather than inheriting all four — numeric epic-1 entry pins where the provider exists ("1.1" identity/principals, "1.2" bounded extraction, "1.3" consent/dispatch, "1.6" versioned processor configuration, "1.8"/"1.9"/"1.10" export/deletion/retention classes, "1.13" protective restore) and whole-epic string pins for the siblings refined in parallel. The epic file's whole-epic `after` remains the execution gate; entry pins are planning detail, never a weakening of it. Amendment, 2026-10-24: the sibling string pins were repointed the same day, after parallel refinement, to "2.1" (generation tracer) and "2.3" (player shell) on entry 1, "2.7" (versioned provenance handoff) on entry 2, "2.6" (why exploration) and "3.2" (targeted-retest chain) on entry 7, "3.3" (snapshotted scoring) on entry 8, and "4.6" (scoped due-state/cancellation) plus "3.8" (evidence handoff) on entries 5 and 9.
+- Decision: 2026-10-24 — twelve entries in one ordered lane (the largest unrefined epic): tracer → authoring/versioning substrate → approval inspector/invalidation/withdrawal → CSV import/verified invitations → enrollment revocation and reminder cancellation → AI-assisted authoring (synthetic-first) → dynamic-content approval gate → pass marks/provisional confirmation → scoped participation reporting → lifecycle/archive/audit integration → Refactor sweep → closing integrated suite. The sweep waits on every entry except the closing suite, which is last.
+- Decision: 2026-10-24 — AI-assisted authoring follows epic-2's F-A pattern: synthetic-fixture development proceeds through epic-1's versioned configuration/consent/dispatch ports re-gated for the changed instructor-authoring purpose; live generation acceptance is blocked on provider eligibility evidence (initiative G2 — the epic-1 S6/epic-2 F-A blocker) and is recorded as entry 6's `unknown`. No roster or learner identifier ever enters a dispatch payload (AD-10/D5).
+- Assumption: verified-account invitation mechanics — accounts remain operator-provisioned (epic-1 assumption; no public signup). Invitations create course-scoped records; association happens server-side only when a verified account's email matches, never by client assertion (AD-14). Real invitation delivery (email tokens, account creation for unknown people) has no product surface under D6's in-app-only rule; synthetic association with operator-provisioned verified accounts is demonstrable now, and any real-invitation path stays blocked — recorded as entry 4's `unknown`.
+- Assumption: course-scoped teaching-material upload reuses the bounded four-format extraction contract (epic-1 S2/"1.2") in course scope rather than a second parser path; course-owned material never becomes a personal upload or vice versa.
+- Assumption: instructor pass marks and provisional-grade confirmation ride epic-3's attempt-snapshotted policy and evidence contracts; this epic adds no second scoring or progress truth (AD-8/AD-14).
+- Open question: live AI provider eligibility (initiative G2) blocks entry 6's live acceptance and entry 12's actual-AI checks; synthetic-fixture development is not blocked.
+- Open question: deployment/release authorization (mirroring epic-1 F6 and epic-2 F-C) blocks entry 12's deployed smoke check; and real-roster/institutional use additionally requires verified provider/institution retention compatibility and resolved invitation mechanics before any real student data (G2/G5).

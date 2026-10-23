@@ -1,0 +1,116 @@
+# Ordered spaced-review stories, 2026-10-24; no leaf files or execution plans yet.
+# covers uses THIS epic's R1-R7 (split from parent R15 per D6/AD-13), not initiative R IDs.
+# One lane protects the shared schedule/clock/due-state surfaces; whole-epic gates on
+# epics 1 and 3 still apply to execution. Epic-3 provider pins repointed 2026-10-24:
+# completion award 3.4, snapshotted scoring/pass-mark 3.3 + evaluator handoff 3.8,
+# roadmap indicator 3.6.
+# unknown gates the start; hitl identifies actual human work but is not a readiness gate.
+next_id = 10
+
+[[entry]]
+id = 1
+type = "story"
+title = "Completed-course-to-first-review tracer"
+description = "Stand up the Review module on the existing platform: consume epic 3's versioned completion award and epic 1's saved timezone so completing a mini-course creates one review schedule with the one-day initial interval — anchor instant, interval, IANA zone and computed due instant under an injectable server clock — and the in-app review inbox renders its first due row once the interval elapses under a controlled clock, with the honest 'No reviews due' empty state. One migration owner continues; no verdicts, adaptive intervals, reminders, controls or lifecycle integration yet."
+verify = "With two test accounts under a controlled clock, A's completed course (synthetic completion fixture) produces one due review row the local day after completion; before the interval the inbox reads 'No reviews due'; B sees no row and cannot fetch A's schedule directly; schedules survive web/worker restart with one row per completion and no duplicate on job retry."
+covers = ["R1", "R2", "R5"]
+after = ["1.4", "3.4"]
+hitl = false
+risk = "high"
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D6 schedule", "architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-13 first rule", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Review row and Empty surface patterns"]
+
+[[entry]]
+id = 2
+type = "story"
+title = "Unaided review session and adaptive intervals"
+description = "Consume epic 3's shared evaluator, pass-mark snapshot and unaided-evidence contract to run an actual review: pin the studied content release and latest effective review-policy revision at review start, use no withdrawn/unapproved item, withhold answers until submission, and record typed review evidence. Successful unaided reviews advance the 3/7/14/30-day intervals anchored on actual success; failure or assistance sets a next-day review and restarts the sequence after the next unaided success; in-session Easy/Unsure/Hard self-report never postpones or awards credit, Hard only brings the next review to the next day. Review outcomes never grant or revoke completion/recovery credit; a failed review links to epic 3's focused-support/recovery surfaces."
+verify = "Under a controlled clock: unaided success at the pass mark advances 1→3→7→14→30→30 days from each actual success; assisted and failed reviews yield a next-day review with the sequence restarting after the next unaided success; Hard moves a review earlier, never later; every path leaves the completion award untouched, and evidence kinds keep unaided, assisted and self-report distinguishable."
+covers = ["R1", "R6"]
+after = [1, "3.3", "3.8"]
+hitl = false
+risk = "high"
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D6 adaptation", "architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-13 verdict pinning and AD-7 evidence purposes", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Feedback block pattern"]
+
+[[entry]]
+id = 3
+type = "story"
+title = "Timezone-safe calendar semantics and recompute"
+description = "Implement AD-13's calendar rules end to end: local-calendar-day addition preserving local wall time (DST gaps shift forward, overlaps choose the earlier occurrence), due dates displayed by local calendar day, and timezone-change recompute from the same anchor instant under the new zone with a visible, predictable change notice — never touching evidence, anchors or completion. Own the epic's controlled-clock and IANA timezone/DST fixtures, extending epic 1's lifecycle-clock fixtures per the initiative's touch-point rule."
+verify = "Spring-forward gap and fall-back overlap fixtures compute the specified due instants; changing the learner's timezone recomputes every due date from its anchor with a displayed change and identical evidence; invalid or unchanged zones are handled honestly; due ordering stays stable across zone edits."
+covers = ["R2", "R5"]
+after = [1, 2, "1.4"]
+hitl = false
+risk = "high"
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D6 delivery", "architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-13 second rule"]
+
+[[entry]]
+id = 4
+type = "story"
+title = "One consolidated reminder per local day"
+description = "Add in-app reminder delivery over the due list: at most one new consolidated reminder per local calendar day combining all due/overdue items, enforced by unique (userId, localDate) plus a minimum 24-hour gap from the last reminder so timezone edits cannot create bursts; at-least-once job execution never duplicates delivery; the persistent badge and due list survive when no new reminder is created; delivery rechecks scope, controls and cancellation state before creating anything. No email/SMS/push surface exists."
+verify = "A learner with three due/overdue reviews receives exactly one consolidated reminder per local day across duplicate job runs and a mid-day timezone change; a second day with unchanged items creates no new reminder while badge and due list persist; disabled or cancelled scopes create zero reminders."
+covers = ["R2", "R3"]
+after = [1, 3]
+hitl = false
+risk = "high"
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D6 delivery upper bound", "architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-13 third rule and AD-9 idempotent effects", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Review overdue and badge patterns"]
+
+[[entry]]
+id = 5
+type = "story"
+title = "Pause, snooze and disable controls"
+description = "Build the inbox controls on the spine's rules: row-scoped snooze until tomorrow or three days later naming its target, inbox-wide pause and disable kept in their own section, and resume showing the current due list without a backlog burst. Controls change notification timing only — evidence, due instants, anchors and completion are untouched; snooze state stays visible per row; announcements and focus follow the spine's choreography."
+verify = "Snoozed rows show their named target and skip reminder eligibility for the chosen days while remaining due in the list; pause and disable stop all new reminders with the due list still rendering honestly; resume creates no catch-up burst; every control works keyboard-only at 360px and desktop."
+covers = ["R4"]
+after = [3, 4]
+hitl = false
+risk = "medium"
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D6 controls", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Review row (row-scoped snooze), Reminders paused state, Interaction Primitives"]
+
+[[entry]]
+id = 6
+type = "story"
+title = "Scoped due-state and cancellation contracts"
+description = "Expose the authorized query/cancellation surface later epics consume: owner-scoped due/overdue states per mini-course including the roadmap 'Review due' indicator contract for epic 3's nodes, course-scoped due/overdue review states for epic 5's participation reports excluding personal-study evidence, and the enrollment-removal cancellation hook epic 5 calls. Cross-owner, cross-course and unauthenticated reads are denied; no second progress/review truth is created."
+verify = "A synthetic consumer resolves due/overdue states for its authorized scope only — another learner, another course's instructor and an unauthenticated caller are denied; the epic-5 hook signature and epic-3 indicator contract are exercised by synthetic consumer tests without inventing enrollment records (epic 5 owns real enrollment)."
+covers = ["R2", "R6", "R7"]
+after = [2, 3]
+hitl = false
+risk = "medium"
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-14 scoped read model and AD-3 scope resolution", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D6 instructor report boundaries"]
+
+[[entry]]
+id = 7
+type = "story"
+title = "Deletion, revocation and restore lifecycle integration"
+description = "Integrate the epic's surfaces with epic 1's lifecycle machinery: register review schedules, evidence, preferences and reminder records as scoped derivatives in the retention classes; root/personal deletion and enrollment-removal cancellation immediately stop future reminders and due-list entries without disturbing other roots' schedules; restore replays protective state before any reminder or job dispatch; retention/expiry covers review records; late review-job returns cannot repopulate deleted targets."
+verify = "Race a due review and its reminder job against owner deletion: immediate cancellation, no late reminder or schedule resurrection after fence/epoch checks, complete derivative purge within the registered deadline while an unrelated root's reviews continue; a restored snapshot stays reminder-silent until protective-state replay completes; duplicate expiry jobs are safe."
+covers = ["R3", "R7"]
+after = [4, 6, "1.9", "1.10", "1.13"]
+hitl = false
+risk = "high"
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-4 fences, AD-9 recheck-before-commit, AD-17 restore replay", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D5 deletion targets"]
+
+[[entry]]
+id = 8
+type = "story"
+title = "Refactor sweep"
+description = "Inspect completed-story plans and deferred review findings for cleanup only, preserve all accepted scheduling/privacy/lifecycle/contract semantics and run unchanged regressions; record a no-op if no cleanup is justified. Unfinished functionality requires a separate planned entry."
+verify = "Compare accepted behaviors and all existing compile/lint/domain/database/browser/denial/lifecycle checks before and after; no checks are weakened or new requirements hidden in cleanup."
+covers = []
+after = [1, 2, 3, 4, 5, 6, 7]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 9
+type = "story"
+title = "Integrated review suite and authorized release verification"
+description = "Close the return journey with integrated checks across the Done-when paths: completion → first review → adaptive intervals across a time gap (controlled clock), consolidated reminders under timezone change, every control, overdue aggregation, preserved completion, scoped-contract denial and deletion/restore cancellation — plus an actual return smoke check on the authorized deployment. The real seven-day pilot observation remains a later initiative-closure check under D8, never fabricated elapsed time. A blocked release cannot be recorded Done."
+verify = "Run the complete leave-and-return journey — completion, next-day first review, success/failure/assisted/Hard adaptation, a mid-schedule timezone move, snooze/pause/disable/resume, overdue aggregation, instructor-scope denial, deletion and restore — with keyboard/360px/desktop checks, controlled-clock fixtures and an actual authorized deployed return-smoke result attached."
+covers = ["R1", "R2", "R3", "R4", "R5", "R6", "R7"]
+after = [8]
+hitl = true
+risk = "high"
+unknown = "Deployment/return-smoke authorization: actual provisioning/deployment scope, region/plan/budget, operator responsibilities and managed copy/backup retention evidence need separate approval and verification (the same family as epic 1 S12's F6 blocker); current authorization permits story planning only."
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D6 checks and D8 delayed check", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, review-inbox patterns and Accessibility Floor"]

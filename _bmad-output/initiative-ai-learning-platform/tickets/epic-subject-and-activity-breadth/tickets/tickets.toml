@@ -1,0 +1,180 @@
+# Ordered subject-and-activity-breadth stories, 2026-10-24; no leaf files or execution plans yet.
+# covers uses THIS epic's R1-R12 (parents R9/R17/R18/R19), not initiative R ids.
+# One lane protects the shared AD-12 activity contract, evidence mapping and media
+# surfaces; the 2026-10-21 whole-epic execution gates on epics 2/3/5 still apply.
+# Cross-epic pins are numeric "<epic>.<entry>" into the refined siblings' tomls
+# (2.4/2.7, 3.8, 5.2/5.3); epic 1 is reached transitively and never pinned directly.
+# unknown gates the start; hitl identifies actual human work but is not a readiness gate.
+next_id = 15
+
+[[entry]]
+id = 1
+type = "story"
+title = "Breadth tracer: soft-skills simulation through the existing player"
+description = "The thinnest full path through every layer this epic touches: define the AD-12 versioned discriminated activity contract (objective revisions, required/optional, scored/unscored, input/output schema, accessibility equivalent, evidence mapping) over epic 2's versioned provenance surface and epic 3's activity/rubric/completion handoff, implement one functioning interactive-simulation renderer inside the existing lesson shell and content-item tracker, and wire one required simulation activity into a soft/product-skills representative mini-course on an original synthetic fixture — explicit submission, typed activity-submission evidence per AD-7, required-item completion contribution per D1/AD-8 (never a direct pass), and lifecycle registration of the activity and its derivatives. No other family, media machinery or provider work in this entry. Human step: the operator's explicit start authorization for epic-6 work; the entry has no other manual procedure."
+verify = "With two local test accounts, A opens the soft-skills course in the existing player, works the simulation to two distinct outcomes, submits once, sees the content-item tracker mark the activity done and the roadmap node advance under the required-activity contract; B and stale/deleted-root requests get honest denial; the activity, evidence and derivatives survive web/worker restart and register in the lifecycle inventory."
+covers = ["R3", "R5"]
+after = ["2.7", "3.8"]
+hitl = true
+risk = "high"
+unknown = "No story may start yet: the 2026-10-21 whole-epic execution gates stand (epics 2, 3 and 5 are not built/closed) and explicit start authorization has not been given; this planning authorizes nothing."
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-12 activity contract", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Component Patterns (activity-family shells, content-item tracker) and State Patterns"]
+
+[[entry]]
+id = 2
+type = "spike"
+title = "G4 feasibility spike: isolated code runner and offline narration"
+description = "Answer the two questions only code can answer, before any activation. (a) Isolated code execution: stand up a spike harness for a dedicated per-job no-network sandbox runner — never the web/worker process, eval or Node vm — with enforced CPU/wall-time/memory/process/disk/output/concurrency limits, ephemeral filesystem destroyed after completion and host-level egress denying DNS/metadata, and run malicious-code, resource-exhaustion, escape and cleanup probes. (b) Offline narration: evaluate offline engine/voice candidates against license terms, resource cost and quality with recorded findings. Produce admission-grade dossiers following the parser-container admission precedent (fail-closed, quarantine on doubt); select and activate nothing."
+verify = "The recorded dossiers in the epic folder name every probe result (escape/egress/limits/cleanup) and the narration engine/voice license findings with sources; no product code path is activated and no provider is named as selected; the narrated-slides and online-coding entries cite these dossiers as their admission input."
+covers = ["R8", "R9"]
+after = []
+hitl = false
+risk = "high"
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-12 isolation rules and gate G4", "precedent — docs/bounded-document-extraction.md, fail-closed sandbox admission with quarantine on doubt"]
+
+[[entry]]
+id = 3
+type = "story"
+title = "Text/images activities with registered media derivatives"
+description = "Deliver the text/images family as authored required content: required learning images ride the activity/content contracts as registered scoped derivatives — acquired only through controlled fetch/processor ports, registered with scope/lineage/retention class, rendered via same-origin authenticated no-store handlers with CSP blocking unapproved remote loads and no shared-optimizer caching or unauthenticated workarounds — with text alternatives and the media floor. Text items keep the existing tracker/mark-done semantics; no passive browser requests to remote assets exist anywhere in the family."
+verify = "A required image-bearing activity completes with typed evidence; the image resolves only through the authenticated same-origin handler while direct and remote URL loads are blocked; root deletion removes the derivative inside its deadline; keyboard/360px/desktop runs pass with text alternatives visible."
+covers = ["R4"]
+after = [1]
+hitl = false
+risk = "medium"
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-12 learning-asset derivative rules", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D7 usability/accessibility bar"]
+
+[[entry]]
+id = 4
+type = "story"
+title = "Role play and mock interviews (scripted representative)"
+description = "Deliver the role-play/mock-interview family as authored scripted activities: declarative scenario/turn/branch structure with bounded follow-ups, captured learner responses, visible transcript, disclosed model answer/rubric and feedback blocks only after submission, typed self-assessment and evidence mapping to objective revisions. AI/unreviewed labels cover any generated variant. Live conversational AI turns are a live-gated enhancement behind the re-gated provider blocker recorded on the other-domain entry — not required for this family's functioning representative."
+verify = "A learner completes a mock-interview scenario: turns render in order with bounded branching, responses submit once with transcript visible, feedback appears only after submission naming its rubric/source, the required-submission evidence records and feeds completion through the epic-3 contract; the whole flow works keyboard-only at 360px and desktop."
+covers = ["R6"]
+after = [1]
+hitl = false
+risk = "medium"
+references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Feedback block pattern and media floor", "architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-12 role-play/interview contract"]
+
+[[entry]]
+id = 5
+type = "story"
+title = "Mini-game activities"
+description = "Deliver the mini-game family: declared deterministic goal/rules/state machine with explicit win/lose/complete outcomes, keyboard operable, no XP/streaks/engagement theater and no learner-facing time limits; outcomes recorded as typed activity-submission evidence mapped to objectives; attempts and retries never double-count. The game is a lesson content variant inside the player shell with tracker integration, not a standalone surface."
+verify = "A learner plays the representative mini-game to both a win and a loss outcome: each state is explicit and honest, the required submission records exactly once, the tracker marks the activity done and completion follows only through the required-activity contract; reduced-motion, keyboard-only and 360px/desktop runs pass."
+covers = ["R7"]
+after = [1]
+hitl = false
+risk = "medium"
+references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Inspiration & Anti-patterns (gamification rejected)", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D1 content-finished and no-engagement-theater rules"]
+
+[[entry]]
+id = 6
+type = "story"
+title = "AI-narrated animation/slides with accessible alternatives"
+description = "Deliver the narrated animation/slides family: synchronized slide/animation sequences with offline-generated narration from approved scripts — audio as a registered scoped derivative — transcript/captions reachable from the same content item, no autoplay, visible pause/stop, adjustable playback rate and a reduced-motion alternative; motion never the sole carrier of teaching content; narration scripts/audio variants ride AD-5/AD-6 approval in course scope. Narration activation is fail-closed on the entry-2 dossier plus admitted engine/voice license evidence; the text/slide sequence functions independently of audio."
+verify = "A learner studies the narrated-slide activity: slides advance with transcript visible, audio plays only through the admitted offline engine as a scoped derivative, pause/stop/rate controls work and a reduced-motion run accesses all teaching content; without admission evidence the narration control renders the honest capability-unavailable state while the text path still completes and records evidence."
+covers = ["R8"]
+after = [1, 2]
+hitl = false
+risk = "high"
+unknown = "G4 narration admission: no offline engine/voice is selected or license-verified; activation stays fail-closed until the entry-2 dossier plus admitted engine/voice license/resource/quality evidence exists (parser-container admission precedent — quarantine on doubt); remote TTS would additionally need AD-10 eligibility and is not sought now."
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-12 narration rules and G4", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Accessibility Floor (narration and reduced-motion)"]
+
+[[entry]]
+id = 7
+type = "story"
+title = "Online coding in the isolated runner"
+description = "Deliver the online-coding family per AD-12: bounded Python pure-function exercises authored as declarative prompt/starter/approved-tests; submissions execute only on the dedicated isolated runner behind a private authenticated API — per-job no-network sandbox with enforced CPU/wall/memory/process/disk/output/concurrency limits, ephemeral filesystem destroyed after completion, host-level egress denial; the server validates runner receipts and applies deterministic approved tests; runtime errors and timeouts are explicit outcomes, never model-awarded scores; admission fails closed without fresh matching admission/audit/fingerprint evidence, and worker readiness refuses execution without it."
+verify = "A learner submits a correct solution, an incorrect one, an infinite-loop/oversize-output one and a hostile submission: correct/incorrect are scored deterministically by approved tests, abuse hits limits with explicit outcomes, no run executes without fresh admission, evidence records each outcome — and no user code ever executes in the web/worker process, eval or vm."
+covers = ["R9"]
+after = [1, 2]
+hitl = false
+risk = "high"
+unknown = "G4 runner admission: the spike proves feasibility but no runner engine/host is selected, deployed or admitted; execution stays fail-closed until admission/audit/fingerprint evidence exists and is verified (no egress/secrets, escape, resource and cleanup tests per the dossier). An ordinary container or in-process sandbox is not acceptable evidence."
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-12 online-code rules and G4", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D5 trust boundary (sandbox selection/testing is a mandatory gate)"]
+
+[[entry]]
+id = 8
+type = "story"
+title = "Three subject-area representative set"
+description = "Complete the three-area representative set on the built machinery: a software-engineering/development-fundamentals mini-course beyond the pilot's unit-testing case, an effective-AI-coding-agent-use mini-course (what to delegate, how to specify, how to verify agent output — deliberately parallel to R19's competencies), and completion of the tracer's soft/product-skills course to representative coverage. Each has objective/source-linked units through epic-2 contracts, required activities drawn from the built families, required tests through epic-3 contracts, and non-CS plus CS treatments of the same objectives (consumed from epic-2 adaptation) with identical factual claims. Every lesson need not use every format."
+verify = "A learner completes each of the three representative courses end to end with required activities and tests feeding completion and roadmap mapping; side-by-side non-CS/CS treatments of one shared objective differ suitably without factual contradiction; the SE course is demonstrably distinct from the pilot case; root deletion removes each course's derivatives."
+covers = ["R1", "R2", "R3"]
+after = [1, 3, 4, 5, 6, 7, "2.4"]
+hitl = false
+risk = "high"
+references = ["PRD — _bmad-output/initiative-ai-learning-platform/prd-ai-learning-platform/prd-ai-learning-platform.md, FR-9 consequences", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, C3/D7 milestone 3 (no silent scope reduction)"]
+
+[[entry]]
+id = 9
+type = "story"
+title = "Other-domain and self-directed generation paths"
+description = "Open the personal route beyond the main domain: a learner enters an arbitrary other-domain topic (synthetic fixture outside software), confirms a plan through the existing setup loop, generates and studies the course, and creates a self-directed multi-course path of learner-chosen topics — all without instructor enrollment or approval, with AI-generated/unreviewed labels, consent/lifecycle controls and private visibility intact. Instructor courses are never made public; personal study never inherits course approval gates. Synthetic other-domain fixtures drive development; live generation waits for eligibility evidence."
+verify = "A learner builds and completes an other-domain fixture course plus a two-topic self-directed path purely through personal routes with no instructor approval state anywhere; another learner and an instructor get no-existence-leak denial; consent refusal yields an honest AI-unavailable state with manual study intact and zero external calls."
+covers = ["R10"]
+after = [1, "2.7"]
+hitl = false
+risk = "high"
+unknown = "F-A-pattern live open-domain generation eligibility: live generation of other-domain/self-directed courses needs a purpose-re-gated D5-compatible provider with retention/deletion/non-training/location proof and operator authorization (the epic-1 S6 / epic-2 F-A blocker, re-gated for open-domain purpose). Synthetic checked fixtures proceed; live dispatch and live acceptance stay blocked."
+references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Flow 5 (off-syllabus self-directed path)", "PRD — _bmad-output/initiative-ai-learning-platform/prd-ai-learning-platform/prd-ai-learning-platform.md, FR-18 consequences"]
+
+[[entry]]
+id = 10
+type = "story"
+title = "Instructor-mode breadth through the restricted path"
+description = "Demonstrate the same breadth through epic 5's restricted path: import/author the three-area representative content including new-family activities through the versioned authoring substrate, approve exact versions through the approval inspector (activity content and narration scripts/audio variants included per AD-6), enroll a verified learner, study the approved breadth content with inherited rubric/completion/review contracts unchanged, and confirm scoped participation reporting and derivative-data controls. Fresh generated variants wait in the pending queue; no new instructor capability is invented and the personal route is unchanged."
+verify = "An instructor approves and publishes one breadth course containing at least one new-family activity; the enrolled learner studies exactly the approved version with inherited completion/review behavior and a fresh generated variant stays invisible until approved; a non-enrolled learner and a second instructor receive the same no-existence-leak denial; participation reporting shows the new activity types without any personal-study evidence."
+covers = ["R1", "R2", "R3"]
+after = [8, "5.2", "5.3"]
+hitl = false
+risk = "high"
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-6 exact-version gate includes activity content and narration variants", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D4 approval unit and dynamic content"]
+
+[[entry]]
+id = 11
+type = "story"
+title = "Rights-checked representative fixture set and rights verification"
+description = "Consolidate and verify the epic's content base: the complete representative fixture set for all three subject areas, all six families and the other-domain paths — original synthetic by default, any third-party material only with verified license and attribution recorded — registered with provenance and lineage; manually check every cited factual claim and answer/rubric pair in required fixtures against its source per the D7 content bar; quarantine (never ship) doubtful material. This set is what the closing suite and later initiative closure reuse; test accounts are never counted as study participants."
+verify = "The fixture registry lists every representative item with rights status, attribution and manual claim/rubric check records; a sampled audit finds no unchecked required item; any unverified third-party item is absent or quarantined with its reason."
+covers = ["R12"]
+after = [3, 4, 5, 6, 7, 8, 9, 10]
+hitl = true
+risk = "medium"
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D7 content/assessment bar and D8 fixture-rights rule", "architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-18 manual fixture verification"]
+
+[[entry]]
+id = 12
+type = "story"
+title = "AI Fluency 4D presentation deliverable"
+description = "Produce R19's deliverable: final-presentation material explaining Delegation, Description, Discernment and Diligence with project-specific examples drawn from the working platform — what was delegated to AI versus built manually (Delegation), the specifications/prompts/contracts used to direct it (Description), how outputs were checked including citations, honest uncertainty and error correction (Discernment), and verification/accountability evidence such as gates, audits and recorded decisions (Diligence). Evidence limits are stated truthfully: no invented outcomes, no mandatory in-product 4D assessment, single-user observations never labeled efficacy/PMF."
+verify = "A rehearsal run of the presentation covers all four competencies, each with at least one cited project-specific example traceable to working behavior or recorded evidence in the repo, and states its evidence limits honestly."
+covers = ["R11"]
+after = [11]
+hitl = true
+risk = "medium"
+references = ["PRD — _bmad-output/initiative-ai-learning-platform/prd-ai-learning-platform/prd-ai-learning-platform.md, FR-19 consequences", "parent — _bmad-output/initiative-ai-learning-platform/initiative-ai-learning-platform.md, R19 and AD-18's truthful-4D-evidence rule"]
+
+[[entry]]
+id = 13
+type = "story"
+title = "Refactor sweep"
+description = "Inspect completed-story plans and deferred review findings for cleanup only, preserve all accepted activity-contract/evidence/media/lifecycle/contract semantics and run unchanged regressions; record a no-op if no cleanup is justified. Unfinished functionality requires a separate planned entry."
+verify = "Compare accepted behaviors and all existing compile/lint/domain/database/browser/denial/lifecycle checks before and after; no checks are weakened or new requirements hidden in cleanup."
+covers = []
+after = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 14
+type = "story"
+title = "Integrated breadth suite and authorized release verification"
+description = "Close the epic with D7 milestone-3 exit evidence: integrated journeys across all three subject areas, all six activity families — including isolated-runner failure/abuse limits and narration alternatives — other-domain/self-directed paths, personal-versus-instructor boundaries with exact-version approval, accessibility-floor runs and lifecycle/deletion races, with actual gate evidence attached (runner/narration admission dossiers; re-gated provider evidence where eligible) and separately authorized deployed smoke results. D8's pilot and seven-day observation remain initiative closure, not this entry. A blocked release cannot be recorded Done."
+verify = "Run the complete breadth journey set end to end with keyboard/360px/desktop checks, every denial path, sandbox-abuse fixtures, narration-off alternatives and deletion races; attach admission/provider evidence and the authorized deployed smoke result; a blocked release cannot be recorded Done."
+covers = ["R1", "R2", "R3", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "R12"]
+after = [13]
+hitl = true
+risk = "high"
+unknown = "F-C-pattern deployment/release authorization: actual provisioning/deployment scope, region/plan/budget, operator responsibilities and managed copy/backup retention evidence need separate approval and verification; live-AI acceptance additionally waits on the re-gated provider eligibility recorded on the other-domain entry. Current authorization permits story planning only."
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D7 delivery order and quality gates (milestone 3), D8 boundary", "architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-18 verification rules"]
