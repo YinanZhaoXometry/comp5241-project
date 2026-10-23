@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Instructor · Approvals · Fieldnotes redesign</title>
+  <style>
+    :root {
+      --bg: #f5f4ed;
+      --surface: #faf9f5;
+      --surface-warm: #e8e6dc;
+      --fg: #141413;
+      --fg-2: #3d3d3a;
+      --muted: #5e5d59;
+      --meta: #6d6c64;
+      --border: #f0eee6;
+      --border-soft: #e8e6dc;
+      --accent: #c96442;
+      --accent-on: #faf9f5;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
+    --accent-strong: #a55236;
+    --accent-strong-hover: color-mix(in oklab, var(--accent-strong), black 8%);
+    --accent-strong-active: color-mix(in oklab, var(--accent-strong), black 14%);
+      --success: #17a34a;
+      --warn: #eab308;
+      --danger: #b53333;
+      --font-display: "Anthropic Serif", Georgia, "Times New Roman", serif;
+      --font-body: "Anthropic Sans", "Arial", system-ui, -apple-system, sans-serif;
+      --font-mono: "Anthropic Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+      --text-xs: 10px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 20px;
+      --text-xl: 25px;
+      --text-2xl: 32px;
+      --text-3xl: 52px;
+      --text-4xl: 64px;
+      --leading-body: 1.6;
+      --leading-tight: 1.1;
+      --tracking-display: 0em;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --section-y-desktop: 96px;
+      --section-y-tablet: 64px;
+      --section-y-phone: 48px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-pill: 9999px;
+      --elev-flat: none;
+      --elev-ring: 0 0 0 1px var(--border);
+      --elev-raised: rgba(0, 0, 0, 0.05) 0px 4px 24px;
+      --focus-ring: 0 0 0 3px rgba(56, 152, 236, 0.3);
+      --motion-fast: 150ms;
+      --motion-base: 200ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+      --container-max: 1200px;
+      --container-gutter-desktop: 24px;
+      --container-gutter-tablet: 16px;
+      --container-gutter-phone: 12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      line-height: var(--leading-body);
+      -webkit-font-smoothing: antialiased;
+    }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; }
+    button { font: inherit; cursor: pointer; }
+    p { text-wrap: pretty; }
+    h1, h2, h3 { text-wrap: balance; }
+    :focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+    .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .sidebar {
+      border-right: 1px solid var(--border-soft);
+      background: var(--surface);
+      padding: var(--space-5) var(--space-4);
+      display: flex; flex-direction: column; gap: var(--space-6);
+      position: sticky; top: 0; height: 100vh;
+    }
+    .sidebar .logo { font-family: var(--font-display); font-weight: 500; font-size: 22px; padding-inline: var(--space-2); text-decoration: none; }
+    .side-nav { display: flex; flex-direction: column; gap: 2px; }
+    .side-nav a { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 15px; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard); }
+    .side-nav a svg { width: 20px; height: 20px; flex: none; }
+    .side-nav a:hover { background: var(--surface-warm); color: var(--fg); }
+    .side-nav a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    .side-foot { margin-top: auto; padding: var(--space-3); border-top: 1px solid var(--border); font-size: 12px; color: var(--meta); }
+
+    .side-study { border-top: 1px solid var(--border); padding-top: var(--space-4); }
+    .side-study .list-title { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); padding-inline: var(--space-3); margin: 0 0 var(--space-2); }
+    .side-study .study-chip { display: block; margin: 0 var(--space-1); padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface-warm); }
+    .side-study .study-chip .s-name { font-size: 14px; font-weight: 500; color: var(--fg); }
+    .side-study .study-chip .s-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .side-divider { border-top: 1px solid var(--border); padding-top: var(--space-2); }
+
+    .topnav-mobile { display: none; }
+    @media (max-width: 850px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .topnav-mobile { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-soft); background: var(--surface); overflow-x: auto; position: sticky; top: 0; z-index: 6; }
+      .topnav-mobile .logo { font-family: var(--font-display); font-weight: 500; font-size: 18px; margin-right: var(--space-2); flex: none; }
+      .topnav-mobile a { flex: none; min-height: 44px; display: inline-flex; align-items: center; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 14px; text-decoration: none; }
+      .topnav-mobile a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    }
+
+    .main { min-width: 0; display: flex; flex-direction: column; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-8); border-bottom: 1px solid var(--border-soft); background: color-mix(in oklab, var(--bg) 92%, transparent); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 5; }
+    @media (max-width: 850px) { .topbar { padding: var(--space-3) var(--space-4); position: static; } }
+    .content { padding: var(--space-8); max-width: 1080px; width: 100%; margin-inline: auto; flex: 1; }
+    @media (max-width: 850px) { .content { padding: var(--space-5) var(--space-4); } }
+
+    .meta { font-family: var(--font-mono); font-size: 12px; color: var(--meta); }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-5); border-radius: var(--radius-md); border: 1px solid transparent; font-size: 15px; font-weight: 500; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard); }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent-strong); color: var(--accent-on); box-shadow: 0 0 0 1px var(--accent-strong); }
+    .btn-primary:hover { background: var(--accent-strong-hover); box-shadow: 0 0 0 1px var(--accent-strong-hover); }
+    .btn-secondary { background: var(--surface-warm); color: var(--fg-2); box-shadow: 0 0 0 1px color-mix(in oklab, var(--surface-warm), black 8%); }
+    .btn-secondary:hover { background: color-mix(in oklab, var(--surface-warm), black 5%); }
+    .btn-quiet { background: transparent; color: var(--muted); box-shadow: none; }
+    .btn-quiet:hover { color: var(--fg); background: var(--surface-warm); }
+    .btn[disabled] { opacity: 0.45; cursor: default; }
+    .btn[disabled]:hover { background: var(--surface-warm); }
+    .btn-primary[disabled]:hover { background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 500; letter-spacing: 0.12px; white-space: nowrap; }
+    .pill-muted { background: var(--surface-warm); color: var(--fg-2); }
+    .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    .pill-pending { background: color-mix(in oklab, var(--warn) 18%, var(--surface)); color: color-mix(in oklab, var(--warn) 45%, black); }
+    .pill-approved { background: color-mix(in oklab, var(--success) 12%, var(--surface)); color: color-mix(in oklab, var(--success) 55%, black); }
+    .pill-changes { background: color-mix(in oklab, var(--warn) 18%, var(--surface)); color: color-mix(in oklab, var(--warn) 45%, black); }
+
+    .page-head { margin-bottom: var(--space-8); }
+    .page-head h1 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-2xl); line-height: 1.2; margin: 0 0 var(--space-3); }
+    .page-head .sub { color: var(--muted); font-size: 15px; max-width: 62ch; margin: 0; }
+
+    .approvals-grid { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: var(--space-6); align-items: start; }
+    @media (max-width: 980px) { .approvals-grid { grid-template-columns: 1fr; } }
+
+    .queue-list { display: flex; flex-direction: column; gap: var(--space-3); }
+    .queue-item { text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-4) var(--space-5); display: flex; flex-direction: column; gap: var(--space-2); transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard); }
+    .queue-item:hover { background: color-mix(in oklab, var(--surface) 60%, var(--surface-warm)); }
+    .queue-item[aria-pressed="true"] { background: var(--surface-warm); border-color: color-mix(in oklab, var(--surface-warm), black 12%); }
+    .queue-item .q-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
+    .queue-item .q-name { font-size: 15px; font-weight: 500; color: var(--fg); line-height: 1.35; }
+    .queue-item .q-name .ver { font-family: var(--font-mono); font-size: 12px; font-weight: 400; color: var(--fg-2); background: var(--surface); border-radius: var(--radius-sm); padding: 2px 6px; margin-left: 6px; white-space: nowrap; }
+    .queue-item[aria-pressed="true"] .q-name .ver { background: var(--surface); }
+    .queue-item .q-changed { font-size: 13px; color: var(--muted); margin: 0; }
+    .queue-item .q-by { font-size: 12px; color: var(--meta); margin: 0; }
+
+    .detail { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
+    @media (max-width: 850px) { .detail { padding: var(--space-5); } }
+    .detail h2 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-xl); line-height: 1.25; margin: 0 0 var(--space-2); }
+    .version-line { font-family: var(--font-mono); font-size: 12px; color: var(--fg-2); background: var(--bg); border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin: var(--space-4) 0; overflow-x: auto; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .detail .d-by { font-size: 13px; color: var(--muted); margin: 0 0 var(--space-4); }
+    .detail .d-state-note { font-size: 14px; color: var(--fg-2); margin: 0 0 var(--space-4); }
+
+    .diff-title { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin: var(--space-6) 0 var(--space-3); }
+    .diff-list { border-top: 1px solid var(--border-soft); }
+    .diff-row { border-bottom: 1px solid var(--border); }
+    .diff-row-main { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; min-height: 44px; flex-wrap: wrap; }
+    .diff-row .d-num { font-family: var(--font-mono); font-size: 12px; color: var(--meta); width: 28px; flex: none; font-variant-numeric: tabular-nums; }
+    .diff-row .d-name { font-size: 14px; color: var(--fg-2); flex: 1; min-width: 140px; }
+    .diff-row .d-name .d-name-sub { display: block; font-size: 12px; color: var(--meta); margin-top: 2px; }
+    .diff-state { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; letter-spacing: 0.12px; padding: 4px 12px; border-radius: var(--radius-pill); white-space: nowrap; }
+    .diff-state .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .ds-added { background: color-mix(in oklab, var(--success) 12%, var(--surface)); color: color-mix(in oklab, var(--success) 55%, black); }
+    .ds-edited { background: color-mix(in oklab, var(--warn) 18%, var(--surface)); color: color-mix(in oklab, var(--warn) 45%, black); }
+    .ds-unchanged { background: var(--surface-warm); color: var(--muted); }
+    .diff-toggle { min-height: 44px; padding: 0 var(--space-3); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; }
+    .diff-toggle:hover { background: var(--surface-warm); color: var(--fg); }
+
+    .diff-change { padding: 0 0 var(--space-4) 40px; }
+    @media (max-width: 600px) { .diff-change { padding-left: 0; } }
+    .diff-change .before-after { display: grid; gap: var(--space-3); }
+    .ba-block { border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: var(--space-4); background: var(--bg); }
+    .ba-block .ba-label { display: block; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin-bottom: var(--space-2); }
+    .ba-block p { margin: 0; font-size: 14px; color: var(--fg-2); }
+    .ba-after { background: var(--surface); }
+
+    .detail-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-6); padding-top: var(--space-5); border-top: 1px solid var(--border-soft); }
+    .decision-note { margin-top: var(--space-6); padding: var(--space-4); border-radius: var(--radius-md); font-size: 14px; color: var(--fg-2); }
+    .decision-note.approved { background: color-mix(in oklab, var(--success) 10%, var(--surface)); border: 1px solid color-mix(in oklab, var(--success) 35%, transparent); }
+    .decision-note.changes { background: color-mix(in oklab, var(--warn) 14%, var(--surface)); border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent); }
+    .decision-note .note-label { display: block; font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin-bottom: 4px; }
+
+    .honesty-note { font-size: 13px; color: var(--muted); background: var(--bg); border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin-top: var(--space-5); }
+
+    dialog { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); padding: 0; max-width: 560px; width: calc(100% - 32px); color: var(--fg); box-shadow: var(--elev-raised); }
+    dialog::backdrop { background: color-mix(in oklab, var(--fg) 35%, transparent); }
+    .dlg-head { padding: var(--space-6) var(--space-6) 0; }
+    .dlg-head h2 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-xl); line-height: 1.25; margin: 0; }
+    .dlg-body { padding: var(--space-4) var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+    .dlg-body p { margin: 0; font-size: 15px; color: var(--fg-2); }
+    .dlg-foot { display: flex; justify-content: flex-end; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-4) var(--space-6) var(--space-6); }
+    .dlg-field label { display: block; font-size: 13px; font-weight: 500; color: var(--fg-2); margin-bottom: 6px; }
+    .dlg-field textarea { width: 100%; min-height: 96px; resize: vertical; font: inherit; font-size: 15px; color: var(--fg); background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: var(--space-4); }
+    .dlg-field textarea::placeholder { color: var(--meta); }
+    .dlg-field textarea:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: transparent; }
+    .dlg-version { font-family: var(--font-mono); font-size: 12px; color: var(--fg-2); background: var(--bg); border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); overflow-x: auto; white-space: nowrap; }
+
+    .pagefoot { border-top: 1px solid var(--border-soft); padding: var(--space-5) var(--space-8); color: var(--meta); font-size: 12px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
+  
+    .skip-link{position:absolute;left:16px;top:-56px;z-index:200;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:var(--radius-sm,8px);font:500 14px var(--font-body);text-decoration:none;transition:top var(--motion-fast,150ms) var(--ease-standard,ease)}
+    .skip-link:focus-visible{top:12px;outline:none;box-shadow:var(--focus-ring)}
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+    <div class="app" data-od-id="app-shell">
+    <nav class="topnav-mobile" aria-label="Primary">
+      <span class="logo">Fieldnotes</span>
+      <a href="instructor-courses.html">Courses</a>
+      <a href="instructor-approvals.html" aria-current="page">Approvals</a>
+      <a href="instructor-students.html">Students</a>
+      <a href="instructor-participation.html">Participation</a>
+      <a href="library.html">Learner view</a>
+    </nav>
+
+    <aside class="sidebar" data-od-id="sidebar">
+      <a class="logo" href="index.html">Fieldnotes</a>
+      <nav class="side-nav" aria-label="Primary">
+        <a href="instructor-courses.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Courses
+        </a>
+        <a href="instructor-approvals.html" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></svg>
+          Approvals
+        </a>
+        <a href="instructor-students.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M17.5 15.3c2 .7 3.4 2.3 4 4.7"/></svg>
+          Students
+        </a>
+        <a href="instructor-participation.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 3 5-6"/></svg>
+          Participation
+        </a>
+      </nav>
+      <div class="side-study" data-od-id="side-viewing-as">
+        <p class="list-title">Viewing as</p>
+        <div class="study-chip">
+          <span class="s-name">Instructor</span>
+          <span class="s-meta">Prof. Rowan Ellis · sample</span>
+        </div>
+      </div>
+      <nav class="side-nav side-divider" aria-label="Other views">
+        <a href="library.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+          Learner view
+        </a>
+      </nav>
+      <div class="side-foot">Instructor sample · No live data</div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar" data-od-id="topbar">
+        <span class="meta">Instructor · Approvals · Sample data</span>
+        <span class="pill pill-muted"><span class="dot"></span>Instructor sample · No live data</span>
+      </header>
+
+      <main class="content" id="content">
+        <div class="page-head" data-od-id="approvals-head">
+          <h1>Approvals</h1>
+          <p class="sub">Nothing reaches students until you approve an exact version — identified by its version id and content hash, not just a course name. Review the lesson-by-lesson diff, then approve or request changes.</p>
+        </div>
+
+        <div class="approvals-grid">
+          <section aria-labelledby="queue-h" data-od-id="approval-queue">
+            <h2 id="queue-h" class="meta" style="margin:0 0 12px;letter-spacing:0.5px;text-transform:uppercase;">Queue</h2>
+            <div class="queue-list" id="queue-list" role="group" aria-label="Pending and decided approvals"></div>
+          </section>
+
+          <section class="detail" id="detail-pane" aria-labelledby="detail-title" data-od-id="approval-detail" aria-live="polite"></section>
+        </div>
+
+        <p class="honesty-note" data-od-id="approvals-honesty">Sample prototype — approving or requesting changes updates only this screen. In a live system an approval publishes the exact version shown, and the content hash lets anyone confirm students received it unchanged.</p>
+      </main>
+
+      <footer class="pagefoot" data-od-id="footer">
+        <span>Fieldnotes redesign · Instructor — Approvals (screen 20)</span>
+      </footer>
+    </div>
+  </div>
+
+  <dialog id="dlg-approve" data-od-id="dlg-approve" aria-labelledby="dlg-approve-title">
+    <div class="dlg-head"><h2 id="dlg-approve-title">Approve this exact version?</h2></div>
+    <div class="dlg-body">
+      <p>Approval is version-exact. <strong>Students will see exactly this version</strong> — the lessons and text you just reviewed, byte for byte. Any later edit creates a new version that needs its own approval.</p>
+      <p class="dlg-version" id="dlg-approve-version"></p>
+      <p class="honesty-note">Sample — nothing is published; the queue on this screen updates to show the decision.</p>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn btn-quiet" data-close-dialog>Go back</button>
+      <button type="button" class="btn btn-secondary" id="approve-confirm" data-od-id="approve-confirm">Approve this exact version</button>
+    </div>
+  </dialog>
+
+  <dialog id="dlg-request" data-od-id="dlg-request" aria-labelledby="dlg-request-title">
+    <div class="dlg-head"><h2 id="dlg-request-title">Request changes</h2></div>
+    <div class="dlg-body">
+      <p>Explain what needs to change. The version stays unpublished until a revised version is approved.</p>
+      <p class="dlg-version" id="dlg-request-version"></p>
+      <div class="dlg-field">
+        <label for="request-note">Note for the revision</label>
+        <textarea id="request-note" placeholder="e.g. Lesson 3's new sample-size explanation drops the worked example — keep both."></textarea>
+      </div>
+    </div>
+    <div class="dlg-foot">
+      <button type="button" class="btn btn-quiet" data-close-dialog>Cancel</button>
+      <button type="button" class="btn btn-secondary" id="request-confirm" data-od-id="request-confirm" disabled>Send change request</button>
+    </div>
+  </dialog>
+
+  <script>
+    (function () {
+      var ITEMS = [
+        {
+          id: 'ab-v11',
+          course: 'Statistics for A/B Tests',
+          version: 'v1.1',
+          versionId: 'ab-stats-v1.1',
+          lessonCount: 10,
+          hash: 'c8e2b7d1',
+          changed: 'Rewrote lesson 3 on sample size; added two practice scenarios.',
+          by: 'Generated by assistant draft · submitted by you',
+          when: '2026-10-21',
+          status: 'pending',
+          requestNote: '',
+          diff: [
+            { n: 1, title: 'What an A/B test can and cannot tell you', state: 'unchanged' },
+            { n: 2, title: 'Variants, metrics, and guardrails', state: 'unchanged' },
+            { n: 3, title: 'Sample size, in practice', state: 'edited',
+              before: 'A bigger sample makes your estimate steadier, but there is no formula here — use a calculator and pick a number that feels safe.',
+              after: 'Sample size sets the width of your confidence interval. Roughly four times the sample halves the width. Use the worked example below to size your test before you run it — deciding after you see the data is how teams fool themselves.' },
+            { n: 4, title: 'Randomization and why it breaks', state: 'unchanged' },
+            { n: 5, title: 'Reading a result without over-reading it', state: 'unchanged' },
+            { n: 6, title: 'How long to run a test', state: 'edited',
+              before: 'Run the test for at least a week.',
+              after: 'Run the test for full weekly cycles — at least one, ideally two. Stopping mid-cycle mixes weekday and weekend behavior into the same bucket, and early peeking inflates false positives.' },
+            { n: 7, title: 'Novelty and primacy effects', state: 'unchanged' },
+            { n: 8, title: 'When not to test', state: 'unchanged' },
+            { n: 9, title: 'Practice scenario: sizing a checkout experiment', state: 'added', sub: 'New practice set · 3 questions' },
+            { n: 10, title: 'Practice scenario: reading an inconclusive result', state: 'added', sub: 'New practice set · 3 questions' }
+          ]
+        },
+        {
+          id: 'nn-v14',
+          course: 'Neural Networks Foundations',
+          version: 'v1.4',
+          versionId: 'nn-foundations-v1.4',
+          lessonCount: 8,
+          hash: 'a41f9c2e',
+          changed: 'Tightened the lesson 5 summary; added one recall prompt to lesson 6.',
+          by: 'Edited by you from the published v1.3',
+          when: '2026-10-20',
+          status: 'pending',
+          requestNote: '',
+          diff: [
+            { n: 1, title: 'What a neuron computes', state: 'unchanged' },
+            { n: 2, title: 'What a loss measures', state: 'unchanged' },
+            { n: 3, title: 'Gradient descent, step by step', state: 'unchanged' },
+            { n: 4, title: 'Overfitting and how to see it', state: 'unchanged' },
+            { n: 5, title: 'Reading a training curve', state: 'edited',
+              before: 'Summary: training curves show loss over time. Both curves matter.',
+              after: 'Summary: a training curve plots loss against training steps, twice — once on training data, once on held-out data. The gap between the two curves, not the height of either, is what tells you the model started memorizing.' },
+            { n: 6, title: 'Batches and epochs', state: 'edited',
+              before: 'Recall prompt: what is the difference between a batch and an epoch?',
+              after: 'Recall prompt: in your own words — why does a smaller batch make each step noisier but each epoch faster to start? Compare your answer to the lesson text.' },
+            { n: 7, title: 'Activation functions, briefly', state: 'unchanged' },
+            { n: 8, title: 'Putting it together: a tiny network by hand', state: 'unchanged' }
+          ]
+        },
+        {
+          id: 'nn-v13',
+          course: 'Neural Networks Foundations',
+          version: 'v1.3',
+          versionId: 'nn-foundations-v1.3',
+          lessonCount: 8,
+          hash: 'f07c3a91',
+          changed: 'Added recall prompts to lessons 4–6; tightened lesson 5 summary.',
+          by: 'Edited by you from v1.2',
+          when: '2026-10-12',
+          status: 'approved',
+          decidedOn: '2026-10-12',
+          requestNote: '',
+          diff: [
+            { n: 1, title: 'What a neuron computes', state: 'unchanged' },
+            { n: 2, title: 'What a loss measures', state: 'unchanged' },
+            { n: 3, title: 'Gradient descent, step by step', state: 'unchanged' },
+            { n: 4, title: 'Overfitting and how to see it', state: 'edited',
+              before: 'The lesson ends after the worked example.',
+              after: 'Added a recall prompt after the worked example: “What does a widening gap between the two loss curves mean?”' },
+            { n: 5, title: 'Reading a training curve', state: 'edited',
+              before: 'Summary: training curves are important and show many things about your model.',
+              after: 'Summary: training curves show loss over time. Both curves matter.' },
+            { n: 6, title: 'Batches and epochs', state: 'edited',
+              before: 'No recall prompt.',
+              after: 'Added a recall prompt: “What is the difference between a batch and an epoch?”' },
+            { n: 7, title: 'Activation functions, briefly', state: 'unchanged' },
+            { n: 8, title: 'Putting it together: a tiny network by hand', state: 'unchanged' }
+          ]
+        }
+      ];
+
+      var queueList = document.getElementById('queue-list');
+      var detail = document.getElementById('detail-pane');
+      var dlgApprove = document.getElementById('dlg-approve');
+      var dlgRequest = document.getElementById('dlg-request');
+      var approveConfirm = document.getElementById('approve-confirm');
+      var requestConfirm = document.getElementById('request-confirm');
+      var requestNote = document.getElementById('request-note');
+      var selectedId = ITEMS[0].id;
+      var lastFocus = null;
+
+      function esc(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      }
+
+      function statusPill(item) {
+        if (item.status === 'approved') return '<span class="pill pill-approved"><span class="dot"></span>Approved</span>';
+        if (item.status === 'changes') return '<span class="pill pill-changes"><span class="dot"></span>Changes requested</span>';
+        return '<span class="pill pill-pending"><span class="dot"></span>Pending</span>';
+      }
+
+      function diffStatePill(entry) {
+        if (entry.state === 'added') return '<span class="diff-state ds-added"><span class="dot"></span>Added lesson</span>';
+        if (entry.state === 'edited') return '<span class="diff-state ds-edited"><span class="dot"></span>Edited section</span>';
+        return '<span class="diff-state ds-unchanged"><span class="dot"></span>Unchanged</span>';
+      }
+
+      function versionLine(item) {
+        return 'version id: ' + item.versionId + ' · ' + item.lessonCount + ' lessons · content hash ' + item.hash + '…';
+      }
+
+      function renderQueue() {
+        queueList.innerHTML = ITEMS.map(function (item) {
+          return '<button type="button" class="queue-item" data-id="' + item.id + '" data-od-id="queue-item-' + item.id + '" aria-pressed="' + (item.id === selectedId) + '">' +
+            '<span class="q-top"><span class="q-name">' + esc(item.course) + '<span class="ver">' + esc(item.version) + '</span></span>' + statusPill(item) + '</span>' +
+            '<span class="q-changed">' + esc(item.changed) + '</span>' +
+            '<span class="q-by">' + esc(item.by) + ' · ' + esc(item.when) + '</span>' +
+          '</button>';
+        }).join('');
+      }
+
+      function renderDetail(item) {
+        var counts = { added: 0, edited: 0, unchanged: 0 };
+        item.diff.forEach(function (e) { counts[e.state] += 1; });
+
+        var rows = item.diff.map(function (entry, i) {
+          var toggle = '';
+          var change = '';
+          if (entry.state === 'edited') {
+            toggle = '<button type="button" class="diff-toggle" data-diff-toggle="' + i + '" aria-expanded="false" aria-controls="diff-change-' + item.id + '-' + i + '" data-od-id="diff-toggle-' + item.id + '-' + entry.n + '">View change</button>';
+            change = '<div class="diff-change" id="diff-change-' + item.id + '-' + i + '" hidden>' +
+              '<div class="before-after">' +
+                '<div class="ba-block"><span class="ba-label">Before · currently live text</span><p>' + esc(entry.before) + '</p></div>' +
+                '<div class="ba-block ba-after"><span class="ba-label">After · in ' + esc(item.version) + '</span><p>' + esc(entry.after) + '</p></div>' +
+              '</div>' +
+            '</div>';
+          }
+          return '<div class="diff-row" data-od-id="diff-row-' + item.id + '-' + entry.n + '">' +
+            '<div class="diff-row-main">' +
+              '<span class="d-num">' + entry.n + '</span>' +
+              '<span class="d-name">' + esc(entry.title) + (entry.sub ? '<span class="d-name-sub">' + esc(entry.sub) + '</span>' : '') + '</span>' +
+              diffStatePill(entry) +
+              toggle +
+            '</div>' +
+            change +
+          '</div>';
+        }).join('');
+
+        var actions = '';
+        if (item.status === 'pending') {
+          actions = '<div class="detail-actions">' +
+            '<button type="button" class="btn btn-primary" id="approve-open" data-od-id="approve-open">Approve this exact version</button>' +
+            '<button type="button" class="btn btn-secondary" id="request-open" data-od-id="request-open">Request changes</button>' +
+          '</div>';
+        } else if (item.status === 'approved') {
+          actions = '<div class="decision-note approved" role="status">' +
+            '<span class="note-label">Approved · ' + esc(item.decidedOn || item.when) + '</span>' +
+            'Students will see exactly this version. Any further edit creates a new version that needs its own approval.' +
+          '</div>';
+        } else {
+          actions = '<div class="decision-note changes" role="status">' +
+            '<span class="note-label">Changes requested</span>' +
+            (item.requestNote ? 'Your note: “' + esc(item.requestNote) + '” ' : '') +
+            'This version stays unpublished. A revised version will appear in this queue as a new item.' +
+          '</div>';
+        }
+
+        detail.innerHTML =
+          '<h2 id="detail-title">' + esc(item.course) + ' — ' + esc(item.version) + '</h2>' +
+          '<p class="d-by">' + esc(item.by) + ' · ' + esc(item.when) + '</p>' +
+          '<div class="version-line" data-od-id="version-line">' + esc(versionLine(item)) + '</div>' +
+          '<p class="d-state-note">Diff against the version students currently see: ' + counts.added + ' added · ' + counts.edited + ' edited · ' + counts.unchanged + ' unchanged.</p>' +
+          '<p class="diff-title">Lesson-by-lesson diff</p>' +
+          '<div class="diff-list" data-od-id="diff-list">' + rows + '</div>' +
+          actions;
+
+        detail.querySelectorAll('[data-diff-toggle]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var panel = document.getElementById(btn.getAttribute('aria-controls'));
+            var open = panel.hidden;
+            panel.hidden = !open;
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            btn.textContent = open ? 'Hide change' : 'View change';
+          });
+        });
+
+        var approveOpen = detail.querySelector('#approve-open');
+        if (approveOpen) {
+          approveOpen.addEventListener('click', function () {
+            document.getElementById('dlg-approve-version').textContent = versionLine(item);
+            openDialog(dlgApprove, approveOpen);
+          });
+        }
+        var requestOpen = detail.querySelector('#request-open');
+        if (requestOpen) {
+          requestOpen.addEventListener('click', function () {
+            document.getElementById('dlg-request-version').textContent = versionLine(item);
+            requestNote.value = '';
+            requestConfirm.disabled = true;
+            openDialog(dlgRequest, requestOpen);
+          });
+        }
+      }
+
+      function currentItem() {
+        return ITEMS.filter(function (i) { return i.id === selectedId; })[0];
+      }
+
+      function openDialog(dlg, opener) {
+        lastFocus = opener;
+        dlg.showModal();
+        var target = dlg.querySelector('textarea') || dlg.querySelector('.dlg-foot .btn-secondary') || dlg.querySelector('button');
+        if (target) target.focus();
+      }
+
+      document.querySelectorAll('dialog').forEach(function (dlg) {
+        dlg.addEventListener('click', function (e) {
+          if (e.target === dlg) dlg.close();
+        });
+        dlg.addEventListener('close', function () {
+          if (lastFocus) { lastFocus.focus(); lastFocus = null; }
+        });
+      });
+      document.querySelectorAll('[data-close-dialog]').forEach(function (btn) {
+        btn.addEventListener('click', function () { btn.closest('dialog').close(); });
+      });
+
+      queueList.addEventListener('click', function (e) {
+        var btn = e.target.closest('.queue-item');
+        if (!btn) return;
+        selectedId = btn.getAttribute('data-id');
+        renderQueue();
+        renderDetail(currentItem());
+      });
+
+      approveConfirm.addEventListener('click', function () {
+        var item = currentItem();
+        item.status = 'approved';
+        item.decidedOn = 'just now';
+        dlgApprove.close();
+        renderQueue();
+        renderDetail(item);
+      });
+
+      requestNote.addEventListener('input', function () {
+        requestConfirm.disabled = requestNote.value.trim().length === 0;
+      });
+      requestConfirm.addEventListener('click', function () {
+        var item = currentItem();
+        item.status = 'changes';
+        item.requestNote = requestNote.value.trim();
+        dlgRequest.close();
+        renderQueue();
+        renderDetail(item);
+      });
+
+      renderQueue();
+      renderDetail(currentItem());
+    })();
+  </script>
+</body>
+</html>

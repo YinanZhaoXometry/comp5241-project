@@ -1,305 +1,225 @@
----
-name: Fieldnotes
-description: Calm field-journal learning workspace — warm paper, deep-green ink, editorial serif, one lime accent for what is alive; formalizes the approved screenshot prototype's look.
-status: final
-created: 2026-10-21
-updated: 2026-10-22
-sources:
-  - ../initiative-ai-learning-platform.md
-  - ../../../src/app/globals.css
-  - ../../../src/app/demo/demo.module.css
-colors:
-  ink: '#193c36'
-  muted: '#52635d'
-  paper: '#f7f6f1'
-  surface: '#fffefa'
-  soft: '#edf0e6'
-  line: '#d7dfd6'
-  line-strong: '#c6d0c3'
-  lime: '#d8e88c'
-  lime-border: '#b7cc6c'
-  olive: '#486600'
-  olive-soft: '#9caf61'
-  selected-bg: '#f0f5de'
-  current-course: '#edf2d8'
-  danger: '#8b2926'
-  danger-bg: '#fff0e9'
-  hero-muted: '#dbe4db'
-  hero-line: '#577067'
-  code-text: '#eff3e4'
-  disabled-bg: '#e2e7db'
-  disabled-fg: '#53645c'
-  disabled-border: '#aab5a5'
-  input-border: '#7a8b81'
-  input-border-soft: '#aab79e'
-typography:
-  display-xl:
-    fontFamily: Georgia, serif
-    fontSize: clamp(2rem, 3.1vw, 3.25rem)
-    fontWeight: '400'
-    lineHeight: '1.1'
-    letterSpacing: -0.045em
-  display:
-    fontFamily: Georgia, serif
-    fontSize: 1.75rem
-    fontWeight: '400'
-    lineHeight: '1.2'
-    letterSpacing: -0.025em
-  title-md:
-    fontFamily: Georgia, serif
-    fontSize: 1.5rem
-    fontWeight: '400'
-    lineHeight: '1.3'
-  title-sm:
-    fontFamily: Georgia, serif
-    fontSize: 1.25rem
-    fontWeight: '400'
-    lineHeight: '1.3'
-  metric:
-    fontFamily: Georgia, serif
-    fontSize: 2.5rem
-    fontWeight: '400'
-    lineHeight: '1.2'
-  body:
-    fontFamily: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif
-    fontSize: 0.875rem
-    fontWeight: '400'
-    lineHeight: '1.6'
-  meta:
-    fontFamily: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif
-    fontSize: 0.75rem
-    fontWeight: '400'
-    lineHeight: '1.5'
-  fine:
-    fontFamily: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif
-    fontSize: 0.65rem
-    fontWeight: '400'
-    lineHeight: '1.5'
-  overline:
-    fontFamily: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif
-    fontSize: 0.625rem
-    fontWeight: '700'
-    lineHeight: '1.6'
-    letterSpacing: 0.14em
-  tagline:
-    fontFamily: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif
-    fontSize: 0.5rem
-    fontWeight: '600'
-    lineHeight: '1.6'
-    letterSpacing: 0.12em
-  mono:
-    fontFamily: ui-monospace, SFMono-Regular, Consolas, monospace
-    fontSize: 0.85em
-    fontWeight: '400'
-    lineHeight: '1.7'
-rounded:
-  sm: 0.25rem
-  md: 0.375rem
-  full: 9999px
-spacing:
-  xs: 0.25rem
-  sm: 0.5rem
-  md: 0.75rem
-  lg: 1rem
-  xl: 1.5rem
-  '2xl': 2rem
-  '3xl': 2.5rem
-  '4xl': 3rem
-  margin-mobile: 1rem
-  margin-desktop: clamp(1.5rem, 3.5vw, 3.5rem)
-  content-max: 1400px
-  sidebar-width: 240px
-components:
-  button-primary:
-    background: '{colors.ink}'
-    color: '{colors.surface}'
-    border: '1px solid {colors.ink}'
-    radius: '{rounded.sm}'
-    minHeight: 44px
-    padding: 0.75rem 1.125rem
-    typography: '{typography.body}'
-  button-lime:
-    background: '{colors.lime}'
-    color: '{colors.ink}'
-    border: '1px solid {colors.lime}'
-    radius: '{rounded.sm}'
-    minHeight: 44px
-  button-secondary:
-    background: transparent
-    color: '{colors.ink}'
-    border: '1px solid {colors.ink}'
-    radius: '{rounded.sm}'
-    minHeight: 44px
-  button-danger:
-    background: '{colors.danger}'
-    color: '#ffffff'
-    border: '1px solid {colors.danger}'
-    radius: '{rounded.sm}'
-    minHeight: 44px
-  panel:
-    background: '{colors.surface}'
-    border: '1px solid {colors.line}'
-    radius: '{rounded.md}'
-    padding: 1.5rem 2rem
-  hero:
-    background: '{colors.ink}'
-    color: '{colors.surface}'
-    radius: '{rounded.md}'
-    label-color: '{colors.lime}'
-  roadmap-node:
-    background: '{colors.surface}'
-    border: '1px solid {colors.line}'
-    current-variant-background: '{colors.current-course}'
-  pill:
-    background: '{colors.soft}'
-    border: '1px solid {colors.line-strong}'
-    radius: '{rounded.full}'
-    typography: '{typography.overline}'
-  callout:
-    background: '{colors.soft}'
-    border-left: '3px solid {colors.olive-soft}'
-    radius: none
-  answer-option:
-    background: '{colors.surface}'
-    border: '1px solid {colors.input-border}'
-    radius: '{rounded.sm}'
-    minHeight: 64px
-    selected-background: '{colors.selected-bg}'
-    selected-border: '2px solid {colors.olive}'
-  feedback:
-    background: '{colors.soft}'
-    border-left: '3px solid {colors.olive}'
-  code-block:
-    background: '{colors.ink}'
-    color: '{colors.code-text}'
-    radius: '{rounded.sm}'
-    comment-color: '{colors.lime}'
-    typography: '{typography.mono}'
-  notice:
-    background: '{colors.danger-bg}'
-    border-left: '3px solid {colors.danger}'
-  sample-badge:
-    background: '{colors.lime}'
-    color: '{colors.ink}'
-    border: '1px solid {colors.lime-border}'
-    radius: '{rounded.full}'
-  evidence-meter:
-    fill: '{colors.olive}'
-    track: '{colors.soft}'
-  input:
-    background: '#ffffff'
-    color: '{colors.ink}'
-    border: '1px solid {colors.input-border}'
-    radius: '{rounded.sm}'
-    padding: 0.65rem
-    minHeight: 44px
-    textarea-minHeight: 96px
-    disabled-background: '{colors.disabled-bg}'
-    disabled-color: '{colors.disabled-fg}'
-    disabled-border: '1px solid {colors.disabled-border}'
-  focus-ring:
-    outline: '3px solid {colors.olive}'
-    outline-offset: 4px
-    outline-on-ink: '3px solid {colors.lime}'
+# DESIGN.md — Fieldnotes design spine (revised)
+
+**Status:** spine revision recorded in the ux folder 2026-10-23 (designed in openDesign). Implementation pending plan approval — see `plan-visual-spine-revision.md`. The 2026-10-22 Fieldnotes spine is archived as `DESIGN.2026-10-22.fieldnotes-superseded.md`. Supersedes the 2026-10-22 visual token sheet and the color-semantics, depth, typography, and motion decisions recorded in the previous DESIGN.md. The experience spine (IA, screen states, interaction contracts, accessibility floor) is **unchanged** — see "Behavior changes: none" in §8.
+**Governance:** this document records the spine revision only. It is not implementation authorization. Per the redesign brief §8, a new plan/story must authorize the UI work (and any new dependencies) before `src/app` is touched, and each revisited decision in §8 needs a memlog entry in the ux folder.
+**Sources of truth while this is a draft:** token sheet + component kit in `foundations.html`; per-screen application in the 22 screen files; rationale per decision in the brief's §3 "Decision recorded" and §9 changelog.
+
 ---
 
-## Brand & Style
+## Frontmatter tokens
 
-Fieldnotes is a learning workspace that behaves like a naturalist's field journal: observe, note, revisit. The tagline — *A LITTLE MORE UNDERSTOOD.* — is the brand's whole argument. Learning is gradual and evidence-based, never gamified; the interface's job is to make honest state visible and get out of the way.
+```yaml
+# ── Fieldnotes design tokens (2026-10-23 revision) ──────────────────────
+# Warm parchment canvas, exclusively warm-toned neutrals, single
+# terracotta accent, serif display at weight 500. No webfonts, no
+# gradients, no cool blue-grays anywhere in the system.
 
-The posture is **quiet editorial**: a serif voice (Georgia) for headlines and the brand, a neutral system sans for everything working, warm paper surfaces with a deep-green ink, hairline separations instead of shadows, and exactly one bright note — lime — meaning *this is alive / look here now*. No streaks, no confetti, no percent-complete theatrics; a completed roadmap node or a cleared recovery target is shown plainly, because plainness is the reward.
+color:
+  bg:            "#f5f4ed"   # Parchment — page background; never pure white
+  surface:       "#faf9f5"   # Ivory — cards, inputs, elevated containers
+  surface-warm:  "#e8e6dc"   # Warm Sand — secondary buttons, selected nav,
+                             #   meter tracks, neutral selection fill
+  fg:            "#141413"   # Near Black (warm/olive) — primary text;
+                             #   also dark-section background
+  fg-2:          "#3d3d3a"   # Dark Warm — emphasized secondary text,
+                             #   button text on warm surfaces, meter fills
+  muted:         "#5e5d59"   # Olive Gray — secondary body text
+                             #   (4.6:1 on Parchment)
+  meta:          "#6d6c64"   # Stone Gray, darkened in the 2026-10-23 a11y
+                             #   sweep (was #87867f at 3.3:1) — now 4.6:1 on
+                             #   Parchment / 5.0:1 on Ivory at 12px metadata
+                             #   sizes; also the input border color
+  border:        "#f0eee6"   # Border Cream — standard hairline
+  border-soft:   "#e8e6dc"   # Border Warm — section dividers, emphasized
+  accent:        "#c96442"   # Terracotta — borders, fills, dots, large-text
+                             #   moments (3.5:1 on bg; 3:1 contexts only)
+  accent-on:     "#faf9f5"   # Ivory text on accent-strong surfaces
+  accent-hover:  "color-mix(in oklab, accent, black 8%)"
+  accent-active: "color-mix(in oklab, accent, black 14%)"
+  accent-strong: "#a55236"   # Deep Terracotta, added in the a11y sweep —
+                             #   primary-button bg and small accent text
+                             #   (4.9:1 on bg / 5.2:1 on Ivory with ivory
+                             #   label text ≥4.5:1; 4.5:1 on 12% pill tints)
+  accent-strong-hover:  "color-mix(in oklab, accent-strong, black 8%)"
+  accent-strong-active: "color-mix(in oklab, accent-strong, black 14%)"
+  success:       "#17a34a"   # confirmed / mastered
+  warn:          "#eab308"   # partial / missed / validation — always on a
+                             #   tinted plate (10–12% warn over surface)
+  danger:        "#b53333"   # Error Crimson — scarce; destructive flows only
+  focus:         "#3898ec"   # Focus Blue — keyboard focus ring ONLY;
+                             #   the one cool color in the system
 
-This spine formalizes the look of the already-approved screenshot prototype and tracer application. Where a future screen has no prototype precedent, derive from these tokens rather than invent.
+type:
+  display:       'Georgia, "Times New Roman", serif'   # weight 500 always
+  body:          'system-ui, -apple-system, "Segoe UI", sans-serif'
+  mono:          'ui-monospace, Menlo, monospace'  # code + all metrics
+                                                 # (tabular-nums)
+  scale:         { xs: 10px, sm: 14px, base: 16px, lg: 20px,
+                   xl: 25px, 2xl: 32px, 3xl: 52px, 4xl: 64px }
+  leading:       { body: 1.6, tight: 1.1 }
+  overline:      { size: 10px, tracking: "+0.5px", transform: uppercase }
+  # Display serif: weight 500 is the ceiling — no bold, no light.
+  # Body line-height 1.6 everywhere; never below 1.4.
+  # Zero webfont dependencies — CSP font-src 'self' untouched.
 
-**Visual references.** The living prototypes are the mock set for this run: the sample study experience at `/demo` (overview), `/demo/lesson`, `/demo/practice`, `/demo/progress` (`src/app/demo/`), and the tracer workspace at `/` (`src/app/study-app.tsx`); the local screenshot set lives under `.local/demo-screenshots/` and `artifacts/Fieldnotes-Desktop-Demo.docx`. In-run mocks: `mockups/key-review-inbox.html`, `mockups/key-instructor-approvals.html`. Spines win on conflict with any of them.
+spacing:         # 8px base unit
+  ladder:        [4, 8, 12, 16, 20, 24, 32, 48]
+  card-padding:  24px
+  section-y:     { desktop: 96px, tablet: 64px, phone: 48px }
 
-## Colors
+radius:
+  sm:            8px     # standard buttons, cards, containers
+  md:            12px    # primary buttons, inputs, nav elements
+  lg:            16px    # featured containers, embedded media
+  pill:          9999px  # pills, tags, meter tracks
+  # No sharp corners (< 6px) on interactive elements.
 
-A paper-and-ink palette with one accent; every color earns its place.
+elevation:
+  flat:          none
+  ring:          "0 0 0 1px border"                  # default depth — a
+                                                     # border-like halo
+  raised:        "rgba(0,0,0,0.05) 0 4px 24px"       # whisper shadow —
+                                                     # overlays/floating
+                                                     # elements ONLY
+  # Ring shadows replace the previous tonal-only policy. No drop shadows
+  # beyond the one whisper level. No gradients.
 
-- **Ink (`{colors.ink}`)** is the voice: body text, primary buttons, the inverted hero panel, selected navigation. Deep green, not black — the journal is organic, not corporate.
-- **Paper (`{colors.paper}`)** is the page; **Surface (`{colors.surface}`)** is a card or panel sitting on the page; **Soft (`{colors.soft}`)** is the sidebar and quiet fill beneath callouts and answer rows. Tonal layering paper → soft → surface does the work shadows do elsewhere.
-- **Line (`{colors.line}`)** and **Line-strong (`{colors.line-strong}`)** are hairline separators — 1px, never heavier. Structure is drawn, not shadowed.
-- **Lime (`{colors.lime}`)** is the single attention color: hero labels, overlines on ink, sample badges, the in-flight arrow, code comments, numerals in ink circles. It signals *live/attention*, never error, never decoration on paper surfaces — a product-wide extension of its prototype roles, decided 2026-10-21. Never place lime text on paper; its contrast role is on ink or as a background fill with ink text.
-- **Olive (`{colors.olive}`)** is confirmation and focus: the focus ring, selected answer borders, feedback rules, meter fills. Selection states are olive; lime never marks selection.
-- **Danger (`{colors.danger}`)** with **Danger-bg (`{colors.danger-bg}`)** is reserved for destructive actions and failure notices. The prototype's only red family; keep it that scarce.
-- **Supporting text tones** — **Muted (`{colors.muted}`)** is secondary text; **Hero-muted (`{colors.hero-muted}`)** and **Hero-line (`{colors.hero-line}`)** are the legible quieter tones on ink panels; `{colors.disabled-bg}` / `{colors.disabled-fg}` / `{colors.disabled-border}` dress inactive controls.
-- **Control boundary tones** — `{colors.input-border}` edges every field and resting option row (darkened one step from the prototype's `#89998e`, decided 2026-10-21, so a control boundary reaches 3:1 on every light surface); `{colors.input-border-soft}` is decorative only — figure rules and quiet dividers, never the sole cue that identifies a control.
+borders:
+  hairline:      "1px solid border"        # cards, topnav, separators
+  emphasized:    "1px solid border-soft"   # section dividers
+  input:         "1px solid meta"          # 3:1 non-text contrast floor
 
-Light mode only (decided 2026-10-21; dark tokens are deferred until a real need is named). No gradients.
+focus:
+  ring:          "0 0 0 3px rgba(56,152,236,0.3)"    # on :focus-visible
+  input:         "border-color #3898ec + ring"       # the one cool-color
+                                                     # moment
 
-**Contrast (measured, WCAG 2.2).** Every text pairing meets AA for normal text; all but muted and olive meet AAA. Disabled text (5.0:1) is exempt but still legible. New pairings — text or non-text — must be measured, not eyeballed.
+motion:
+  fast:          150ms   # hover / press
+  base:          200ms   # panels, expands (was proposed 250ms — trimmed)
+  ease:          "cubic-bezier(0.2, 0, 0, 1)"
+  reduced:       "prefers-reduced-motion collapses all of the above to ≤10ms"
+  # No essential information is ever conveyed by motion alone.
 
-| Text pairing | Ratio | Level |
+icons:
+  family:        inline monoline SVG
+  stroke:        1.5px, round caps and joins
+  sizes:         [16, 20, 24]    # 20px in nav
+  # No emoji as functional icons; no icon packages (CSP/dependency floor).
+
+layout:
+  sidebar:       240px   # collapses to top nav below 850px
+  content-cap:   1400px  # app (prototype screens use 1080–1200px)
+  breakpoints:   [1700, 1100, 850, 600]   # floor 360px
+  touch-targets: { min: 44px, answer-rows: 64px }
+```
+
+---
+
+## 1. Design principles
+
+Carried over unchanged from the validated spine; the revision changes how they are *expressed*, not what they are.
+
+1. **Warm, not sterile.** The parchment canvas and warm-only neutral ramp are the personality. Every gray carries a yellow-brown undertone; the single cool color (Focus Blue) exists for accessibility only.
+2. **Honest states.** No fake data, no decorative progress, no estimated numbers rendered as fact. Empty evidence renders as an empty track labeled "No evidence yet"; missing data renders as "—"; session meters are labeled "session only — not a stored score".
+3. **No gamification.** No XP, streaks, confetti. Missed answers and paused reviews are neutral or amber, never red-alarmed. Friendly ≠ gamified.
+4. **Editorial pacing.** Serif display type at weight 500 sets a literary cadence; generous section spacing (48–96px vertical rhythm) lets each screen breathe.
+5. **Restraint with color.** One accent, at most two chromatic uses per view (default budget: eyebrow/selected-state + primary CTA). Terracotta never carries data-dense encodings like progress meters.
+6. **Status is never color alone.** Every status pill pairs its tint with a dot + text label.
+
+## 2. Color semantics (revised)
+
+| Semantic | Token | Notes |
 |---|---|---|
-| ink on paper · surface · soft | 11.2 · 12.0 · 10.5 | AAA |
-| ink on selected-bg · current-course | 10.8 · 10.5 | AAA |
-| muted on paper · surface · soft | 5.9 · 6.3 · 5.5 | AA |
-| surface on ink (hero) | 12.0 | AAA |
-| hero-muted on ink | 9.3 | AAA |
-| lime on ink / ink on lime | 9.1 | AAA |
-| olive on paper · selected-bg | 6.1 · 5.9 | AA |
-| danger on danger-bg | 7.7 | AAA |
-| white on danger | 8.6 | AAA |
-| code-text on ink | 10.7 | AAA |
+| Attention / live / selected answer | `--accent` Terracotta | Selected answer = terracotta border + 6% tint fill; borders/dots/large text |
+| Primary action / small accent text | `--accent-strong` Deep Terracotta | One primary CTA per view; small pill/link/label text in accent |
+| Confirmed / mastered / completed | `--success` | Pills, "Reviewed" states, meter-green variant |
+| Partial / missed / needs work / validation | `--warn` | Always on a 10–12% tinted plate; **never** danger |
+| Destructive / danger zone | `--danger` Error Crimson | Scarce: deletion flows, error text. Appears once per flow at most |
+| Selection in lists & nav | `--surface-warm` Warm Sand | Neutral fill, no chromatic color |
+| Keyboard focus | Focus Blue ring | 3px halo at 30% + input border `#3898ec` |
 
-| Non-text pairing (1.4.11, ≥3:1 for anything identifying a control or state) | Ratio |
-|---|---|
-| input-border on surface · paper · soft · selected-bg | 3.6 · 3.3 · 3.1 · 3.2 |
-| olive focus ring on paper · surface · soft | 6.1 · 6.6 · 5.7 |
-| lime focus ring on ink | 9.1 |
-| selected answer border (olive on selected-bg) | 5.9 |
-| meter fill vs track (olive on soft) | 5.7 |
-| hairline separators (`{colors.line}`) — decorative, never the only cue | 1.4 |
-| callout left rule (`{colors.olive-soft}` on soft) — decorative, never the only cue | 2.1 |
+This **replaces** the previous lime = attention/live, olive = selection/confirmed/focus mapping. Meter fills for recorded evidence are dark `--fg-2`, not terracotta (screen-9 decision: with multiple meters on one screen, accent fills break the accent budget, and dark ink reads as "recorded fact" rather than "attention").
 
-## Typography
+## 3. Typography
 
-Two voices. Georgia carries the editorial moment: `{typography.display-xl}` for page titles (optically tightened, `text-wrap: balance`), `{typography.display}` for section heads, `{typography.title-md}`/`{typography.title-sm}` for card titles, `{typography.metric}` for the rare big number. The system sans carries all work: `{typography.body}` at the product's compact 14px-equivalent density, `{typography.meta}` and `{typography.fine}` for secondary matter. `{typography.overline}` (tracked-out 0.14em) labels sections and nav groups; `{typography.tagline}` is reserved for the brand caption. `{typography.mono}` is for code, file names, answer letters, sequence numbers — anything machine-adjacent.
+- **Display:** Georgia serif, weight 500, tight leading (1.1–1.2). Scale anchors: 52px section headings, 32px sub, 25px card titles, 64px hero (demo/overview only). Weight 500 is the ceiling.
+- **Body/UI:** system sans stack, 16px/1.6 body, 14px captions, 15px buttons/inputs, 10px +0.5px uppercase overlines.
+- **Mono:** ui-monospace for code and **all metrics** (tabular-nums), so numbers align in tables and meters.
+- **Dependencies:** zero. The type upgrade was resolved with Georgia + system stacks; a self-hosted characterful serif (e.g. Fraunces) remains an optional future decision requiring plan authorization, and is no longer load-bearing for "designed, not default".
 
-Serif is punctuation, not default: body text never sets Georgia; display sizes never set the sans. Big display moments appear at most once per view. Size floor: anything a person must read to act or to understand their evidence — rules, receipts, scoring caveats, approval records — is set at `{typography.meta}` (12px) or larger; `{typography.fine}` and `{typography.tagline}` are for furniture and brand decoration only.
+## 4. Shape, depth, motion, iconography
 
-## Layout & Spacing
+- **Geometry:** 8 / 12 / 16 / 9999px radius scale (was 4 / 3.2 / 32). Cards and standard buttons at 8, inputs and primary buttons at 12, featured containers at 16.
+- **Depth:** ring shadows (`0 0 0 1px`) are the default elevation — a border-like halo, not a shadow. One whisper shadow (`rgba(0,0,0,.05) 0 4px 24px`) is permitted on overlays and floating elements only. No gradients anywhere.
+- **Motion:** 150ms hover/press, 200ms panels, `cubic-bezier(0.2,0,0,1)`; all gated by `prefers-reduced-motion` (collapses to ≤10ms).
+- **Icons:** inline monoline SVG, 1.5px stroke, round caps, 16/20/24px. No emoji as functional icons, no icon package dependency.
 
-A two-pane workspace: sidebar (`{spacing.sidebar-width}`, `{colors.soft}`, sticky) + content column capped at `{spacing.content-max}`, centered. Content padding is fluid (`{spacing.margin-desktop}` desktop, `{spacing.margin-mobile}` at ≤600px). The spacing scale is the prototype's rem ladder — `{spacing.xs}` to `{spacing.4xl}`; the big steps (2–3rem) separate major sections; small steps sit inside components. Forms stack vertically with `{spacing.md}` gaps; the primary action follows the inputs; destructive actions live in a separated danger zone at the foot of a view, never inline with primary work.
+## 5. Accessibility floor (unchanged)
 
-Asymmetric two-column article grids (content ~1.8fr / aside 1fr) drive lesson, practice and progress views; three-up grids only for roadmap nodes and evidence columns, collapsing to one column by 600px. Avoid dense horizontal tables at narrow widths — rows re-flow; they don't scroll sideways.
+- WCAG 2.2 AA: body text ≥4.5:1, large text ≥3:1, UI borders/icons ≥3:1 on their background. Input borders use `--meta` for exactly this reason.
+- Focus ring visible on every interactive element, including on dark Near Black surfaces.
+- Touch targets ≥44px; answer rows ≥64px.
+- Layouts hold at 360px single-column; sidebar 240px → top nav below 850px; content cap ~1400px.
+- Skip-to-content, dialog keyboard contract (focus in on open, Esc/backdrop close, focus returns on close), consistent help footer.
+- `prefers-reduced-motion` respected; no essential information by motion alone.
 
-## Elevation & Depth
+## 6. Honesty & content constraints (unchanged)
 
-Depth is **tonal, not shadowed**: `{colors.soft}` against `{colors.paper}`, `{colors.surface}` panels against both, and ink-inverted panels (`{components.hero}`) for the single most important moment on a view. Hairline borders in `{colors.line}` separate; the only sanctioned "lift" is the ink hero or a lime fill, not a box-shadow. No shadow tokens exist in either prototype stylesheet; introducing shadows would break the system.
+- Light mode only (dark deferred); English-only (Cantonese support is a recorded future risk).
+- Every demo screen carries a permanent **"Sample prototype · No live AI"** label; tracer screens carry **"Local tracer — not approved for real data"**.
+- Self-hostable assets only: CSP `font-src 'self'`, `img-src 'self' data:` — no CDN fonts, no external imagery, no icon packages.
+- No UI component library — hand-rolled CSS on Tailwind base + CSS Modules; the `*.module.css` Tailwind-loader exclusion is preserved.
 
-## Shapes
+## 7. Component kit (styling specs)
 
-Corners are modest and functional: `{rounded.sm}` on controls, inputs, and code; `{rounded.md}` on panels, cards, and hero; `{rounded.full}` for tags and status badges, and on square glyphs (numbered steps, diagram points) where it renders a circle. The prototype's 0.2rem input radius and 2rem badge radius are normalized to `{rounded.sm}` and `{rounded.full}`, respectively. Imagery and code blocks follow their container's radius exactly.
+Canonical, interactive specs live in `foundations.html`. Summary of the recipes the screens actually use:
 
-## Components
+- **Buttons** (all 44px min-height, 12px radius, 15px/500): primary = Deep Terracotta (`--accent-strong`) + Ivory text + 1px self-ring, hover/active darken 8%/14% in OKLab; secondary = Warm Sand + Dark Warm text + ring; quiet = transparent + Border Warm, hover border → Stone Gray; danger = transparent + Error Crimson text/border, hover gains an 8% danger tint; disabled = opacity .45, no transform.
+- **Inputs/textarea:** 44px min-height, 12px radius, `1px solid --meta` (3:1 floor), Ivory bg, focus = Focus Blue border + ring. Placeholders in Stone Gray.
+- **Answer rows:** 64px min-height, 12px radius, hairline border; selected = terracotta border + 6% tint + filled radio dot; hover border → Stone Gray; locked/answered rows get no hover color change.
+- **Pills:** pill radius, 12px/500, dot + label always; variants = accent (12% tint), muted (Warm Sand), success (12% tint, darkened text), warn (10–12% plate), danger (10% tint — scarce).
+- **Meters:** 8px pill track in Warm Sand; evidence fills in `--fg-2`; green variant for mastered. Empty evidence = empty track + "No evidence yet", never a fabricated 0%.
+- **Cards:** Ivory, hairline Cream border, 8px radius, 24px padding; featured containers 16px.
+- **Callouts:** 2px terracotta left rule on Ivory; serif variant for promise/quotes.
+- **Code blocks:** Near Black bg, Warm Sand text, 12px radius, mono 14px/1.6.
+- **Notices/inline errors:** 10% warn plate + 35% warn border, Dark Warm text, 12px radius.
+- **Dialogs/toasts:** overlays carry the whisper shadow; focus-managed per §5; reduced-motion gated.
+- **Nav:** 240px sidebar (Warm Sand selected fill) → top nav below 850px; sticky topnav with blurred Parchment at 92%.
 
-Each component names its behavior-free visual contract; behavior lives in EXPERIENCE.md.
+## 8. Changelog vs the previous spine
 
-- **Buttons** — `{components.button-primary}` (ink fill), `{components.button-lime}` (the single attention-CTA, used sparingly: sample-mode cues, demo entries), `{components.button-secondary}` (outline), `{components.button-danger}` (destructive only). All 44px minimum height; hover underlines rather than glowing; disabled uses `{colors.disabled-bg}` / `{colors.disabled-fg}` / `{colors.disabled-border}` with unchanged layout.
-- **Input** — `{components.input}`: text fields, selects, textareas and the file picker share one contract — white field on any light surface, `{colors.input-border}` edge, `{rounded.sm}`, 44px minimum height, textareas 96px minimum with vertical resize, labels in `{typography.body}` semibold above the field. Checkboxes and radios stay native with `accent-color` ink; when a choice needs a large target it becomes an answer option.
-- **Panel** — `{components.panel}`; the default container for forms, evidence and settings groups.
-- **Hero** — `{components.hero}`: the ink-inverted opener (library welcome, lesson opener); lime labels via `{colors.lime}`, quieter text in `{colors.hero-muted}`, internal rules in `{colors.hero-line}`. At most one per view.
-- **Roadmap node** — `{components.roadmap-node}`: card per mini-course with course number overline, serif title, status text; the current course tints with `{colors.current-course}`. Status is text + pill indicators, never icon-only.
-- **Callout / rule note** — `{components.callout}`: the field-journal aside (lesson promise, scoring rule, notebook tip). Serif lead line allowed at `{typography.title-sm}`.
-- **Answer option** — `{components.answer-option}`: generous 64px rows edged in `{colors.input-border}`; selected state is `{colors.selected-bg}` with a 2px `{colors.olive}` border (border growth compensated by padding so text never shifts).
-- **Feedback** — `{components.feedback}`: post-submission explanation block, olive-ruled; meta line in `{typography.fine}`.
-- **Code block** — `{components.code-block}`: ink background for inline/course code; comments in lime.
-- **Notice** — `{components.notice}`: errors and warnings; danger-ruled on `{colors.danger-bg}`.
-- **Pill / sample badge** — `{components.pill}` for status; `{components.sample-badge}` marks sample/test-mode surfaces (visibility rules: EXPERIENCE.md, Sample badge).
-- **Evidence meter** — `{components.evidence-meter}`: native meter semantics, olive fill on soft track (labeling rules: EXPERIENCE.md, Accessibility Floor).
-- **Focus ring** — `{components.focus-ring}`: olive on paper, surface, and soft; lime (`outline-on-ink`) on ink surfaces such as the hero and code block, where olive would vanish (universality rules: EXPERIENCE.md, Interaction Primitives).
+Each revisited decision needs an explicit memlog entry in the ux folder when this revision is adopted (§9 stubs below).
 
-## Do's and Don'ts
+**Revisited (5):**
 
-| Do | Don't |
-|---|---|
-| Use lime for *attention/live* and olive for *selection/confirmed* | Swap them, or use lime decoratively on paper surfaces |
-| Serif for one display moment per view | Set body copy in Georgia, or headlines in the sans |
-| Hairlines (`{colors.line}`) and tonal layers for structure | Box-shadows, gradients, or borders heavier than 1px |
-| Text + status together ("Completed", "Review due") | Icon-only state, or color-only meaning |
-| 44px touch targets, 64px answer rows, olive focus ring (lime on ink) | Shrink targets below the floor, remove focus outlines |
-| Consequential text at 12px or larger; `fine` for furniture only | Set rules, receipts or evidence caveats in `fine` or `tagline` |
-| Keep danger red scarce (destruction, failure) | Red for emphasis, branding or "you're behind" pressure |
-| Plain completion — a state change, not a celebration | Confetti, streaks, XP, or animated praise |
+1. **Shadows.** Tonal-only is replaced by ring shadows (`0 0 0 1px` warm hairlines) plus one whisper shadow restricted to overlays/floating elements. No gradients. (Brief §3 move 4.)
+2. **Color semantics.** Lime/olive mapping replaced by §2's table: terracotta = attention/live/selected/primary; green = confirmed/mastered; list/nav selection = neutral Warm Sand; focus = Focus Blue. Status never color alone.
+3. **Palette identity.** The green-ink identity is retired in favor of the warm-neutral + terracotta system (Direction B variant executed on the active openDesign design system). Largest departure from the brief's original "evolve, don't discard" stance; was an explicit working-session instruction.
+4. **Typography dependency.** Resolved to zero new dependencies — Georgia + system stacks only. A self-hosted serif remains an option, not a requirement.
+5. **Motion timings.** Panels 200ms (was proposed 250ms).
+
+**Refined within the revision (2026-10-23 a11y sweep, no new spine decision):** `--meta` darkened `#87867f → #6d6c64` and `--accent-strong #a55236` (+hover/active) added after numeric contrast verification found 3.3:1 metadata text and 3.7:1 primary-button labels — both below the §5 floor. `#c96442` is retained for 3:1-context uses only (borders, fills, dots, large text). Skip-to-content links added to every screen (floor item that had not landed).
+
+**Kept intact:** light mode only; English-only; no gamification; honest states; no UI component library; WCAG 2.2 AA floor; CSP self-hosting constraint; breakpoints, 240px sidebar, 1400px content cap, 44px/64px targets.
+
+**Behavior changes:** none. All 22 screens + setup flow + states gallery follow the validated experience spine; no experience-spine amendments to flag.
+
+## 9. Memlog entries to write on adoption
+
+One entry per revisited decision, to be filed in `_bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/` when this DESIGN.md revision is adopted:
+
+1. `memlog: elevation policy — tonal-only → ring shadows + whisper overlay shadow` (rationale: modern-warm depth without breaking the no-gradients rule; overlays only).
+2. `memlog: color semantics — lime/olive → terracotta/success/warn mapping` (rationale: single-accent budget; contrast pairs re-validated on parchment; amber replaces red for missed/partial states).
+3. `memlog: palette identity — green ink retired for warm-neutral + terracotta` (rationale: explicit working-session direction; largest departure, recorded deliberately).
+4. `memlog: typography — Georgia/system stacks adopted, webfont dependency dropped` (rationale: "designed, not default" achieved without a plan-authorized dependency; CSP untouched).
+5. `memlog: motion — panel timing 250ms → 200ms` (rationale: trim for calm; reduced-motion gating unchanged).
+6. `memlog: a11y conformance fixes — meta gray darkened, deep-terracotta action token added` (rationale: 2026-10-23 sweep found sub-4.5:1 pairs at small sizes; token-level fix keeps the WCAG 2.2 AA floor without altering semantics).
+
+## 10. What ships with this revision
+
+- `foundations.html` — token sheet + component kit (canonical styling specs, §7).
+- 22 screen files (Groups 1–3), `setup-flow.html` (U0–U8), `states.html` (system-states gallery); `index.html` launcher.
+- `exports/` — 52 per-screen PNGs: `<screen>-desktop.png` at 1440px and `<screen>-mobile.png` at 360px. Sticky chrome is rendered static in captures; faint seam lines in tall pages are exporter tiling artifacts.
+- Redesign brief §3 "Decision recorded" + §9 changelog — per-screen design decisions and their rationale, plus the 2026-10-23 accessibility-sweep results.
+- Accessibility sweep (build-order step 5): **done 2026-10-23** — see §8 "Refined within the revision" and brief §9.

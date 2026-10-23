@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mini-course player (full) · Fieldnotes redesign</title>
+  <style>
+    :root {
+      --bg: #f5f4ed;
+      --surface: #faf9f5;
+      --surface-warm: #e8e6dc;
+      --fg: #141413;
+      --fg-2: #3d3d3a;
+      --muted: #5e5d59;
+      --meta: #6d6c64;
+      --border: #f0eee6;
+      --border-soft: #e8e6dc;
+      --accent: #c96442;
+      --accent-on: #faf9f5;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
+    --accent-strong: #a55236;
+    --accent-strong-hover: color-mix(in oklab, var(--accent-strong), black 8%);
+    --accent-strong-active: color-mix(in oklab, var(--accent-strong), black 14%);
+      --success: #17a34a;
+      --warn: #eab308;
+      --danger: #b53333;
+      --font-display: "Anthropic Serif", Georgia, "Times New Roman", serif;
+      --font-body: "Anthropic Sans", "Arial", system-ui, -apple-system, sans-serif;
+      --font-mono: "Anthropic Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+      --text-xs: 10px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 20px;
+      --text-xl: 25px;
+      --text-2xl: 32px;
+      --text-3xl: 52px;
+      --text-4xl: 64px;
+      --leading-body: 1.6;
+      --leading-tight: 1.1;
+      --tracking-display: 0em;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --section-y-desktop: 96px;
+      --section-y-tablet: 64px;
+      --section-y-phone: 48px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-pill: 9999px;
+      --elev-flat: none;
+      --elev-ring: 0 0 0 1px var(--border);
+      --elev-raised: rgba(0, 0, 0, 0.05) 0px 4px 24px;
+      --focus-ring: 0 0 0 3px rgba(56, 152, 236, 0.3);
+      --motion-fast: 150ms;
+      --motion-base: 200ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+      --container-max: 1200px;
+      --container-gutter-desktop: 24px;
+      --container-gutter-tablet: 16px;
+      --container-gutter-phone: 12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      line-height: var(--leading-body);
+      -webkit-font-smoothing: antialiased;
+    }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; text-decoration: none; }
+    button { font: inherit; cursor: pointer; }
+    p { text-wrap: pretty; }
+    h1, h2, h3 { text-wrap: balance; }
+    :focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+    .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .sidebar {
+      border-right: 1px solid var(--border-soft);
+      background: var(--surface);
+      padding: var(--space-5) var(--space-4);
+      display: flex; flex-direction: column; gap: var(--space-6);
+      position: sticky; top: 0; height: 100vh;
+    }
+    .sidebar .logo { font-family: var(--font-display); font-weight: 500; font-size: 22px; padding-inline: var(--space-2); }
+    .side-nav { display: flex; flex-direction: column; gap: 2px; }
+    .side-nav a { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 15px; transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard); }
+    .side-nav a svg { width: 20px; height: 20px; flex: none; }
+    .side-nav a:hover { background: var(--surface-warm); color: var(--fg); }
+    .side-nav a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    .side-foot { margin-top: auto; padding: var(--space-3); border-top: 1px solid var(--border); font-size: 12px; color: var(--meta); }
+
+    .lesson-map { border-top: 1px solid var(--border); padding-top: var(--space-4); }
+    .lesson-map .map-title { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); padding-inline: var(--space-3); margin: 0 0 var(--space-2); }
+    .lesson-map ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+    .lesson-map a { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; padding: 0 var(--space-3); border-radius: var(--radius-sm); font-size: 14px; color: var(--muted); }
+    .lesson-map a:hover { background: var(--surface-warm); color: var(--fg); }
+    .lesson-map a[aria-current="step"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    .lesson-map .step-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; border: 1.5px solid var(--meta); }
+    .lesson-map a[aria-current="step"] .step-dot { border-color: var(--accent); background: var(--accent); }
+    .lesson-map .done .step-dot { border-color: var(--success); background: var(--success); }
+    .lesson-map .step-icon { width: 16px; height: 16px; flex: none; }
+    .lesson-map .step-name { flex: 1; min-width: 0; }
+
+    .topnav-mobile { display: none; }
+    @media (max-width: 850px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .topnav-mobile { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-soft); background: var(--surface); overflow-x: auto; position: sticky; top: 0; z-index: 6; }
+      .topnav-mobile .logo { font-family: var(--font-display); font-weight: 500; font-size: 18px; margin-right: var(--space-2); flex: none; }
+      .topnav-mobile a { flex: none; min-height: 44px; display: inline-flex; align-items: center; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 14px; }
+      .topnav-mobile a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    }
+
+    .main { min-width: 0; display: flex; flex-direction: column; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-8); border-bottom: 1px solid var(--border-soft); background: color-mix(in oklab, var(--bg) 92%, transparent); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 5; }
+    @media (max-width: 850px) { .topbar { padding: var(--space-3) var(--space-4); position: static; } }
+    .content { padding: var(--space-8); max-width: 1160px; width: 100%; margin-inline: auto; }
+    @media (max-width: 850px) { .content { padding: var(--space-5) var(--space-4); } }
+
+    .player { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--space-8); align-items: start; }
+    @media (max-width: 1100px) { .player { grid-template-columns: 1fr; } }
+
+    h1 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-2xl); line-height: 1.2; margin: 0; }
+    h2 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-xl); line-height: 1.2; margin: 0; }
+    .lesson-body p { margin: 0 0 var(--space-5); max-width: 64ch; }
+    .lesson-body .lead-in { font-family: var(--font-display); font-size: var(--text-lg); line-height: 1.5; color: var(--fg-2); }
+    .meta { font-family: var(--font-mono); font-size: 12px; color: var(--meta); }
+    .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-5); border-radius: var(--radius-md); border: 1px solid transparent; font-size: 15px; font-weight: 500; transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard); }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent-strong); color: var(--accent-on); box-shadow: 0 0 0 1px var(--accent-strong); }
+    .btn-primary:hover { background: var(--accent-strong-hover); box-shadow: 0 0 0 1px var(--accent-strong-hover); }
+    .btn-secondary { background: var(--surface-warm); color: var(--fg-2); box-shadow: 0 0 0 1px color-mix(in oklab, var(--surface-warm), black 8%); }
+    .btn-secondary:hover { background: color-mix(in oklab, var(--surface-warm), black 5%); }
+    .btn:disabled { background: var(--surface-warm); color: var(--meta); box-shadow: 0 0 0 1px var(--border-soft); cursor: not-allowed; }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 500; letter-spacing: 0.12px; }
+    .pill-muted { background: var(--surface-warm); color: var(--fg-2); }
+    .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    .codeblock { background: var(--fg); color: var(--surface-warm); border-radius: var(--radius-md); padding: var(--space-5) var(--space-6); font-family: var(--font-mono); font-size: 14px; line-height: 1.6; overflow-x: auto; margin: var(--space-6) 0; }
+    .codeblock .cm { color: var(--meta); }
+    .codeblock .fn { color: #d97757; }
+
+    .notebook { position: sticky; top: 88px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); }
+    .notebook h2 { font-size: 17px; margin-bottom: var(--space-2); }
+    .notebook .nb-help { font-size: 13px; color: var(--muted); margin: 0 0 var(--space-4); }
+    .notebook textarea { width: 100%; min-height: 140px; resize: vertical; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); background: var(--bg); padding: var(--space-3); font: inherit; font-size: 14px; line-height: 1.6; color: var(--fg); }
+    .notebook textarea:focus-visible { border-color: #3898ec; box-shadow: var(--focus-ring); }
+    .nb-saved { font-size: 12px; color: var(--meta); margin-top: var(--space-2); }
+    @media (max-width: 1100px) { .notebook { position: static; } }
+
+    .lesson-nav { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; margin-top: var(--space-8); padding-top: var(--space-6); border-top: 1px solid var(--border-soft); }
+    .pagefoot { border-top: 1px solid var(--border-soft); padding: var(--space-5) var(--space-8); color: var(--meta); font-size: 12px; }
+
+    .step-panel[hidden] { display: none; }
+    .step-kicker { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin: 0 0 var(--space-3); }
+    .step-panel h1 { margin-bottom: var(--space-6); }
+
+    .img-placeholder { border: 1.5px dashed var(--meta); border-radius: var(--radius-md); background: var(--bg); min-height: 220px; display: grid; place-items: center; text-align: center; padding: var(--space-6); margin: 0; }
+    .img-placeholder svg { width: 32px; height: 32px; margin: 0 auto var(--space-3); color: var(--meta); }
+    .img-placeholder .ph-label { font-size: 13px; color: var(--meta); margin: 0; max-width: none; }
+    .fig-cap { font-size: 13px; color: var(--meta); margin: var(--space-2) 0 var(--space-6); max-width: none; }
+
+    .sim-controls { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-4); }
+    .sim-controls label { font-size: 14px; font-weight: 500; color: var(--fg-2); }
+    .sim-controls input[type="range"] { flex: 1; min-width: 180px; min-height: 44px; accent-color: var(--fg); }
+    .sim-readout { font-family: var(--font-mono); font-size: 14px; color: var(--fg); background: var(--surface-warm); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); }
+    .sim-figure { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); margin-bottom: var(--space-3); }
+    .sim-figure svg { width: 100%; height: auto; }
+    .sim-status { font-size: 14px; color: var(--fg-2); margin: 0 0 var(--space-2); }
+    .sim-cap { font-size: 13px; color: var(--meta); margin: 0; }
+
+    .interviewer { background: var(--surface); box-shadow: var(--elev-ring); border-radius: var(--radius-md); padding: var(--space-5) var(--space-6); margin-bottom: var(--space-5); }
+    .interviewer .who { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin: 0 0 var(--space-2); }
+    .interviewer .prompt { font-family: var(--font-display); font-size: var(--text-lg); line-height: 1.5; color: var(--fg); margin: 0; max-width: none; }
+    .rp-label { display: block; font-size: 14px; font-weight: 500; color: var(--fg-2); margin-bottom: var(--space-2); }
+    .rp-input { width: 100%; min-height: 120px; resize: vertical; border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: var(--surface); padding: var(--space-3) var(--space-4); font: inherit; font-size: 15px; line-height: 1.6; color: var(--fg); margin-bottom: var(--space-4); }
+    .rp-sample { display: none; background: var(--surface-warm); border-radius: var(--radius-md); padding: var(--space-5) var(--space-6); margin-top: var(--space-4); }
+    .rp-sample.show { display: block; }
+    .rp-sample .who { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin: 0 0 var(--space-2); }
+    .rp-sample p { margin: 0; font-size: 15px; color: var(--fg-2); }
+
+    .mg-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+    .mg-card { min-height: 88px; border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: var(--surface); padding: var(--space-3) var(--space-4); display: flex; flex-direction: column; justify-content: center; gap: var(--space-1); text-align: left; transition: border-color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard); }
+    .mg-card:hover { border-color: var(--meta); }
+    .mg-card .mg-kind { font-size: 11px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); }
+    .mg-card .mg-face { font-size: 15px; color: var(--fg); }
+    .mg-card.selected { border-color: var(--fg); background: var(--surface-warm); }
+    .mg-card.matched { border-color: var(--success); background: color-mix(in oklab, var(--success) 7%, var(--surface)); cursor: default; }
+    .mg-card.missed { border-color: color-mix(in oklab, var(--warn) 70%, black); background: color-mix(in oklab, var(--warn) 10%, var(--surface)); }
+    .mg-status { font-size: 14px; color: var(--muted); margin: 0; }
+
+    .slide-card { background: var(--surface); box-shadow: var(--elev-raised); border-radius: var(--radius-lg); padding: var(--space-8); margin-bottom: var(--space-4); }
+    @media (max-width: 850px) { .slide-card { padding: var(--space-5); } }
+    .slide-card .slide-count { font-family: var(--font-mono); font-size: 12px; color: var(--meta); margin: 0 0 var(--space-4); }
+    .slide-card h2 { margin-bottom: var(--space-3); }
+    .slide-card .slide-body { font-size: 15px; color: var(--fg-2); margin: 0; }
+    .slide-nav { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-5); }
+    .transcript { background: var(--bg); border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: var(--space-5) var(--space-6); }
+    .transcript .who { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin: 0 0 var(--space-2); }
+    .transcript p { margin: 0; font-size: 15px; color: var(--fg-2); }
+
+    .code-editor { background: var(--fg); border-radius: var(--radius-md); padding: var(--space-4); margin-bottom: var(--space-4); }
+    .code-editor textarea { display: block; width: 100%; min-height: 180px; resize: vertical; border: none; background: transparent; color: var(--surface-warm); font-family: var(--font-mono); font-size: 14px; line-height: 1.6; padding: var(--space-2); }
+    .code-editor textarea:focus-visible { box-shadow: var(--focus-ring); border-radius: var(--radius-sm); }
+    .code-output { display: none; background: var(--fg); color: var(--surface-warm); border-radius: var(--radius-md); padding: var(--space-5) var(--space-6); font-family: var(--font-mono); font-size: 14px; line-height: 1.7; margin-top: var(--space-4); }
+    .code-output.show { display: block; }
+    .code-output .who { font-family: var(--font-body); font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin: 0 0 var(--space-3); }
+    .code-output pre { margin: 0; white-space: pre-wrap; }
+
+    .step-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+    .complete-note { display: none; font-size: 14px; color: var(--fg-2); margin: var(--space-4) 0 0; }
+    .complete-note.show { display: block; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
+  
+    .skip-link{position:absolute;left:16px;top:-56px;z-index:200;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:var(--radius-sm,8px);font:500 14px var(--font-body);text-decoration:none;transition:top var(--motion-fast,150ms) var(--ease-standard,ease)}
+    .skip-link:focus-visible{top:12px;outline:none;box-shadow:var(--focus-ring)}
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+    <div class="app" data-od-id="app-shell">
+    <nav class="topnav-mobile" aria-label="Primary">
+      <span class="logo">Fieldnotes</span>
+      <a href="index.html">Overview</a>
+      <a href="library.html">Saved</a>
+      <a href="#" aria-current="page">Course</a>
+      <a href="practice.html">Practice</a>
+      <a href="progress.html">Progress</a>
+      <a href="review-inbox.html">Review</a>
+    </nav>
+
+    <aside class="sidebar" data-od-id="sidebar">
+      <a class="logo" href="index.html">Fieldnotes</a>
+      <nav class="side-nav" aria-label="Primary">
+        <a href="index.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+          Overview
+        </a>
+        <a href="library.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+          Saved studies
+        </a>
+        <a href="course-player.html" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4V8z"/></svg>
+          Course player
+        </a>
+        <a href="practice.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          Practice
+        </a>
+        <a href="progress.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 3 5-6"/></svg>
+          Progress
+        </a>
+        <a href="review-inbox.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+          Review inbox
+        </a>
+      </nav>
+      <div class="lesson-map" data-od-id="lesson-map">
+        <p class="map-title">How neural networks learn</p>
+        <ol id="step-list">
+          <li><a href="#" data-step="0">
+            <span class="step-dot"></span>
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+            <span class="step-name">The hillside you can't see</span>
+          </a></li>
+          <li><a href="#" data-step="1">
+            <span class="step-dot"></span>
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+            <span class="step-name">Feel the step size</span>
+          </a></li>
+          <li><a href="#" data-step="2">
+            <span class="step-dot"></span>
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <span class="step-name">Mock interview</span>
+          </a></li>
+          <li><a href="#" data-step="3">
+            <span class="step-dot"></span>
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            <span class="step-name">Match the terms</span>
+          </a></li>
+          <li><a href="#" data-step="4">
+            <span class="step-dot"></span>
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="m10 8 4 2.5-4 2.5V8z"/><path d="M8 21h8"/></svg>
+            <span class="step-name">Narrated slides</span>
+          </a></li>
+          <li><a href="#" data-step="5">
+            <span class="step-dot"></span>
+            <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m8 6-6 6 6 6"/><path d="m16 6 6 6-6 6"/></svg>
+            <span class="step-name">Code one step</span>
+          </a></li>
+        </ol>
+      </div>
+      <div class="side-foot">Sample prototype · No live AI</div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar" data-od-id="topbar">
+        <span class="meta" id="topbar-meta">Step 1 of 6 · Text + images · ~4 min</span>
+        <span class="pill pill-muted"><span class="dot"></span>Sample prototype · No live AI</span>
+      </header>
+
+      <main class="content" id="content">
+        <div class="player">
+          <article class="lesson-body" data-od-id="lesson-body">
+
+            <section class="step-panel" id="panel-text" data-od-id="step-panel-text" aria-labelledby="h-text">
+              <p class="step-kicker">Step 1 · Text + images</p>
+              <h1 id="h-text">The hillside you can't see</h1>
+              <p class="lead-in">Imagine standing on a hillside in thick fog. You can't see the valley, but you can feel the slope under your feet. Gradient descent is the strategy of always stepping slightly downhill.</p>
+              <p>The loss function is that hillside. Each weight in the network is a coordinate of your position, and the loss is your altitude — how wrong the model currently is. You can't jump to the bottom, because you don't know where it is. What you <em>can</em> do is measure the local slope: the gradient. It points uphill, so you step the other way.</p>
+              <figure data-od-id="sample-figure">
+                <div class="img-placeholder" role="img" aria-label="Sample image placeholder showing where a hillside diagram would appear">
+                  <div>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                    <p class="ph-label">Sample image placeholder<br />Final art self-hosted per CSP</p>
+                  </div>
+                </div>
+                <figcaption class="fig-cap">Figure 1 · A hiker on the foggy hillside, mid-step downhill. Sample image placeholder — final art self-hosted per CSP.</figcaption>
+              </figure>
+              <p>Step size is the whole game. Too small, and you shuffle for hours without reaching the valley. Too big, and you leap over the valley floor entirely — the loss goes <em>up</em>, and the next step leaps even further. The next step lets you feel that difference with your own hands.</p>
+            </section>
+
+            <section class="step-panel" id="panel-simulation" data-od-id="step-panel-simulation" aria-labelledby="h-sim" hidden>
+              <p class="step-kicker">Step 2 · Simulation</p>
+              <h1 id="h-sim">Feel the step size</h1>
+              <p class="lead-in">Drag the learning rate and watch forty training steps on a simple one-weight model. The curve shows the loss after each step.</p>
+              <div class="sim-controls" data-od-id="sim-controls">
+                <label for="lr-slider">Learning rate</label>
+                <input type="range" id="lr-slider" data-od-id="sim-lr-slider" min="0.05" max="1.20" step="0.05" value="0.30" aria-describedby="sim-status" />
+                <span class="sim-readout num" id="lr-readout">lr = 0.30</span>
+              </div>
+              <div class="sim-figure" data-od-id="sim-figure">
+                <svg id="loss-svg" viewBox="0 0 600 240" role="img" aria-label="Loss curve over forty training steps">
+                  <line x1="20" y1="220" x2="580" y2="220" stroke="var(--border-soft)" stroke-width="1" />
+                  <line x1="20" y1="20" x2="20" y2="220" stroke="var(--border-soft)" stroke-width="1" />
+                  <text x="20" y="14" font-size="11" fill="var(--meta)">loss (clamped at 3)</text>
+                  <text x="540" y="236" font-size="11" fill="var(--meta)">40 steps</text>
+                  <path id="loss-path" fill="none" stroke="var(--fg)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" d="" />
+                </svg>
+              </div>
+              <p class="sim-status" id="sim-status" role="status"></p>
+              <p class="sim-cap">A correct tiny simulation: one weight, loss = w², gradient = 2w, update w = w − lr · 2w. Above lr = 1 the steps overshoot and the loss diverges.</p>
+            </section>
+
+            <section class="step-panel" id="panel-roleplay" data-od-id="step-panel-roleplay" aria-labelledby="h-rp" hidden>
+              <p class="step-kicker">Step 3 · Role play · Mock interview</p>
+              <h1 id="h-rp">Explain it back</h1>
+              <p class="lead-in">A mock interview: answer in your own words before you peek at the sample. The interviewer prompt and the sample response were both written ahead of time.</p>
+              <div class="interviewer" data-od-id="interviewer-card">
+                <p class="who">Interviewer · prewritten prompt</p>
+                <p class="prompt">"Suppose you train a model and, right after one step, the loss jumps up instead of down. In your own words — what's the first thing you'd suspect, and why?"</p>
+              </div>
+              <label class="rp-label" for="rp-answer">Your answer (private to you)</label>
+              <textarea class="rp-input" id="rp-answer" data-od-id="roleplay-answer" placeholder="I'd suspect the step was too big, because…"></textarea>
+              <button type="button" class="btn btn-secondary" id="rp-toggle" data-od-id="roleplay-sample-toggle" aria-expanded="false" aria-controls="rp-sample">Show a sample response</button>
+              <div class="rp-sample" id="rp-sample" data-od-id="roleplay-sample">
+                <p class="who">Sample response · prewritten sample — no live AI</p>
+                <p>"The first thing I'd suspect is the learning rate. Each step moves the weights by lr times the gradient, and if that step is longer than the valley is wide, the model lands on the far wall, higher than where it started — so the loss goes up. Halving the learning rate is the usual first move, and I'd watch the next few steps to confirm the loss falls again."</p>
+              </div>
+            </section>
+
+            <section class="step-panel" id="panel-minigame" data-od-id="step-panel-minigame" aria-labelledby="h-mg" hidden>
+              <p class="step-kicker">Step 4 · Mini-game</p>
+              <h1 id="h-mg">Match the terms</h1>
+              <p class="lead-in">Six cards, three pairs. Pick a term and its meaning to clear them. Mismatches flip back — that's the practice working.</p>
+              <div class="mg-grid" id="mg-grid" data-od-id="minigame-grid"></div>
+              <p class="mg-status" id="mg-status" role="status">0 of 3 pairs matched.</p>
+            </section>
+
+            <section class="step-panel" id="panel-slides" data-od-id="step-panel-slides" aria-labelledby="h-slides" hidden>
+              <p class="step-kicker">Step 5 · AI-narrated slides</p>
+              <h1 id="h-slides">One step, narrated</h1>
+              <div class="slide-card" data-od-id="slide-card">
+                <p class="slide-count num" id="slide-count">Slide 1 of 3</p>
+                <h2 id="slide-title"></h2>
+                <p class="slide-body" id="slide-body"></p>
+              </div>
+              <div class="slide-nav" data-od-id="slide-nav">
+                <button type="button" class="btn btn-secondary" id="slide-prev" data-od-id="slide-prev">← Previous slide</button>
+                <button type="button" class="btn btn-secondary" id="slide-next" data-od-id="slide-next">Next slide →</button>
+              </div>
+              <div class="transcript" data-od-id="narration-transcript">
+                <p class="who">Narration transcript · prewritten — no live AI</p>
+                <p id="transcript-text"></p>
+              </div>
+            </section>
+
+            <section class="step-panel" id="panel-coding" data-od-id="step-panel-coding" aria-labelledby="h-code" hidden>
+              <p class="step-kicker">Step 6 · Online coding</p>
+              <h1 id="h-code">Code one step</h1>
+              <p class="lead-in">Edit the training loop, then press Run. In this prototype Run shows a prewritten sample output — no code executes here.</p>
+              <div class="code-editor" data-od-id="code-editor">
+                <textarea id="code-input" data-od-id="code-input" aria-label="Editable training loop code" spellcheck="false"># one weight, one step, forty times
+w = 2.0
+lr = 0.3
+for step in range(40):
+    grad = 2 * w        # slope of loss = w^2
+    w = w - lr * grad   # step downhill
+    if step % 10 == 0:
+        print(step, round(w * w, 4))</textarea>
+              </div>
+              <button type="button" class="btn btn-secondary" id="code-run" data-od-id="code-run">Run</button>
+              <div class="code-output" id="code-output" data-od-id="code-output" role="status">
+                <p class="who">Sample output · prewritten — no code runs in this prototype</p>
+                <pre>0 4.0
+10 0.0007
+20 0.0
+30 0.0
+
+The loss falls to zero: with lr = 0.3 each step
+shrinks the weight to 0.4 of itself, and 0.4²
+collapses fast. Try lr above 1 in the simulation
+step to see the same loop diverge.</pre>
+              </div>
+            </section>
+
+            <nav class="lesson-nav" data-od-id="step-nav" aria-label="Lesson steps">
+              <button type="button" class="btn btn-secondary" id="step-prev" data-od-id="step-prev">← Previous step</button>
+              <div class="step-actions">
+                <button type="button" class="btn btn-secondary" id="step-next" data-od-id="step-next">Next step →</button>
+                <button type="button" class="btn btn-primary" id="mark-complete" data-od-id="mark-step-complete">Mark step complete</button>
+              </div>
+            </nav>
+            <p class="complete-note" id="complete-note" data-od-id="complete-note" role="status">All six steps complete. In the full product this would update your roadmap and schedule reviews from what you practiced.</p>
+          </article>
+
+          <aside class="notebook" data-od-id="notebook" aria-labelledby="nb-h">
+            <h2 id="nb-h">Notebook</h2>
+            <p class="nb-help">Private to you. Notes save to this study automatically.</p>
+            <textarea aria-label="Lesson notes" placeholder="In my own words: the gradient tells me…"></textarea>
+            <p class="nb-saved">Saved just now · only stored on this device</p>
+          </aside>
+        </div>
+      </main>
+
+      <footer class="pagefoot" data-od-id="footer">
+        <span>Fieldnotes redesign · Mini-course player full (screen 10)</span>
+      </footer>
+    </div>
+  </div>

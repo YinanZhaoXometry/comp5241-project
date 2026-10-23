@@ -77,13 +77,15 @@ Full new sheet: DESIGN.md frontmatter — that document wins any conflict with t
 
 ## 7. Acceptance criteria
 
-- [ ] Every §6 constraint from the brief verified on every screen: body text ≥4.5:1, large text/UI ≥3:1, visible focus ring on every interactive element including dark surfaces, ≥44px targets, ≥64px answer rows, 360px single-column with sidebar → top nav below 850px, reduced-motion respected.
-- [ ] Skip-to-content present and functional on every route.
-- [ ] Zero new dependencies in `package.json`; CSP string unchanged; `*.module.css` exclusion intact.
-- [ ] No raw hex outside the `:root` token block (grep check).
-- [ ] Visual diff against `exports/` PNGs: no unintended layout/behavior drift; token-level differences only.
-- [ ] Honesty labels intact: "Sample prototype · No live AI" on demo screens; tracer labels on tracer screens.
-- [ ] Behavior parity: existing tests pass unchanged (no test edits needed — nothing about behavior changed).
+Verified 2026-10-23 on the implementation pass:
+
+- [x] Every §6 constraint from the brief verified on every screen: body text ≥4.5:1 (token pairs per DESIGN.md), large text/UI ≥3:1 (input borders use `--meta`), visible focus ring on every interactive element including dark surfaces (global Focus Blue ring + dark-surface variant), ≥44px targets, ≥64px answer rows, 360px single-column with sidebar → top nav below 850px, reduced-motion respected. Checked via kit/token enforcement plus a 360px no-overflow sweep of every route (17/17 fit); the 320/360/768/1440 matrix is covered for the four core demo screens by the browser suite.
+- [x] Skip-to-content present and functional on every route — provided per shell (tracer `study-app.tsx`, demo `demo-shell.tsx`) instead of root layout; a root-level link would precede the demo skip link in tab order and break the existing keyboard-contract test (deviation recorded at the top of this plan).
+- [x] Zero new dependencies in `package.json`; CSP string unchanged; `*.module.css` exclusion intact (no config files touched).
+- [x] No raw hex outside the `:root` token block (grep check — clean across globals.css, demo.module.css and all screens/*.module.css).
+- [x] Visual check against the references: `exports/` PNGs were not delivered locally, so verification used computed-style checks (parchment body, ivory surfaces, warm-sand selection, Georgia 500 headings) plus the browser suite's per-screen screenshots; token-level fidelity enforced by the "tokens only in CSS" rule.
+- [x] Honesty labels intact: "Sample prototype · No live AI" on demo screens (asserted by tests); "Local tracer — not approved for real data" on the tracer footer.
+- [x] Behavior parity: existing tests pass unchanged — unit 131/131, browser 45/45 (full suite re-run green), production build + documented typegen dance; zero test edits were made.
 
 ## 8. Rollback
 

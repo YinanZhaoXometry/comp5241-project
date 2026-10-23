@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Foundations · Fieldnotes redesign</title>
+  <style>
+    :root {
+      --bg: #f5f4ed;
+      --surface: #faf9f5;
+      --surface-warm: #e8e6dc;
+      --fg: #141413;
+      --fg-2: #3d3d3a;
+      --muted: #5e5d59;
+      --meta: #6d6c64;
+      --border: #f0eee6;
+      --border-soft: #e8e6dc;
+      --accent: #c96442;
+      --accent-on: #faf9f5;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
+    --accent-strong: #a55236;
+    --accent-strong-hover: color-mix(in oklab, var(--accent-strong), black 8%);
+    --accent-strong-active: color-mix(in oklab, var(--accent-strong), black 14%);
+      --success: #17a34a;
+      --warn: #eab308;
+      --danger: #b53333;
+      --font-display: "Anthropic Serif", Georgia, "Times New Roman", serif;
+      --font-body: "Anthropic Sans", "Arial", system-ui, -apple-system, sans-serif;
+      --font-mono: "Anthropic Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+      --text-xs: 10px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 20px;
+      --text-xl: 25px;
+      --text-2xl: 32px;
+      --text-3xl: 52px;
+      --text-4xl: 64px;
+      --leading-body: 1.6;
+      --leading-tight: 1.1;
+      --tracking-display: 0em;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --section-y-desktop: 96px;
+      --section-y-tablet: 64px;
+      --section-y-phone: 48px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-pill: 9999px;
+      --elev-flat: none;
+      --elev-ring: 0 0 0 1px var(--border);
+      --elev-raised: rgba(0, 0, 0, 0.05) 0px 4px 24px;
+      --focus-ring: 0 0 0 3px rgba(56, 152, 236, 0.3);
+      --motion-fast: 150ms;
+      --motion-base: 200ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+      --container-max: 1200px;
+      --container-gutter-desktop: 24px;
+      --container-gutter-tablet: 16px;
+      --container-gutter-phone: 12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      line-height: var(--leading-body);
+      -webkit-font-smoothing: antialiased;
+    }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; }
+    button { font: inherit; cursor: pointer; }
+    h1, h2, h3, h4 { text-wrap: balance; }
+    p { text-wrap: pretty; }
+
+    :focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+    .container { max-width: var(--container-max); margin-inline: auto; padding-inline: var(--container-gutter-desktop); }
+    @media (max-width: 850px) { .container { padding-inline: var(--container-gutter-tablet); } }
+    @media (max-width: 600px) { .container { padding-inline: var(--container-gutter-phone); } }
+
+    .section { padding-block: var(--section-y-tablet); }
+    .section + .section { border-top: 1px solid var(--border-soft); }
+    @media (max-width: 600px) { .section { padding-block: var(--section-y-phone); } }
+
+    /* nav */
+    .topnav { position: sticky; top: 0; z-index: 10; background: color-mix(in oklab, var(--bg) 92%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+    .topnav-inner { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding-block: 14px; }
+    .logo { font-family: var(--font-display); font-weight: 500; font-size: 20px; color: var(--fg); text-decoration: none; }
+    .topnav nav { display: flex; gap: var(--space-6); }
+    .topnav nav a { font-size: var(--text-sm); color: var(--muted); text-decoration: none; transition: color var(--motion-fast) var(--ease-standard); }
+    .topnav nav a:hover { color: var(--fg); }
+    .topnav nav a[aria-current="page"] { color: var(--fg); font-weight: 500; }
+    @media (max-width: 850px) { .topnav nav { display: none; } }
+
+    /* type */
+    h1 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-3xl); line-height: var(--leading-tight); letter-spacing: var(--tracking-display); margin: 0; }
+    h2 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-2xl); line-height: 1.2; margin: 0; }
+    h3 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-xl); line-height: 1.2; margin: 0; }
+    .lead { font-size: var(--text-lg); color: var(--muted); max-width: 56ch; margin: 0; }
+    .eyebrow { font-family: var(--font-body); font-size: var(--text-xs); letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin: 0 0 var(--space-3); }
+    .meta { font-family: var(--font-mono); font-size: 13px; color: var(--meta); }
+    .sec-head { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-8); max-width: 64ch; }
+    .sec-head p { margin: 0; color: var(--muted); }
+
+    /* swatches */
+    .swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-4); }
+    .swatch { border-radius: var(--radius-md); border: 1px solid var(--border-soft); background: var(--surface); overflow: hidden; }
+    .swatch .chip { height: 72px; border-bottom: 1px solid var(--border); }
+    .swatch .sw-body { padding: var(--space-3) var(--space-4); }
+    .swatch .sw-name { font-size: var(--text-sm); font-weight: 500; margin: 0; }
+    .swatch .sw-val { font-family: var(--font-mono); font-size: 12px; color: var(--meta); margin: 2px 0 0; }
+    .swatch .sw-role { font-size: 12px; color: var(--muted); margin: 4px 0 0; }
+
+    /* type scale demo */
+    .type-row { padding: var(--space-5) 0; border-top: 1px solid var(--border); display: grid; grid-template-columns: 200px 1fr; gap: var(--space-6); align-items: baseline; }
+    .type-row .spec { font-family: var(--font-mono); font-size: 12px; color: var(--meta); }
+    @media (max-width: 700px) { .type-row { grid-template-columns: 1fr; gap: var(--space-2); } }
+
+    /* buttons */
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-5); border-radius: var(--radius-md); border: 1px solid transparent; font-size: 15px; font-weight: 500; transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard); text-decoration: none; }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent-strong); color: var(--accent-on); box-shadow: 0 0 0 1px var(--accent-strong); }
+    .btn-primary:hover { background: var(--accent-strong-hover); box-shadow: 0 0 0 1px var(--accent-strong-hover); }
+    .btn-primary:active { background: var(--accent-strong-active); }
+    .btn-secondary { background: var(--surface-warm); color: var(--fg-2); box-shadow: 0 0 0 1px color-mix(in oklab, var(--surface-warm), black 8%); }
+    .btn-secondary:hover { background: color-mix(in oklab, var(--surface-warm), black 5%); }
+    .btn-quiet { background: transparent; color: var(--fg-2); border-color: var(--border-soft); }
+    .btn-quiet:hover { border-color: var(--meta); }
+    .btn-danger { background: transparent; color: var(--danger); border-color: color-mix(in oklab, var(--danger) 35%, transparent); }
+    .btn-danger:hover { background: color-mix(in oklab, var(--danger) 8%, transparent); border-color: var(--danger); }
+    .btn[disabled] { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .btn-row { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+
+    /* forms */
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label { font-size: var(--text-sm); font-weight: 500; color: var(--fg-2); }
+    .field .help { font-size: 13px; color: var(--meta); }
+    .input, .textarea { width: 100%; padding: 10px 14px; min-height: 44px; border: 1px solid var(--meta); border-radius: var(--radius-md); background: var(--surface); color: var(--fg); font: inherit; font-size: 15px; transition: border-color var(--motion-fast) var(--ease-standard), box-shadow var(--motion-fast) var(--ease-standard); }
+    .input::placeholder, .textarea::placeholder { color: var(--meta); }
+    .input:focus-visible, .textarea:focus-visible { border-color: #3898ec; box-shadow: var(--focus-ring); }
+    .textarea { min-height: 110px; resize: vertical; line-height: var(--leading-body); }
+    .answer-row { display: flex; align-items: center; gap: var(--space-3); min-height: 64px; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: var(--surface); cursor: pointer; transition: border-color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard); }
+    .answer-row:hover { border-color: var(--meta); }
+    .answer-row.selected { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 6%, var(--surface)); }
+    .answer-row .radio-dot { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--meta); flex: none; display: grid; place-items: center; }
+    .answer-row.selected .radio-dot { border-color: var(--accent); }
+    .answer-row.selected .radio-dot::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+
+    /* badges */
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 500; letter-spacing: 0.12px; }
+    .pill-accent { background: color-mix(in oklab, var(--accent) 12%, var(--surface)); color: var(--accent-strong); }
+    .pill-muted { background: var(--surface-warm); color: var(--fg-2); }
+    .pill-success { background: color-mix(in oklab, var(--success) 12%, var(--surface)); color: color-mix(in oklab, var(--success), black 20%); }
+    .pill-danger { background: color-mix(in oklab, var(--danger) 10%, var(--surface)); color: var(--danger); }
+    .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    /* cards */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: var(--space-6); }
+    .card-raised { border-radius: var(--radius-lg); box-shadow: var(--elev-raised); }
+    .card h3 { margin-bottom: var(--space-2); }
+    .card p { margin: 0; color: var(--muted); font-size: 15px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5); }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-5); }
+    @media (max-width: 920px) { .grid-3, .grid-2 { grid-template-columns: 1fr; } }
+
+    /* callout */
+    .callout { border-left: 2px solid var(--accent); background: var(--surface); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: var(--space-4) var(--space-5); }
+    .callout p { margin: 0; color: var(--fg-2); font-size: 15px; }
+
+    /* meter */
+    .meter { height: 8px; border-radius: var(--radius-pill); background: var(--surface-warm); overflow: hidden; }
+    .meter > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+    .meter-green > span { background: var(--success); }
+
+    /* table */
+    .ds-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+    .ds-table th, .ds-table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+    .ds-table th { color: var(--muted); font-weight: 500; font-size: 12px; letter-spacing: 0.12px; text-transform: uppercase; background: var(--surface); }
+    .ds-table tbody tr:last-child td { border-bottom: 0; }
+    .ds-table tbody tr:hover { background: color-mix(in oklab, var(--fg) 3%, transparent); }
+    .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    /* code block */
+    .codeblock { background: var(--fg); color: var(--surface-warm); border-radius: var(--radius-md); padding: var(--space-5) var(--space-6); font-family: var(--font-mono); font-size: 14px; line-height: 1.6; overflow-x: auto; }
+    .codeblock .cm { color: var(--meta); }
+
+    /* notice + empty */
+    .notice { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-4) var(--space-5); border-radius: var(--radius-md); background: color-mix(in oklab, var(--warn) 10%, var(--surface)); border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent); color: var(--fg-2); font-size: 14px; }
+    .empty { border: 1px dashed var(--border-soft); border-radius: var(--radius-lg); padding: var(--space-12) var(--space-6); text-align: center; }
+    .empty h3 { margin-bottom: var(--space-2); }
+    .empty p { margin: 0 auto var(--space-5); color: var(--muted); max-width: 44ch; }
+
+    /* radius/elevation demo */
+    .shape-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-4); }
+    .shape { background: var(--surface); border: 1px solid var(--border-soft); height: 96px; display: grid; place-items: center; font-family: var(--font-mono); font-size: 12px; color: var(--meta); }
+
+    .spec-list { display: grid; gap: 0; }
+    .spec-list .spec-item { display: grid; grid-template-columns: 220px 1fr; gap: var(--space-6); padding: var(--space-4) 0; border-top: 1px solid var(--border); font-size: 15px; }
+    .spec-list .spec-item dt { color: var(--muted); }
+    .spec-list .spec-item dd { margin: 0; font-family: var(--font-mono); font-size: 13px; color: var(--fg-2); }
+    @media (max-width: 700px) { .spec-list .spec-item { grid-template-columns: 1fr; gap: 2px; } }
+
+    .pagefoot { border-top: 1px solid var(--border-soft); padding-block: var(--space-8); color: var(--meta); font-size: 13px; }
+    .row-between { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
+  
+    .skip-link{position:absolute;left:16px;top:-56px;z-index:200;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:var(--radius-sm,8px);font:500 14px var(--font-body);text-decoration:none;transition:top var(--motion-fast,150ms) var(--ease-standard,ease)}
+    .skip-link:focus-visible{top:12px;outline:none;box-shadow:var(--focus-ring)}
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+    <header class="topnav" data-od-id="topnav">
+    <div class="container topnav-inner">
+      <a class="logo" href="index.html">Fieldnotes</a>
+      <nav aria-label="Project">
+        <a href="index.html">Overview</a>
+        <a href="foundations.html" aria-current="page">Foundations</a>
+        <a href="library.html">Library</a>
+        <a href="course-player.html">Course player</a>
+      </nav>
+      <span class="pill pill-muted">Sample prototype · No live AI</span>
+    </div>
+  </header>
+
+  <main id="content">
+    <section class="section" data-od-id="intro">
+      <div class="container">
+        <p class="eyebrow">Fieldnotes redesign · Step 1 of build order</p>
+        <h1>Foundations</h1>
+        <p class="lead" style="margin-top: var(--space-4);">The token sheet and component kit for the visual refresh. One warm parchment canvas, one terracotta accent, serif for titles and sans for interface — every screen in the inventory is composed from these parts.</p>
+      </div>
+    </section>
+
+    <section class="section" data-od-id="color-tokens">
+      <div class="container">
+        <div class="sec-head">
+          <h2>Color</h2>
+          <p>Warm neutrals only — every gray carries a yellow-brown undertone. Terracotta is the single accent, reserved for primary actions and live moments. Focus blue appears nowhere except the keyboard focus ring.</p>
+        </div>
+        <h3 style="margin-bottom: var(--space-4);">Surfaces</h3>
+        <div class="swatch-grid" style="margin-bottom: var(--space-8);">
+          <div class="swatch"><div class="chip" style="background: var(--bg);"></div><div class="sw-body"><p class="sw-name">Parchment · --bg</p><p class="sw-val">#f5f4ed</p><p class="sw-role">Page canvas. Never pure white.</p></div></div>
+          <div class="swatch"><div class="chip" style="background: var(--surface);"></div><div class="sw-body"><p class="sw-name">Ivory · --surface</p><p class="sw-val">#faf9f5</p><p class="sw-role">Cards and raised containers.</p></div></div>
+          <div class="swatch"><div class="chip" style="background: var(--surface-warm);"></div><div class="sw-body"><p class="sw-name">Warm Sand · --surface-warm</p><p class="sw-val">#e8e6dc</p><p class="sw-role">Secondary buttons, selected nav, meter tracks.</p></div></div>
+          <div class="swatch"><div class="chip" style="background: var(--fg);"></div><div class="sw-body"><p class="sw-name">Near Black · --fg</p><p class="sw-val">#141413</p><p class="sw-role">Primary text, code blocks, dark sections.</p></div></div>
+        </div>
+        <h3 style="margin-bottom: var(--space-4);">Text ramp</h3>
+        <div class="swatch-grid" style="margin-bottom: var(--space-8);">
+          <div class="swatch"><div class="chip" style="background: var(--fg-2);"></div><div class="sw-body"><p class="sw-name">Dark Warm · --fg-2</p><p class="sw-val">#3d3d3a</p><p class="sw-role">Emphasized secondary text, labels.</p></div></div>
+          <div class="swatch"><div class="chip" style="background: var(--muted);"></div><div class="sw-body"><p class="sw-name">Olive Gray · --muted</p><p class="sw-val">#5e5d59</p><p class="sw-role">Secondary body text. 4.6:1 on Parchment.</p></div></div>
+          <div class="swatch"><div class="chip" style="background: var(--meta);"></div><div class="sw-body"><p class="sw-name">Stone Gray · --meta</p><p class="sw-val">#87867f</p><p class="sw-role">Metadata, captions, input borders (3:1 non-text).</p></div></div>
+        </div>
+        <h3 style="margin-bottom: var(--space-4);">Accent &amp; semantic</h3>
+        <div class="swatch-grid">
+          <div class="swatch"><div class="chip" style="background: var(--accent);"></div><div class="sw-body"><p class="sw-name">Terracotta · --accent</p><p class="sw-val">#c96442</p><p class="sw-role">Primary CTA, live/attention, selected answer. Ivory text on top.</p></div></div>
+          <div class="swatch"><div class="chip" style="background: var(--success);"></div><div class="sw-body"><p class="sw-name">Success · --success</p><p class="sw-val">#17a34a</p><p class="sw-role">Confirmed states, mastered skills.</p></div></div>
+          <div class="swatch"><div class="chip" style="background: var(--warn);"></div><div class="sw-body"><p class="sw-name">Warn · --warn</p><p class="sw-val">#eab308</p><p class="sw-role">Notices, partial states. Always on a tinted plate.</p></div></div>
+          <div class="swatch"><div class="chip" style="background: var(--danger);"></div><div class="sw-body"><p class="sw-name">Error Crimson · --danger</p><p class="sw-val">#b53333</p><p class="sw-role">Errors and danger-zone actions. Used scarcely.</p></div></div>
+          <div class="swatch"><div class="chip" style="background: #3898ec;"></div><div class="sw-body"><p class="sw-name">Focus Blue</p><p class="sw-val">#3898ec</p><p class="sw-role">Keyboard focus ring only — the one cool color.</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" data-od-id="typography">
+      <div class="container">
+        <div class="sec-head">
+          <h2>Typography</h2>
+          <p>Georgia carries every headline at weight 500 — book-title gravity with zero webfont dependency, so the CSP <span class="meta">font-src 'self'</span> rule holds. System sans handles UI text; mono handles code and numerics.</p>
+        </div>
+        <div class="type-row"><span class="spec">Display · Georgia 500 · 52px / 1.1</span><span style="font-family: var(--font-display); font-size: var(--text-3xl); line-height: 1.1;">Section heading</span></div>
+        <div class="type-row"><span class="spec">Sub-heading · Georgia 500 · 32px / 1.2</span><span style="font-family: var(--font-display); font-size: var(--text-2xl); line-height: 1.2;">Card titles and feature names</span></div>
+        <div class="type-row"><span class="spec">Small heading · Georgia 500 · 25px / 1.2</span><span style="font-family: var(--font-display); font-size: var(--text-xl); line-height: 1.2;">Smaller section titles</span></div>
+        <div class="type-row"><span class="spec">Body large · sans 400 · 20px / 1.6</span><span style="font-size: var(--text-lg); color: var(--muted);">Intro paragraphs and lesson leads, set relaxed like a book.</span></div>
+        <div class="type-row"><span class="spec">Body · sans 400 · 16px / 1.6</span><span>Standard interface text. Buttons, labels, and list content all sit on this size with a 1.6 line-height.</span></div>
+        <div class="type-row"><span class="spec">Caption · sans 400 · 14px / 1.43</span><span style="font-size: var(--text-sm); color: var(--muted);">Metadata, helper text, secondary descriptions.</span></div>
+        <div class="type-row"><span class="spec">Overline · sans 400 · 10px / +0.5px</span><span class="eyebrow" style="margin: 0;">Section eyebrow label</span></div>
+        <div class="type-row"><span class="spec">Mono · ui-monospace · 13–14px</span><span class="num">progress 0.72 · 12 of 18 · v1.4.2</span></div>
+      </div>
+    </section>
+
+    <section class="section" data-od-id="shape-depth">
+      <div class="container">
+        <div class="sec-head">
+          <h2>Shape &amp; depth</h2>
+          <p>Radii move up from the current 4–6px to an 8/12/16 scale — the cozy-modern shift. Depth is ring-based: a 1px warm halo instead of drop shadows, with one whisper-soft shadow allowed for overlays and floating elements only.</p>
+        </div>
+        <div class="shape-grid" style="margin-bottom: var(--space-8);">
+          <div class="shape" style="border-radius: var(--radius-sm);">radius-sm · 8</div>
+          <div class="shape" style="border-radius: var(--radius-md);">radius-md · 12</div>
+          <div class="shape" style="border-radius: var(--radius-lg);">radius-lg · 16</div>
+          <div class="shape" style="border-radius: var(--radius-pill);">pill · 9999</div>
+        </div>
+        <div class="shape-grid">
+          <div class="shape" style="border-radius: var(--radius-md); box-shadow: var(--elev-ring);">elev-ring · 0 0 0 1px</div>
+          <div class="shape" style="border-radius: var(--radius-md); box-shadow: var(--elev-raised);">elev-raised · overlays only</div>
+          <div class="shape" style="border-radius: var(--radius-md); box-shadow: var(--focus-ring); border-color: #3898ec;">focus-ring · keyboard</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" data-od-id="buttons">
+      <div class="container">
+        <div class="sec-head">
+          <h2>Buttons</h2>
+          <p>One primary action per view. Secondary is Warm Sand, quiet is a hairline outline, danger is never filled until confirmation. Minimum height 44px everywhere.</p>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" data-od-id="btn-primary">Continue lesson</button>
+          <button class="btn btn-secondary" data-od-id="btn-secondary">Save for later</button>
+          <button class="btn btn-quiet" data-od-id="btn-quiet">Preview</button>
+          <button class="btn btn-danger" data-od-id="btn-danger">Delete study</button>
+          <button class="btn btn-quiet" disabled>Unavailable</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" data-od-id="forms">
+      <div class="container">
+        <div class="sec-head">
+          <h2>Forms &amp; answer rows</h2>
+          <p>Input borders use Stone Gray to hold the 3:1 non-text contrast requirement; the focus ring is Focus Blue with a 3px halo. Practice answer rows are 64px tall with a clear selected state.</p>
+        </div>
+        <div class="grid-2">
+          <div class="stack" style="display: flex; flex-direction: column; gap: var(--space-5);">
+            <div class="field">
+              <label for="f-study">Study name</label>
+              <input class="input" id="f-study" type="text" placeholder="e.g. Statistics for A/B tests" />
+              <span class="help">You can rename the study at any time.</span>
+            </div>
+            <div class="field">
+              <label for="f-goal">Learning goal</label>
+              <textarea class="textarea" id="f-goal" placeholder="What should you be able to do after this study?"></textarea>
+            </div>
+          </div>
+          <div class="stack" style="display: flex; flex-direction: column; gap: var(--space-3);">
+            <div class="answer-row selected" role="radio" aria-checked="true" tabindex="0"><span class="radio-dot"></span><span>Gradient descent follows the slope downhill, one small step at a time.</span></div>
+            <div class="answer-row" role="radio" aria-checked="false" tabindex="0"><span class="radio-dot"></span><span>The model memorizes each example before moving to the next.</span></div>
+            <div class="answer-row" role="radio" aria-checked="false" tabindex="0"><span class="radio-dot"></span><span>Weights are chosen at random and kept fixed.</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" data-od-id="badges-cards">
+      <div class="container">
+        <div class="sec-head">
+          <h2>Badges, cards &amp; callouts</h2>
+          <p>Status is communicated with tinted pills, never color alone — each carries a dot and a label. Cards are Ivory with a cream hairline; the raised variant is reserved for overlays.</p>
+        </div>
+        <div class="btn-row" style="margin-bottom: var(--space-8);">
+          <span class="pill pill-accent"><span class="dot"></span>Live session</span>
+          <span class="pill pill-muted"><span class="dot"></span>Draft</span>
+          <span class="pill pill-success"><span class="dot"></span>Mastered</span>
+          <span class="pill pill-danger"><span class="dot"></span>Review overdue</span>
+        </div>
+        <div class="grid-3" style="margin-bottom: var(--space-8);">
+          <div class="card" data-od-id="card-standard"><h3>Standard card</h3><p>Ivory surface, 1px cream border, 8px radius. The default container for study items and settings.</p></div>
+          <div class="card card-raised" data-od-id="card-raised"><h3>Raised card</h3><p>Adds the whisper shadow and a 16px radius. Dialogs, popovers, and floating panels only.</p></div>
+          <div class="card" data-od-id="card-meter">
+            <h3>Progress meter</h3>
+            <p style="margin-bottom: var(--space-3);">Coverage is honest — it reflects completed evidence, not time spent.</p>
+            <div class="meter" role="progressbar" aria-valuenow="62" aria-valuemin="0" aria-valuemax="100"><span style="width: 62%;"></span></div>
+            <p class="meta" style="margin-top: var(--space-2);">62% · 15 of 24 skills evidenced</p>
+          </div>
+        </div>
+        <div class="callout" data-od-id="callout"><p><strong>Promise.</strong> Every lesson opens with a plain-language promise of what you will be able to do — set as a serif-led callout, never as marketing copy.</p></div>
+      </div>
+    </section>
+
+    <section class="section" data-od-id="data-code">
+      <div class="container">
+        <div class="sec-head">
+          <h2>Tables &amp; code</h2>
+          <p>Tables are hairline-ruled with tabular numerics. Code sits on the warm Near Black — the one place the darkest surface earns its keep on a light screen.</p>
+        </div>
+        <div class="grid-2" style="align-items: start;">
+          <table class="ds-table">
+            <thead><tr><th>Skill</th><th>Evidence</th><th class="num">Mastery</th></tr></thead>
+            <tbody>
+              <tr><td>Explain the update rule</td><td>3 recalls</td><td class="num">0.86</td></tr>
+              <tr><td>Compute one step by hand</td><td>2 recalls</td><td class="num">0.71</td></tr>
+              <tr><td>Diagnose divergence</td><td>1 recall</td><td class="num">0.44</td></tr>
+            </tbody>
+          </table>
+          <pre class="codeblock"><span class="cm"># one step of gradient descent</span>
+w = w - lr * grad
+<span class="cm"># lr: learning rate, grad: slope at w</span>
+loss = mse(predict(x, w), y)</pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" data-od-id="states">
+      <div class="container">
+        <div class="sec-head">
+          <h2>Notices &amp; honest states</h2>
+          <p>No fake data and no decorative progress. Loading says what is loading, empty says what to do next, and offline says what still works.</p>
+        </div>
+        <div class="stack" style="display: flex; flex-direction: column; gap: var(--space-5);">
+          <div class="notice" role="status"><strong style="flex:none;">Partial.</strong><span>You're offline. Saved lessons and practice still work; new generation will resume when you reconnect.</span></div>
+          <div class="empty">
+            <h3>No reviews due</h3>
+            <p>When recall items come due they'll appear here, ordered by how much they'll strengthen if reviewed now.</p>
+            <button class="btn btn-secondary">Back to library</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" data-od-id="motion">
+      <div class="container">
+        <div class="sec-head">
+          <h2>Motion</h2>
+          <p>Calm, short, and always gated by prefers-reduced-motion. No essential information is ever conveyed by motion alone.</p>
+        </div>
+        <dl class="spec-list">
+          <div class="spec-item"><dt>Hover / press feedback</dt><dd>150ms · ease-standard · cubic-bezier(0.2, 0, 0, 1)</dd></div>
+          <div class="spec-item"><dt>Panels &amp; dialogs</dt><dd>200ms · ease-standard · fade + 4px rise</dd></div>
+          <div class="spec-item"><dt>Reduced motion</dt><dd>All transitions collapse to ≤10ms</dd></div>
+          <div class="spec-item"><dt>Iconography</dt><dd>Monoline SVG · 1.5px stroke · round caps · 16/20/24px</dd></div>
+        </dl>
+      </div>
+    </section>
+  </main>
+
+  <footer class="pagefoot" data-od-id="footer">
+    <div class="container row-between">
+      <span>Fieldnotes redesign · Foundations v1</span>
+      <span class="meta">Sample prototype · No live AI · English only</span>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>New study · Goal &amp; plan (AI-assisted) · Fieldnotes redesign</title>
+  <style>
+    :root {
+      --bg: #f5f4ed;
+      --surface: #faf9f5;
+      --surface-warm: #e8e6dc;
+      --fg: #141413;
+      --fg-2: #3d3d3a;
+      --muted: #5e5d59;
+      --meta: #6d6c64;
+      --border: #f0eee6;
+      --border-soft: #e8e6dc;
+      --accent: #c96442;
+      --accent-on: #faf9f5;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
+    --accent-strong: #a55236;
+    --accent-strong-hover: color-mix(in oklab, var(--accent-strong), black 8%);
+    --accent-strong-active: color-mix(in oklab, var(--accent-strong), black 14%);
+      --success: #17a34a;
+      --warn: #eab308;
+      --danger: #b53333;
+      --font-display: "Anthropic Serif", Georgia, "Times New Roman", serif;
+      --font-body: "Anthropic Sans", "Arial", system-ui, -apple-system, sans-serif;
+      --font-mono: "Anthropic Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+      --text-xs: 10px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 20px;
+      --text-xl: 25px;
+      --text-2xl: 32px;
+      --text-3xl: 52px;
+      --text-4xl: 64px;
+      --leading-body: 1.6;
+      --leading-tight: 1.1;
+      --tracking-display: 0em;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --section-y-desktop: 96px;
+      --section-y-tablet: 64px;
+      --section-y-phone: 48px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-pill: 9999px;
+      --elev-flat: none;
+      --elev-ring: 0 0 0 1px var(--border);
+      --elev-raised: rgba(0, 0, 0, 0.05) 0px 4px 24px;
+      --focus-ring: 0 0 0 3px rgba(56, 152, 236, 0.3);
+      --motion-fast: 150ms;
+      --motion-base: 200ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+      --container-max: 1200px;
+      --container-gutter-desktop: 24px;
+      --container-gutter-tablet: 16px;
+      --container-gutter-phone: 12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      line-height: var(--leading-body);
+      -webkit-font-smoothing: antialiased;
+    }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; }
+    button { font: inherit; cursor: pointer; }
+    p { text-wrap: pretty; }
+    h1, h2, h3 { text-wrap: balance; }
+    :focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+    .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .sidebar {
+      border-right: 1px solid var(--border-soft);
+      background: var(--surface);
+      padding: var(--space-5) var(--space-4);
+      display: flex; flex-direction: column; gap: var(--space-6);
+      position: sticky; top: 0; height: 100vh;
+    }
+    .sidebar .logo { font-family: var(--font-display); font-weight: 500; font-size: 22px; padding-inline: var(--space-2); text-decoration: none; }
+    .side-nav { display: flex; flex-direction: column; gap: 2px; }
+    .side-nav a { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 15px; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard); }
+    .side-nav a svg { width: 20px; height: 20px; flex: none; }
+    .side-nav a:hover { background: var(--surface-warm); color: var(--fg); }
+    .side-nav a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    .side-foot { margin-top: auto; padding: var(--space-3); border-top: 1px solid var(--border); font-size: 12px; color: var(--meta); }
+
+    .topnav-mobile { display: none; }
+    @media (max-width: 850px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .topnav-mobile { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-soft); background: var(--surface); overflow-x: auto; position: sticky; top: 0; z-index: 6; }
+      .topnav-mobile .logo { font-family: var(--font-display); font-weight: 500; font-size: 18px; margin-right: var(--space-2); flex: none; }
+      .topnav-mobile a { flex: none; min-height: 44px; display: inline-flex; align-items: center; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 14px; text-decoration: none; }
+      .topnav-mobile a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    }
+
+    .main { min-width: 0; display: flex; flex-direction: column; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-8); border-bottom: 1px solid var(--border-soft); background: color-mix(in oklab, var(--bg) 92%, transparent); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 5; }
+    @media (max-width: 850px) { .topbar { padding: var(--space-3) var(--space-4); position: static; } }
+    .content { padding: var(--space-8); max-width: 820px; width: 100%; margin-inline: auto; flex: 1; }
+    @media (max-width: 850px) { .content { padding: var(--space-5) var(--space-4); } }
+
+    .meta { font-family: var(--font-mono); font-size: 12px; color: var(--meta); }
+    .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-5); border-radius: var(--radius-md); border: 1px solid transparent; font-size: 15px; font-weight: 500; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard); }
+    .btn:active { transform: translateY(1px); }
+    .btn[hidden] { display: none; }
+    .btn-primary { background: var(--accent-strong); color: var(--accent-on); box-shadow: 0 0 0 1px var(--accent-strong); }
+    .btn-primary:hover { background: var(--accent-strong-hover); box-shadow: 0 0 0 1px var(--accent-strong-hover); }
+    .btn-primary:disabled { background: var(--surface-warm); color: var(--meta); box-shadow: 0 0 0 1px var(--border-soft); cursor: not-allowed; }
+    .btn-secondary { background: var(--surface-warm); color: var(--fg-2); box-shadow: 0 0 0 1px color-mix(in oklab, var(--surface-warm), black 8%); }
+    .btn-secondary:hover { background: color-mix(in oklab, var(--surface-warm), black 5%); }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 500; letter-spacing: 0.12px; white-space: nowrap; }
+    .pill-muted { background: var(--surface-warm); color: var(--fg-2); }
+    .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    .pagefoot { border-top: 1px solid var(--border-soft); padding: var(--space-5) var(--space-8); color: var(--meta); font-size: 12px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
+
+    .content { max-width: 1080px; }
+    .page-head h1 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-2xl); line-height: 1.2; margin: 0 0 var(--space-3); }
+    .page-head .sub { color: var(--muted); font-size: 15px; max-width: 62ch; margin: 0 0 var(--space-5); }
+
+    .steps { display: flex; align-items: baseline; gap: var(--space-4); flex-wrap: wrap; font-size: 13px; color: var(--meta); margin-bottom: var(--space-8); }
+    .steps .sep { color: var(--border-soft); }
+    .steps .step.current { color: var(--fg); font-weight: 600; }
+
+    .plan-grid { display: grid; grid-template-columns: 1fr 1.3fr; gap: var(--space-6); align-items: start; }
+    @media (max-width: 850px) { .plan-grid { grid-template-columns: 1fr; } }
+
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
+    @media (max-width: 850px) { .panel { padding: var(--space-5); } }
+    .panel h2 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-lg); margin: 0 0 var(--space-2); }
+    .panel .panel-sub { font-size: 13px; color: var(--muted); margin: 0 0 var(--space-5); }
+
+    .goal-field textarea { width: 100%; min-height: 140px; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: var(--surface); color: var(--fg); font: inherit; font-size: 15px; line-height: 1.5; resize: vertical; }
+    .goal-field textarea:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: var(--meta); }
+    .goal-count { margin-top: var(--space-2); font-family: var(--font-mono); font-size: 12px; color: var(--meta); text-align: right; }
+
+    .chips { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-4); }
+    .chips .chips-label { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin: 0 0 var(--space-1); }
+    .chip { display: inline-flex; align-items: center; min-height: 44px; padding: var(--space-1) var(--space-4); border: 1px solid var(--border-soft); border-radius: var(--radius-pill); background: transparent; color: var(--fg-2); font-size: 13px; text-align: left; transition: background var(--motion-fast) var(--ease-standard); }
+    .chip:hover { background: var(--surface-warm); }
+
+    .lesson-list { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-4); }
+    .lesson-row { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3); border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: var(--surface); }
+    @media (max-width: 850px) { .lesson-row { flex-wrap: wrap; } }
+    .lesson-num { width: 28px; height: 28px; flex: none; margin-top: var(--space-2); border-radius: 50%; background: var(--surface-warm); color: var(--fg-2); display: grid; place-items: center; font-family: var(--font-mono); font-size: 12px; }
+    .lesson-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+    .lesson-title { min-height: 44px; padding: 0 var(--space-3); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); background: var(--surface); color: var(--fg); font: inherit; font-size: 15px; width: 100%; }
+    .lesson-title:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: var(--meta); }
+    .lesson-sub { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+    .lesson-min { display: inline-flex; align-items: center; gap: var(--space-2); font-size: 13px; color: var(--muted); }
+    .lesson-min input { width: 64px; min-height: 44px; padding: 0 var(--space-2); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); background: var(--surface); color: var(--fg); font-family: var(--font-mono); font-size: 14px; text-align: right; }
+    .lesson-min input:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: var(--meta); }
+    .lesson-cov { font-size: 12px; color: var(--meta); }
+    .lesson-remove { flex: none; }
+
+    .btn-quiet { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 var(--space-3); border-radius: var(--radius-md); border: 1px solid transparent; background: transparent; color: var(--fg-2); font-size: 14px; font-weight: 500; transition: background var(--motion-fast) var(--ease-standard); }
+    .btn-quiet:hover { background: var(--surface-warm); }
+
+    .add-lesson { width: 100%; border-style: dashed; }
+
+    .flow-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; margin-top: var(--space-8); padding-top: var(--space-5); border-top: 1px solid var(--border-soft); }
+    .flow-foot .hint-text { font-size: 13px; color: var(--meta); max-width: 44ch; }
+    .flow-foot .right { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+
+    .seg { display: inline-flex; gap: 2px; background: var(--surface-warm); border-radius: var(--radius-pill); padding: 4px; margin-bottom: var(--space-6); max-width: 100%; overflow-x: auto; }
+    .seg button { min-height: 44px; padding: 0 var(--space-4); border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--fg-2); font-size: 14px; font-weight: 500; white-space: nowrap; transition: background var(--motion-fast) var(--ease-standard); }
+    .seg button[aria-pressed="true"] { background: var(--surface); color: var(--fg); box-shadow: var(--elev-ring); }
+
+    .view[hidden] { display: none; }
+
+    .notice { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3) var(--space-4); border-radius: var(--radius-md); background: var(--surface-warm); color: var(--fg-2); font-size: 13px; margin-bottom: var(--space-5); }
+    .notice p { margin: 0; }
+
+    .draft-banner { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-4); }
+    .study-title-field { margin-bottom: var(--space-5); }
+    .study-title-field label { display: block; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin-bottom: var(--space-2); }
+    .study-title-field input { width: 100%; min-height: 44px; padding: 0 var(--space-3); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); background: var(--surface); color: var(--fg); font: inherit; font-size: 15px; font-weight: 600; }
+    .study-title-field input:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: var(--meta); }
+
+    .lesson-rationale { margin: 0; font-size: 13px; color: var(--muted); }
+
+    .check-list { display: flex; flex-direction: column; gap: var(--space-3); margin: var(--space-5) 0 0; }
+    .check-row { display: flex; gap: var(--space-3); align-items: flex-start; padding: var(--space-3); border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: var(--surface); }
+    @media (max-width: 850px) { .check-row { flex-wrap: wrap; } }
+    .check-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+
+    .subhead { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin: var(--space-6) 0 var(--space-2); }
+
+    .undo-bar { display: none; align-items: center; justify-content: space-between; gap: var(--space-3); margin-top: var(--space-4); padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4); border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: var(--surface-warm); font-size: 14px; color: var(--fg-2); }
+    .undo-bar.show { display: flex; }
+    .undo-bar button { min-height: 44px; padding: 0 var(--space-3); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--fg); font-weight: 600; font-size: 14px; }
+    .undo-bar button:hover { background: var(--surface); }
+
+    .saved-note { display: none; align-items: center; gap: var(--space-3); font-size: 14px; color: var(--fg-2); }
+    .saved-note.show { display: inline-flex; }
+    .saved-note .tick { width: 22px; height: 22px; flex: none; border-radius: 50%; background: color-mix(in oklab, var(--success) 14%, var(--surface)); color: var(--success); display: grid; place-items: center; }
+    .saved-note .tick svg { width: 12px; height: 12px; }
+  
+    .skip-link{position:absolute;left:16px;top:-56px;z-index:200;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:var(--radius-sm,8px);font:500 14px var(--font-body);text-decoration:none;transition:top var(--motion-fast,150ms) var(--ease-standard,ease)}
+    .skip-link:focus-visible{top:12px;outline:none;box-shadow:var(--focus-ring)}
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+    <div class="app" data-od-id="app-shell">
+    <nav class="topnav-mobile" aria-label="Primary">
+      <span class="logo">Fieldnotes</span>
+      <a href="index.html">Overview</a>
+      <a href="library.html">Library</a>
+      <a href="course-player.html">Course</a>
+      <a href="practice.html">Practice</a>
+      <a href="progress.html">Progress</a>
+      <a href="review-inbox.html">Review</a>
+    </nav>
+
+    <aside class="sidebar" data-od-id="sidebar">
+      <a class="logo" href="index.html">Fieldnotes</a>
+      <nav class="side-nav" aria-label="Primary">
+        <a href="index.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Overview
+        </a>
+        <a href="library.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Saved studies
+        </a>
+        <a href="course-player.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+          Course player
+        </a>
+        <a href="practice.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          Practice
+        </a>
+        <a href="progress.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 3 5-6"/></svg>
+          Progress
+        </a>
+        <a href="review-inbox.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+          Review inbox
+        </a>
+      </nav>
+      <div class="side-foot">Local tracer — not approved for real data<br />Sample prototype · No live AI</div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar" data-od-id="topbar">
+        <span class="meta">New study · How neural networks learn · Step 2 of 3</span>
+        <span class="pill pill-muted"><span class="dot"></span>Sample prototype · No live AI</span>
+      </header>
+
+      <main class="content" id="content">
+        <div class="page-head" data-od-id="page-head">
+          <h1>New study — Goal &amp; plan</h1>
+          <p class="sub">Describe your goal and let the AI draft a plan from your materials, or write it yourself. Either way, every line stays editable before and after you accept.</p>
+        </div>
+
+        <p class="steps" data-od-id="steps" aria-label="Steps">
+          <span class="step">01 Materials</span>
+          <span class="sep" aria-hidden="true">·</span>
+          <span class="step current">02 Goal &amp; plan</span>
+          <span class="sep" aria-hidden="true">·</span>
+          <span class="step">03 Privacy &amp; data</span>
+        </p>
+
+        <div class="seg" role="group" aria-label="Plan editing mode" data-od-id="mode-toggle">
+          <button type="button" id="mode-manual" data-od-id="mode-manual" aria-pressed="false">Manual</button>
+          <button type="button" id="mode-ai" data-od-id="mode-ai" aria-pressed="true">AI-assisted</button>
+        </div>
+
+        <div class="view" id="view-ai" data-od-id="view-ai">
+          <div class="plan-grid">
+            <section class="panel" data-od-id="ai-goal-card" aria-labelledby="ai-goal-h">
+              <h2 id="ai-goal-h">Your goal</h2>
+              <p class="panel-sub">Describe what you want to understand or be able to do. The AI drafts a plan from this and your uploaded materials.</p>
+              <div class="goal-field">
+                <label class="meta" for="ai-goal-input" style="display:block;margin-bottom:8px;">Goal</label>
+                <textarea id="ai-goal-input" data-od-id="ai-goal-input" maxlength="280" placeholder="Example: I want to understand how neural networks learn, well enough to explain backpropagation to a colleague.">I want to understand how neural networks learn, well enough to explain backpropagation to a colleague</textarea>
+                <p class="goal-count"><span class="num" id="ai-goal-count" data-od-id="ai-goal-count">0</span> / <span class="num">280</span></p>
+              </div>
+              <button type="button" class="btn btn-secondary" id="draft-btn" data-od-id="draft-plan">Draft a plan</button>
+              <div class="chips" data-od-id="ai-goal-chips">
+                <p class="chips-label">Need a starting point?</p>
+                <button type="button" class="chip" data-goal="I want to understand how neural networks learn, well enough to explain backpropagation to a colleague">Explain backpropagation to a colleague.</button>
+                <button type="button" class="chip" data-goal="I want to walk through one gradient-descent step by hand, end to end, without notes.">Walk one gradient-descent step by hand.</button>
+                <button type="button" class="chip" data-goal="I want to diagnose why a training loss oscillates instead of falling, and know what to try first.">Diagnose an oscillating training loss.</button>
+              </div>
+            </section>
+
+            <section class="panel" data-od-id="ai-draft-card" aria-labelledby="ai-draft-h">
+              <h2 id="ai-draft-h">Drafted plan</h2>
+              <p class="panel-sub">Nothing is saved until you accept. Edit titles, minutes, and checkpoints freely — the draft is a starting point, not a decision.</p>
+
+              <div class="notice" data-od-id="ai-honesty-notice" role="note">
+                <p>In the real product this draft comes from the AI model; here it is prewritten sample content.</p>
+              </div>
+
+              <div id="draft-empty" data-od-id="draft-empty">
+                <p style="margin:0;color:var(--muted);font-size:14px;">No draft yet. Write your goal on the left, then choose “Draft a plan”.</p>
+              </div>
+
+              <div id="draft-body" data-od-id="draft-body" hidden>
+                <div class="draft-banner">
+                  <span class="pill pill-muted" data-od-id="draft-label"><span class="dot"></span>Drafted from your goal — review before accepting</span>
+                </div>
+
+                <div class="study-title-field">
+                  <label for="study-title">Suggested study title</label>
+                  <input id="study-title" data-od-id="study-title" type="text" value="How neural networks learn" />
+                </div>
+
+                <p class="subhead" id="lessons-subhead">Proposed lessons</p>
+                <div class="lesson-list" id="ai-lesson-list" data-od-id="ai-lesson-list" aria-labelledby="lessons-subhead">
+                  <div class="lesson-row" data-od-id="ai-lesson-1">
+                    <span class="lesson-num" aria-hidden="true">1</span>
+                    <div class="lesson-main">
+                      <input class="lesson-title" type="text" value="What a neural network is — neurons, weights, layers" aria-label="Lesson 1 title" />
+                      <p class="lesson-rationale">Gives you the shared vocabulary you need before any learning can be explained.</p>
+                      <div class="lesson-sub">
+                        <span class="lesson-min"><input type="number" min="1" max="180" value="15" aria-label="Lesson 1 estimated minutes" /> min</span>
+                        <span class="lesson-cov">Source: Lecture Notes, pp. 3–8</span>
+                      </div>
+                    </div>
+                    <button type="button" class="btn-quiet lesson-remove" data-od-id="ai-lesson-remove-1" aria-label="Remove lesson 1">Remove</button>
+                  </div>
+                  <div class="lesson-row" data-od-id="ai-lesson-2">
+                    <span class="lesson-num" aria-hidden="true">2</span>
+                    <div class="lesson-main">
+                      <input class="lesson-title" type="text" value="What a loss measures — one number for how wrong we are" aria-label="Lesson 2 title" />
+                      <p class="lesson-rationale">Backpropagation only makes sense once “getting less wrong” is a concrete quantity.</p>
+                      <div class="lesson-sub">
+                        <span class="lesson-min"><input type="number" min="1" max="180" value="12" aria-label="Lesson 2 estimated minutes" /> min</span>
+                        <span class="lesson-cov">Source: Lecture Notes, pp. 9–14</span>
+                      </div>
+                    </div>
+                    <button type="button" class="btn-quiet lesson-remove" data-od-id="ai-lesson-remove-2" aria-label="Remove lesson 2">Remove</button>
+                  </div>
+                  <div class="lesson-row" data-od-id="ai-lesson-3">
+                    <span class="lesson-num" aria-hidden="true">3</span>
+                    <div class="lesson-main">
+                      <input class="lesson-title" type="text" value="Gradient descent — the hillside walk, step by step" aria-label="Lesson 3 title" />
+                      <p class="lesson-rationale">The core mechanic your colleague will ask about first: how weights actually move.</p>
+                      <div class="lesson-sub">
+                        <span class="lesson-min"><input type="number" min="1" max="180" value="20" aria-label="Lesson 3 estimated minutes" /> min</span>
+                        <span class="lesson-cov">Source: gradient-descent-walkthrough.md</span>
+                      </div>
+                    </div>
+                    <button type="button" class="btn-quiet lesson-remove" data-od-id="ai-lesson-remove-3" aria-label="Remove lesson 3">Remove</button>
+                  </div>
+                  <div class="lesson-row" data-od-id="ai-lesson-4">
+                    <span class="lesson-num" aria-hidden="true">4</span>
+                    <div class="lesson-main">
+                      <input class="lesson-title" type="text" value="Backpropagation — assigning blame with the chain rule" aria-label="Lesson 4 title" />
+                      <p class="lesson-rationale">Ties the first three lessons together into the plain-language explanation you asked for.</p>
+                      <div class="lesson-sub">
+                        <span class="lesson-min"><input type="number" min="1" max="180" value="18" aria-label="Lesson 4 estimated minutes" /> min</span>
+                        <span class="lesson-cov">Source: Lecture Notes, pp. 15–21</span>
+                      </div>
+                    </div>
+                    <button type="button" class="btn-quiet lesson-remove" data-od-id="ai-lesson-remove-4" aria-label="Remove lesson 4">Remove</button>
+                  </div>
+                </div>
+
+                <p class="subhead" id="checks-subhead">Proposed practice checkpoints</p>
+                <div class="check-list" id="ai-check-list" data-od-id="ai-check-list" aria-labelledby="checks-subhead">
+                  <div class="check-row" data-od-id="ai-check-1">
+                    <div class="check-main">
+                      <input class="lesson-title" type="text" value="Explain in two sentences what a weight is and what changing it does" aria-label="Checkpoint 1 text" />
+                    </div>
+                    <button type="button" class="btn-quiet lesson-remove" data-od-id="ai-check-remove-1" aria-label="Remove checkpoint 1">Remove</button>
+                  </div>
+                  <div class="check-row" data-od-id="ai-check-2">
+                    <div class="check-main">
+                      <input class="lesson-title" type="text" value="Walk through one gradient-descent step on a tiny two-weight example" aria-label="Checkpoint 2 text" />
+                    </div>
+                    <button type="button" class="btn-quiet lesson-remove" data-od-id="ai-check-remove-2" aria-label="Remove checkpoint 2">Remove</button>
+                  </div>
+                  <div class="check-row" data-od-id="ai-check-3">
+                    <div class="check-main">
+                      <input class="lesson-title" type="text" value="Explain backpropagation to a colleague in plain language, from memory" aria-label="Checkpoint 3 text" />
+                    </div>
+                    <button type="button" class="btn-quiet lesson-remove" data-od-id="ai-check-remove-3" aria-label="Remove checkpoint 3">Remove</button>
+                  </div>
+                </div>
+
+                <div class="undo-bar" id="undo-bar" data-od-id="undo-bar" role="status">
+                  <span id="undo-text">Item removed.</span>
+                  <button type="button" id="undo-btn" data-od-id="undo-btn">Undo</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <div class="view" id="view-manual" data-od-id="view-manual" hidden>
+          <div class="plan-grid">
+            <section class="panel" data-od-id="goal-card" aria-labelledby="goal-h">
+              <h2 id="goal-h">Your goal</h2>
+              <p class="panel-sub">What do you want to be able to explain or do?</p>
+              <div class="goal-field">
+                <label class="meta" for="goal-input" style="display:block;margin-bottom:8px;">Goal</label>
+                <textarea id="goal-input" data-od-id="goal-input" maxlength="280" placeholder="Example: Explain how gradient descent fits a neural network to data, in plain language.">Explain how a neural network learns from examples, and walk through one gradient-descent step by hand.</textarea>
+                <p class="goal-count"><span class="num" id="goal-count" data-od-id="goal-count">0</span> / <span class="num">280</span></p>
+              </div>
+              <div class="chips" data-od-id="goal-chips">
+                <p class="chips-label">Need a starting point?</p>
+                <button type="button" class="chip" data-goal="Explain backpropagation to a colleague without jargon.">Explain backpropagation to a colleague without jargon.</button>
+                <button type="button" class="chip" data-goal="Walk through one gradient-descent step by hand, end to end.">Walk through one gradient-descent step by hand, end to end.</button>
+                <button type="button" class="chip" data-goal="Diagnose why a training loss oscillates instead of falling.">Diagnose why a training loss oscillates instead of falling.</button>
+              </div>
+            </section>
+
+            <section class="panel" data-od-id="plan-editor" aria-labelledby="plan-h">
+              <h2 id="plan-h">Plan outline</h2>
+              <p class="panel-sub">Edit, reorder by rewriting, or remove lessons. Minutes are estimates — you can change them later.</p>
+              <div class="lesson-list" id="lesson-list" data-od-id="lesson-list">
+                <div class="lesson-row" data-od-id="lesson-1">
+                  <span class="lesson-num" aria-hidden="true">1</span>
+                  <div class="lesson-main">
+                    <input class="lesson-title" type="text" value="What a neural network is — neurons, weights, layers" aria-label="Lesson 1 title" />
+                    <div class="lesson-sub">
+                      <span class="lesson-min"><input type="number" min="1" max="180" value="15" aria-label="Lesson 1 estimated minutes" /> min</span>
+                      <span class="lesson-cov">Source: Lecture Notes, pp. 3–8</span>
+                    </div>
+                  </div>
+                  <button type="button" class="btn-quiet lesson-remove" data-od-id="lesson-remove-1" aria-label="Remove lesson 1">Remove</button>
+                </div>
+                <div class="lesson-row" data-od-id="lesson-2">
+                  <span class="lesson-num" aria-hidden="true">2</span>
+                  <div class="lesson-main">
+                    <input class="lesson-title" type="text" value="What a loss measures — one number for how wrong we are" aria-label="Lesson 2 title" />
+                    <div class="lesson-sub">
+                      <span class="lesson-min"><input type="number" min="1" max="180" value="12" aria-label="Lesson 2 estimated minutes" /> min</span>
+                      <span class="lesson-cov">Source: Lecture Notes, pp. 9–14</span>
+                    </div>
+                  </div>
+                  <button type="button" class="btn-quiet lesson-remove" data-od-id="lesson-remove-2" aria-label="Remove lesson 2">Remove</button>
+                </div>
+                <div class="lesson-row" data-od-id="lesson-3">
+                  <span class="lesson-num" aria-hidden="true">3</span>
+                  <div class="lesson-main">
+                    <input class="lesson-title" type="text" value="Gradient descent — the hillside walk, step by step" aria-label="Lesson 3 title" />
+                    <div class="lesson-sub">
+                      <span class="lesson-min"><input type="number" min="1" max="180" value="20" aria-label="Lesson 3 estimated minutes" /> min</span>
+                      <span class="lesson-cov">Source: gradient-descent-walkthrough.md</span>
+                    </div>
+                  </div>
+                  <button type="button" class="btn-quiet lesson-remove" data-od-id="lesson-remove-3" aria-label="Remove lesson 3">Remove</button>
+                </div>
+              </div>
+              <button type="button" class="btn btn-secondary add-lesson" id="add-lesson" data-od-id="add-lesson">+ Add a lesson</button>
+            </section>
+          </div>
+        </div>
+
+        <div class="flow-foot" data-od-id="flow-foot">
+          <span class="hint-text" id="accept-caption" data-od-id="accept-caption">Accepting saves this as your plan; you can edit everything afterward.</span>
+          <div class="right">
+            <span class="saved-note" id="saved-note" data-od-id="saved-note" role="status">
+              <span class="tick" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              Plan saved as a draft — everything stays editable.
+            </span>
+            <a class="btn-quiet" href="new-study-materials.html" data-od-id="back">← Back</a>
+            <button type="button" class="btn btn-primary" id="accept-btn" data-od-id="accept-plan">Accept plan</button>
+          </div>
+        </div>
+      </main>
+
+      <footer class="pagefoot" data-od-id="footer">
+        <span>Fieldnotes redesign · New study — Goal &amp; plan, AI-assisted variant sample (screen 17)</span>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var modeManual = document.getElementById('mode-manual');
+      var modeAI = document.getElementById('mode-ai');
+      var viewManual = document.getElementById('view-manual');
+      var viewAI = document.getElementById('view-ai');
+
+      function setMode(ai) {
+        modeAI.setAttribute('aria-pressed', ai ? 'true' : 'false');
+        modeManual.setAttribute('aria-pressed', ai ? 'false' : 'true');
+        viewAI.hidden = !ai;
+        viewManual.hidden = ai;
+      }
+      modeAI.addEventListener('click', function () { setMode(true); });
+      modeManual.addEventListener('click', function () { setMode(false); });
+
+      function bindCounter(inputId, countId) {
+        var input = document.getElementById(inputId);
+        var count = document.getElementById(countId);
+        function update() { count.textContent = String(input.value.length); }
+        input.addEventListener('input', update);
+        update();
+        return input;
+      }
+
+      var aiGoal = bindCounter('ai-goal-input', 'ai-goal-count');
+      var manualGoal = bindCounter('goal-input', 'goal-count');
+
+      document.querySelectorAll('.chip').forEach(function (chip) {
+        chip.addEventListener('click', function () {
+          var view = chip.closest('.view');
+          var target = view === viewAI ? aiGoal : manualGoal;
+          target.value = chip.getAttribute('data-goal');
+          target.dispatchEvent(new Event('input'));
+          target.focus();
+        });
+      });
+
+      function renumber(list) {
+        list.querySelectorAll('.lesson-row').forEach(function (row, i) {
+          var n = row.querySelector('.lesson-num');
+          if (n) n.textContent = String(i + 1);
+        });
+      }
+
+      var draftBtn = document.getElementById('draft-btn');
+      var draftEmpty = document.getElementById('draft-empty');
+      var draftBody = document.getElementById('draft-body');
+      draftBtn.addEventListener('click', function () {
+        draftEmpty.hidden = true;
+        draftBody.hidden = false;
+        draftBody.scrollIntoView({ block: 'nearest' });
+      });
+
+      var undoBar = document.getElementById('undo-bar');
+      var undoText = document.getElementById('undo-text');
+      var undoBtn = document.getElementById('undo-btn');
+      var lastRemoved = null;
+
+      function removeWithUndo(row, list, kind) {
+        var next = row.nextElementSibling;
+        lastRemoved = { row: row, list: list, next: next };
+        row.remove();
+        renumber(list);
+        undoText.textContent = kind + ' removed.';
+        undoBar.classList.add('show');
+      }
+
+      undoBtn.addEventListener('click', function () {
+        if (!lastRemoved) return;
+        if (lastRemoved.next && lastRemoved.next.parentNode === lastRemoved.list) {
+          lastRemoved.list.insertBefore(lastRemoved.row, lastRemoved.next);
+        } else {
+          lastRemoved.list.appendChild(lastRemoved.row);
+        }
+        renumber(lastRemoved.list);
+        lastRemoved = null;
+        undoBar.classList.remove('show');
+      });
+
+      draftBody.addEventListener('click', function (e) {
+        var rm = e.target.closest('.lesson-remove');
+        if (!rm) return;
+        var row = rm.closest('.lesson-row, .check-row');
+        if (!row) return;
+        var kind = row.classList.contains('check-row') ? 'Checkpoint' : 'Lesson';
+        removeWithUndo(row, row.parentNode, kind);
+      });
+
+      var manualList = document.getElementById('lesson-list');
+      manualList.addEventListener('click', function (e) {
+        var rm = e.target.closest('.lesson-remove');
+        if (rm) {
+          rm.closest('.lesson-row').remove();
+          renumber(manualList);
+        }
+      });
+
+      document.getElementById('add-lesson').addEventListener('click', function () {
+        var row = document.createElement('div');
+        row.className = 'lesson-row';
+        row.innerHTML =
+          '<span class="lesson-num" aria-hidden="true"></span>' +
+          '<div class="lesson-main">' +
+            '<input class="lesson-title" type="text" value="" placeholder="Lesson title" aria-label="New lesson title" />' +
+            '<div class="lesson-sub">' +
+              '<span class="lesson-min"><input type="number" min="1" max="180" value="15" aria-label="New lesson estimated minutes" /> min</span>' +
+              '<span class="lesson-cov">Source: pick from your uploaded files</span>' +
+            '</div>' +
+          '</div>' +
+          '<button type="button" class="btn-quiet lesson-remove" aria-label="Remove lesson">Remove</button>';
+        manualList.appendChild(row);
+        renumber(manualList);
+        row.querySelector('.lesson-title').focus();
+      });
+
+      var acceptBtn = document.getElementById('accept-btn');
+      var savedNote = document.getElementById('saved-note');
+      var acceptCaption = document.getElementById('accept-caption');
+      acceptBtn.addEventListener('click', function () {
+        savedNote.classList.add('show');
+        acceptBtn.disabled = true;
+        acceptCaption.textContent = 'Saved. In the real product you would continue to privacy & data next.';
+      });
+    })();
+  </script>
+</body>
+</html>

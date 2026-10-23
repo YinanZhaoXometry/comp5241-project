@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Instructor · Students · Fieldnotes redesign</title>
+  <style>
+    :root {
+      --bg: #f5f4ed;
+      --surface: #faf9f5;
+      --surface-warm: #e8e6dc;
+      --fg: #141413;
+      --fg-2: #3d3d3a;
+      --muted: #5e5d59;
+      --meta: #6d6c64;
+      --border: #f0eee6;
+      --border-soft: #e8e6dc;
+      --accent: #c96442;
+      --accent-on: #faf9f5;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
+    --accent-strong: #a55236;
+    --accent-strong-hover: color-mix(in oklab, var(--accent-strong), black 8%);
+    --accent-strong-active: color-mix(in oklab, var(--accent-strong), black 14%);
+      --success: #17a34a;
+      --warn: #eab308;
+      --danger: #b53333;
+      --font-display: "Anthropic Serif", Georgia, "Times New Roman", serif;
+      --font-body: "Anthropic Sans", "Arial", system-ui, -apple-system, sans-serif;
+      --font-mono: "Anthropic Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+      --text-xs: 10px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 20px;
+      --text-xl: 25px;
+      --text-2xl: 32px;
+      --text-3xl: 52px;
+      --text-4xl: 64px;
+      --leading-body: 1.6;
+      --leading-tight: 1.1;
+      --tracking-display: 0em;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --section-y-desktop: 96px;
+      --section-y-tablet: 64px;
+      --section-y-phone: 48px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-pill: 9999px;
+      --elev-flat: none;
+      --elev-ring: 0 0 0 1px var(--border);
+      --elev-raised: rgba(0, 0, 0, 0.05) 0px 4px 24px;
+      --focus-ring: 0 0 0 3px rgba(56, 152, 236, 0.3);
+      --motion-fast: 150ms;
+      --motion-base: 200ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+      --container-max: 1200px;
+      --container-gutter-desktop: 24px;
+      --container-gutter-tablet: 16px;
+      --container-gutter-phone: 12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      line-height: var(--leading-body);
+      -webkit-font-smoothing: antialiased;
+    }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; }
+    button { font: inherit; cursor: pointer; }
+    p { text-wrap: pretty; }
+    h1, h2, h3 { text-wrap: balance; }
+    :focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+    .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .sidebar {
+      border-right: 1px solid var(--border-soft);
+      background: var(--surface);
+      padding: var(--space-5) var(--space-4);
+      display: flex; flex-direction: column; gap: var(--space-6);
+      position: sticky; top: 0; height: 100vh;
+    }
+    .sidebar .logo { font-family: var(--font-display); font-weight: 500; font-size: 22px; padding-inline: var(--space-2); text-decoration: none; }
+    .side-nav { display: flex; flex-direction: column; gap: 2px; }
+    .side-nav a { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 15px; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard); }
+    .side-nav a svg { width: 20px; height: 20px; flex: none; }
+    .side-nav a:hover { background: var(--surface-warm); color: var(--fg); }
+    .side-nav a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    .side-foot { margin-top: auto; padding: var(--space-3); border-top: 1px solid var(--border); font-size: 12px; color: var(--meta); }
+
+    .side-study { border-top: 1px solid var(--border); padding-top: var(--space-4); }
+    .side-study .list-title { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); padding-inline: var(--space-3); margin: 0 0 var(--space-2); }
+    .side-study .study-chip { display: block; margin: 0 var(--space-1); padding: var(--space-3); border-radius: var(--radius-sm); background: var(--surface-warm); }
+    .side-study .study-chip .s-name { font-size: 14px; font-weight: 500; color: var(--fg); }
+    .side-study .study-chip .s-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .side-divider { border-top: 1px solid var(--border); padding-top: var(--space-2); }
+
+    .topnav-mobile { display: none; }
+    @media (max-width: 850px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .topnav-mobile { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-soft); background: var(--surface); overflow-x: auto; position: sticky; top: 0; z-index: 6; }
+      .topnav-mobile .logo { font-family: var(--font-display); font-weight: 500; font-size: 18px; margin-right: var(--space-2); flex: none; }
+      .topnav-mobile a { flex: none; min-height: 44px; display: inline-flex; align-items: center; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 14px; text-decoration: none; }
+      .topnav-mobile a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    }
+
+    .main { min-width: 0; display: flex; flex-direction: column; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-8); border-bottom: 1px solid var(--border-soft); background: color-mix(in oklab, var(--bg) 92%, transparent); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 5; }
+    @media (max-width: 850px) { .topbar { padding: var(--space-3) var(--space-4); position: static; } }
+    .content { padding: var(--space-8); max-width: 1080px; width: 100%; margin-inline: auto; flex: 1; }
+    @media (max-width: 850px) { .content { padding: var(--space-5) var(--space-4); } }
+
+    .meta { font-family: var(--font-mono); font-size: 12px; color: var(--meta); }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-5); border-radius: var(--radius-md); border: 1px solid transparent; font-size: 15px; font-weight: 500; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard); }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent-strong); color: var(--accent-on); box-shadow: 0 0 0 1px var(--accent-strong); }
+    .btn-primary:hover { background: var(--accent-strong-hover); box-shadow: 0 0 0 1px var(--accent-strong-hover); }
+    .btn-secondary { background: var(--surface-warm); color: var(--fg-2); box-shadow: 0 0 0 1px color-mix(in oklab, var(--surface-warm), black 8%); }
+    .btn-secondary:hover { background: color-mix(in oklab, var(--surface-warm), black 5%); }
+    .btn-quiet { background: transparent; color: var(--muted); box-shadow: none; }
+    .btn-quiet:hover { color: var(--fg); background: var(--surface-warm); }
+    .btn[disabled] { opacity: 0.45; cursor: default; }
+    .btn[disabled]:hover { background: var(--surface-warm); }
+    .btn-primary[disabled]:hover { background: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 500; letter-spacing: 0.12px; white-space: nowrap; }
+    .pill-muted { background: var(--surface-warm); color: var(--fg-2); }
+    .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .pill-active { background: color-mix(in oklab, var(--success) 12%, var(--surface)); color: color-mix(in oklab, var(--success) 55%, black); }
+    .pill-notstarted { background: color-mix(in oklab, var(--warn) 18%, var(--surface)); color: color-mix(in oklab, var(--warn) 45%, black); }
+
+    .page-head { margin-bottom: var(--space-8); }
+    .page-head h1 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-2xl); line-height: 1.2; margin: 0 0 var(--space-3); }
+    .page-head .sub { color: var(--muted); font-size: 15px; max-width: 62ch; margin: 0; }
+
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); margin-bottom: var(--space-8); }
+    @media (max-width: 850px) { .panel { padding: var(--space-5); } }
+    .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-5); }
+    .panel-head h2 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-xl); margin: 0; }
+    .panel-head .panel-note { font-size: 13px; color: var(--meta); }
+
+    .add-slot { border: 1.5px dashed var(--border-soft); border-radius: var(--radius-lg); padding: var(--space-5) var(--space-6); display: flex; align-items: center; gap: var(--space-3); color: var(--meta); font-size: 14px; }
+    .add-slot svg { width: 18px; height: 18px; flex: none; }
+
+    .import-grid { display: grid; gap: var(--space-5); }
+    .import-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+    .text-link { background: none; border: 0; padding: 0; min-height: 44px; display: inline-flex; align-items: center; color: var(--fg-2); font-size: 14px; font-weight: 500; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+    .text-link:hover { color: var(--fg); }
+
+    .paste-field label { display: block; font-size: 13px; font-weight: 500; color: var(--fg-2); margin-bottom: 6px; }
+    .paste-field .field-hint { display: block; font-size: 12px; color: var(--meta); margin-bottom: var(--space-2); }
+    .paste-field textarea { width: 100%; min-height: 96px; resize: vertical; font: inherit; font-size: 15px; color: var(--fg); background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: var(--space-4); }
+    .paste-field textarea::placeholder { color: var(--meta); }
+    .paste-field textarea:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: transparent; }
+
+    .import-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+    .import-msg { display: none; font-size: 14px; color: var(--fg-2); background: color-mix(in oklab, var(--success) 10%, var(--surface)); border: 1px solid color-mix(in oklab, var(--success) 35%, transparent); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
+    .import-msg.show { display: block; }
+
+    .preview-wrap { display: none; }
+    .preview-wrap.show { display: block; }
+    .preview-note { font-size: 13px; color: var(--muted); margin: 0 0 var(--space-3); }
+
+    .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .roster-table { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 14px; }
+    .roster-table th { text-align: left; font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); font-weight: 500; padding: var(--space-2) var(--space-3) var(--space-2) 0; border-bottom: 1px solid var(--border-soft); }
+    .roster-table td { padding: var(--space-3) var(--space-3) var(--space-3) 0; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--fg-2); }
+    .roster-table tr:last-child td { border-bottom: 0; }
+    .roster-table .r-name { font-weight: 500; color: var(--fg); }
+    .roster-table .r-email { font-family: var(--font-mono); font-size: 13px; }
+    .roster-table .r-last { font-family: var(--font-mono); font-size: 12px; color: var(--meta); white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .roster-table tr.row-flag td { background: color-mix(in oklab, var(--warn) 10%, var(--surface)); }
+    .flag-note { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: color-mix(in oklab, var(--warn) 45%, black); }
+    .flag-note .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    .seg { display: inline-flex; gap: 2px; background: var(--surface-warm); border-radius: var(--radius-pill); padding: 4px; margin-bottom: var(--space-5); max-width: 100%; overflow-x: auto; }
+    .seg button { min-height: 44px; padding: 0 var(--space-4); border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--fg-2); font-size: 14px; font-weight: 500; white-space: nowrap; transition: background var(--motion-fast) var(--ease-standard); }
+    .seg button .cnt { font-family: var(--font-mono); font-size: 12px; color: var(--meta); margin-left: 6px; font-variant-numeric: tabular-nums; }
+    .seg button[aria-pressed="true"] { background: var(--surface); color: var(--fg); box-shadow: var(--elev-ring); }
+    .seg button[aria-pressed="true"] .cnt { color: var(--muted); }
+
+    .empty { display: none; text-align: center; padding: var(--space-12) var(--space-8); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+    .empty.show { display: block; }
+    .empty h3 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-xl); margin: 0 0 var(--space-2); }
+    .empty p { color: var(--muted); font-size: 15px; max-width: 46ch; margin: 0 auto; }
+
+    .roster-legend { font-size: 12px; color: var(--meta); margin-top: var(--space-3); }
+
+    .pagefoot { border-top: 1px solid var(--border-soft); padding: var(--space-5) var(--space-8); color: var(--meta); font-size: 12px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
+  
+    .skip-link{position:absolute;left:16px;top:-56px;z-index:200;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:var(--radius-sm,8px);font:500 14px var(--font-body);text-decoration:none;transition:top var(--motion-fast,150ms) var(--ease-standard,ease)}
+    .skip-link:focus-visible{top:12px;outline:none;box-shadow:var(--focus-ring)}
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+    <div class="app" data-od-id="app-shell">
+    <nav class="topnav-mobile" aria-label="Primary">
+      <span class="logo">Fieldnotes</span>
+      <a href="instructor-courses.html">Courses</a>
+      <a href="instructor-approvals.html">Approvals</a>
+      <a href="instructor-students.html" aria-current="page">Students</a>
+      <a href="instructor-participation.html">Participation</a>
+      <a href="library.html">Learner view</a>
+    </nav>
+
+    <aside class="sidebar" data-od-id="sidebar">
+      <a class="logo" href="index.html">Fieldnotes</a>
+      <nav class="side-nav" aria-label="Primary">
+        <a href="instructor-courses.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Courses
+        </a>
+        <a href="instructor-approvals.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></svg>
+          Approvals
+        </a>
+        <a href="instructor-students.html" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.2 3.4-5 6.5-5s5.7 1.8 6.5 5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8"/><path d="M17.5 15.3c2 .7 3.4 2.3 4 4.7"/></svg>
+          Students
+        </a>
+        <a href="instructor-participation.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 3 5-6"/></svg>
+          Participation
+        </a>
+      </nav>
+      <div class="side-study" data-od-id="side-viewing-as">
+        <p class="list-title">Viewing as</p>
+        <div class="study-chip">
+          <span class="s-name">Instructor</span>
+          <span class="s-meta">Prof. Rowan Ellis · sample</span>
+        </div>
+      </div>
+      <nav class="side-nav side-divider" aria-label="Other views">
+        <a href="library.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+          Learner view
+        </a>
+      </nav>
+      <div class="side-foot">Instructor sample · No live data</div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar" data-od-id="topbar">
+        <span class="meta">Instructor · Students · Sample data</span>
+        <span class="pill pill-muted"><span class="dot"></span>Instructor sample · No live data</span>
+      </header>
+
+      <main class="content" id="content">
+        <div class="page-head" data-od-id="students-head">
+          <h1>Students</h1>
+          <p class="sub">Your roster across all three courses, and the ways to add people to it. Invites go out by email; students appear here as soon as they are invited.</p>
+        </div>
+
+        <section class="panel" data-od-id="import-panel" aria-labelledby="import-h">
+          <div class="panel-head">
+            <h2 id="import-h">Add students</h2>
+            <span class="panel-note">Invites are recorded here — nothing is emailed in this sample</span>
+          </div>
+          <div class="import-grid">
+            <div>
+              <div class="add-slot" data-od-id="csv-slot">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="11"/><polyline points="9 14 12 11 15 14"/></svg>
+                <span>Drop a CSV roster here — file upload is disabled in this sample. Paste a list below instead.</span>
+              </div>
+              <div class="import-row">
+                <button type="button" class="text-link" id="csv-template" data-od-id="csv-template">Download CSV template</button>
+                <span class="meta">Columns: name, email</span>
+              </div>
+            </div>
+
+            <div class="paste-field">
+              <label for="paste-list">Or paste an email list</label>
+              <span class="field-hint">One per line — an email alone, “Name &lt;email&gt;”, or “Name, email”.</span>
+              <textarea id="paste-list" data-od-id="paste-list" placeholder="Maya Chen &lt;maya.chen@example.edu&gt;&#10;Tomas Reyes, tomas.reyes@example.edu&#10;priya.n@example.edu"></textarea>
+            </div>
+
+            <div class="import-actions">
+              <button type="button" class="btn btn-secondary" id="preview-btn" data-od-id="preview-invites" disabled>Preview invites</button>
+              <button type="button" class="btn btn-primary" id="send-btn" data-od-id="send-invites" disabled>Send invites</button>
+            </div>
+
+            <div class="preview-wrap" id="preview-wrap" data-od-id="invite-preview">
+              <p class="preview-note" id="preview-note"></p>
+              <div class="table-scroll">
+                <table class="roster-table" aria-label="Invite preview">
+                  <thead><tr><th>Name</th><th>Email</th><th>Check</th></tr></thead>
+                  <tbody id="preview-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <p class="import-msg" id="import-msg" role="status"></p>
+          </div>
+        </section>
+
+        <section data-od-id="roster-panel" aria-labelledby="roster-h">
+          <div class="panel-head" style="margin-bottom: var(--space-4);">
+            <h2 id="roster-h" style="font-family: var(--font-display); font-weight: 500; font-size: var(--text-xl); margin: 0;">Roster</h2>
+            <span class="panel-note" style="font-size:13px;color:var(--meta);">Sample data · shown across all your courses</span>
+          </div>
+
+          <div class="seg" role="group" aria-label="Filter roster by status" data-od-id="roster-tabs">
+            <button type="button" aria-pressed="true" data-filter="all">All<span class="cnt" id="cnt-all">0</span></button>
+            <button type="button" aria-pressed="false" data-filter="active">Active<span class="cnt" id="cnt-active">0</span></button>
+            <button type="button" aria-pressed="false" data-filter="invited">Invited<span class="cnt" id="cnt-invited">0</span></button>
+            <button type="button" aria-pressed="false" data-filter="notstarted">Not started<span class="cnt" id="cnt-notstarted">0</span></button>
+          </div>
+
+          <div class="panel" style="margin-bottom: 0;">
+            <div class="table-scroll">
+              <table class="roster-table" aria-label="Student roster">
+                <thead><tr><th>Name</th><th>Email</th><th>Course</th><th>Status</th><th>Last active</th></tr></thead>
+                <tbody id="roster-body" data-od-id="roster-body">
+                  <tr data-status="active" data-od-id="roster-row-amara"><td class="r-name">Amara Okafor</td><td class="r-email">amara.o@example.edu</td><td>Neural Networks Foundations</td><td><span class="pill pill-active"><span class="dot"></span>Active</span></td><td class="r-last">2 hours ago</td></tr>
+                  <tr data-status="active" data-od-id="roster-row-jonas"><td class="r-name">Jonas Lindqvist</td><td class="r-email">j.lindqvist@example.edu</td><td>Neural Networks Foundations</td><td><span class="pill pill-active"><span class="dot"></span>Active</span></td><td class="r-last">Yesterday</td></tr>
+                  <tr data-status="active" data-od-id="roster-row-sofia"><td class="r-name">Sofia Marchetti</td><td class="r-email">sofia.m@example.edu</td><td>Statistics for A/B Tests</td><td><span class="pill pill-active"><span class="dot"></span>Active</span></td><td class="r-last">3 days ago</td></tr>
+                  <tr data-status="notstarted" data-od-id="roster-row-daniel"><td class="r-name">Daniel Osei</td><td class="r-email">d.osei@example.edu</td><td>Neural Networks Foundations</td><td><span class="pill pill-notstarted"><span class="dot"></span>Not started</span></td><td class="r-last">Enrolled Oct 2 · never opened</td></tr>
+                  <tr data-status="active" data-od-id="roster-row-lena"><td class="r-name">Lena Fischer</td><td class="r-email">lena.f@example.edu</td><td>Technical Writing Basics</td><td><span class="pill pill-active"><span class="dot"></span>Active</span></td><td class="r-last">5 days ago</td></tr>
+                  <tr data-status="invited" data-od-id="roster-row-ravi"><td class="r-name">Ravi Patel</td><td class="r-email">ravi.p@example.edu</td><td>Statistics for A/B Tests</td><td><span class="pill pill-muted"><span class="dot"></span>Invited</span></td><td class="r-last">Invited 2 days ago</td></tr>
+                  <tr data-status="notstarted" data-od-id="roster-row-grace"><td class="r-name">Grace Nakamura</td><td class="r-email">grace.n@example.edu</td><td>Statistics for A/B Tests</td><td><span class="pill pill-notstarted"><span class="dot"></span>Not started</span></td><td class="r-last">Enrolled Oct 6 · never opened</td></tr>
+                  <tr data-status="active" data-od-id="roster-row-omar"><td class="r-name">Omar Haddad</td><td class="r-email">omar.h@example.edu</td><td>Technical Writing Basics</td><td><span class="pill pill-active"><span class="dot"></span>Active</span></td><td class="r-last">1 week ago</td></tr>
+                  <tr data-status="invited" data-od-id="roster-row-ines"><td class="r-name">Inés Duarte</td><td class="r-email">ines.d@example.edu</td><td>Technical Writing Basics</td><td><span class="pill pill-muted"><span class="dot"></span>Invited</span></td><td class="r-last">Invited 4 days ago</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="roster-legend">“Active” means the student opened a lesson or practice in the last 7 days. “Not started” means enrolled but never opened — stated plainly, not counted as inactive.</p>
+          </div>
+
+          <div class="empty" id="roster-empty" data-od-id="roster-empty">
+            <h3 id="roster-empty-title">Nobody here</h3>
+            <p id="roster-empty-text">No students match this filter yet — the roster will not pad itself with placeholder rows.</p>
+          </div>
+        </section>
+      </main>
+
+      <footer class="pagefoot" data-od-id="footer">
+        <span>Fieldnotes redesign · Instructor — Students (screen 21)</span>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var rosterBody = document.getElementById('roster-body');
+      var tabs = Array.prototype.slice.call(document.querySelectorAll('.seg button'));
+      var empty = document.getElementById('roster-empty');
+      var pasteList = document.getElementById('paste-list');
+      var previewBtn = document.getElementById('preview-btn');
+      var sendBtn = document.getElementById('send-btn');
+      var previewWrap = document.getElementById('preview-wrap');
+      var previewBody = document.getElementById('preview-body');
+      var previewNote = document.getElementById('preview-note');
+      var importMsg = document.getElementById('import-msg');
+      var csvTemplate = document.getElementById('csv-template');
+      var currentFilter = 'all';
+      var parsedRows = [];
+
+      var EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
+
+      function esc(s) {
+        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      }
+
+      function refreshCounts() {
+        var rows = Array.prototype.slice.call(rosterBody.querySelectorAll('tr[data-status]'));
+        var counts = { all: rows.length, active: 0, invited: 0, notstarted: 0 };
+        rows.forEach(function (r) { counts[r.getAttribute('data-status')] += 1; });
+        document.getElementById('cnt-all').textContent = counts.all;
+        document.getElementById('cnt-active').textContent = counts.active;
+        document.getElementById('cnt-invited').textContent = counts.invited;
+        document.getElementById('cnt-notstarted').textContent = counts.notstarted;
+      }
+
+      function applyFilter() {
+        var rows = Array.prototype.slice.call(rosterBody.querySelectorAll('tr[data-status]'));
+        var visible = 0;
+        rows.forEach(function (r) {
+          var show = currentFilter === 'all' || r.getAttribute('data-status') === currentFilter;
+          r.hidden = !show;
+          if (show) visible += 1;
+        });
+        empty.classList.toggle('show', visible === 0);
+        if (visible === 0) {
+          var titles = { active: 'No active students', invited: 'No pending invites', notstarted: 'Everyone has started' };
+          var texts = {
+            active: 'No student has opened a lesson or practice in the last 7 days.',
+            invited: 'No outstanding invites. Add students above to send some.',
+            notstarted: 'Every enrolled student has opened the course at least once — a plain good fact, not a score.'
+          };
+          document.getElementById('roster-empty-title').textContent = titles[currentFilter] || 'Nobody here';
+          document.getElementById('roster-empty-text').textContent = texts[currentFilter] || 'No students match this filter yet.';
+        }
+      }
+
+      tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          tabs.forEach(function (t) { t.setAttribute('aria-pressed', t === tab ? 'true' : 'false'); });
+          currentFilter = tab.getAttribute('data-filter');
+          applyFilter();
+        });
+      });
+
+      csvTemplate.addEventListener('click', function () {
+        var csv = 'name,email\nAda Example,ada.example@example.edu\n';
+        var blob = new Blob([csv], { type: 'text/csv' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'fieldnotes-roster-template.csv';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(a.href);
+      });
+
+      function parseLines(text) {
+        return text.split('\n').map(function (line) { return line.trim(); }).filter(function (line) { return line.length > 0; }).map(function (line) {
+          var name = '';
+          var email = '';
+          var angle = line.match(/^(.*?)<([^>]+)>\s*$/);
+          if (angle) {
+            name = angle[1].trim();
+            email = angle[2].trim();
+          } else if (line.indexOf(',') !== -1) {
+            var parts = line.split(',');
+            name = parts[0].trim();
+            email = parts.slice(1).join(',').trim();
+          } else {
+            email = line;
+          }
+          return { name: name, email: email, valid: EMAIL_RE.test(email) };
+        });
+      }
+
+      function renderPreview() {
+        var validCount = parsedRows.filter(function (r) { return r.valid; }).length;
+        var invalidCount = parsedRows.length - validCount;
+        previewBody.innerHTML = parsedRows.map(function (r) {
+          var check = r.valid
+            ? '<span class="pill pill-active"><span class="dot"></span>Ready to invite</span>'
+            : '<span class="flag-note"><span class="dot"></span>Not a valid email — this row will be skipped</span>';
+          return '<tr' + (r.valid ? '' : ' class="row-flag"') + '>' +
+            '<td class="r-name">' + (r.name ? esc(r.name) : '<span style="color:var(--meta)">—</span>') + '</td>' +
+            '<td class="r-email">' + esc(r.email) + '</td>' +
+            '<td>' + check + '</td>' +
+          '</tr>';
+        }).join('');
+        previewNote.textContent = parsedRows.length + ' row' + (parsedRows.length === 1 ? '' : 's') + ' read — ' + validCount + ' ready to invite' + (invalidCount ? ', ' + invalidCount + ' skipped (flagged above, not errors)' : '') + '.';
+        previewWrap.classList.add('show');
+        sendBtn.disabled = validCount === 0;
+      }
+
+      pasteList.addEventListener('input', function () {
+        previewBtn.disabled = pasteList.value.trim().length === 0;
+        previewWrap.classList.remove('show');
+        sendBtn.disabled = true;
+        importMsg.classList.remove('show');
+      });
+
+      previewBtn.addEventListener('click', function () {
+        parsedRows = parseLines(pasteList.value);
+        renderPreview();
+      });
+
+      sendBtn.addEventListener('click', function () {
+        var added = 0;
+        parsedRows.filter(function (r) { return r.valid; }).forEach(function (r) {
+          var tr = document.createElement('tr');
+          tr.setAttribute('data-status', 'invited');
+          tr.innerHTML = '<td class="r-name">' + (r.name ? esc(r.name) : '<span style="color:var(--meta)">—</span>') + '</td>' +
+            '<td class="r-email">' + esc(r.email) + '</td>' +
+            '<td>Neural Networks Foundations</td>' +
+            '<td><span class="pill pill-muted"><span class="dot"></span>Invited</span></td>' +
+            '<td class="r-last">Invited just now</td>';
+          rosterBody.insertBefore(tr, rosterBody.firstChild);
+          added += 1;
+        });
+        importMsg.textContent = added + ' invite' + (added === 1 ? '' : 's') + ' recorded in this sample — nothing was emailed. New rows appear in the roster as “Invited”.';
+        importMsg.classList.add('show');
+        pasteList.value = '';
+        previewBtn.disabled = true;
+        sendBtn.disabled = true;
+        previewWrap.classList.remove('show');
+        parsedRows = [];
+        refreshCounts();
+        applyFilter();
+      });
+
+      refreshCounts();
+      applyFilter();
+    })();
+  </script>
+</body>
+</html>

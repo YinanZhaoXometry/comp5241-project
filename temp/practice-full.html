@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Practice &amp; recall (full) · Fieldnotes redesign</title>
+  <style>
+    :root {
+      --bg: #f5f4ed;
+      --surface: #faf9f5;
+      --surface-warm: #e8e6dc;
+      --fg: #141413;
+      --fg-2: #3d3d3a;
+      --muted: #5e5d59;
+      --meta: #6d6c64;
+      --border: #f0eee6;
+      --border-soft: #e8e6dc;
+      --accent: #c96442;
+      --accent-on: #faf9f5;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
+    --accent-strong: #a55236;
+    --accent-strong-hover: color-mix(in oklab, var(--accent-strong), black 8%);
+    --accent-strong-active: color-mix(in oklab, var(--accent-strong), black 14%);
+      --success: #17a34a;
+      --warn: #eab308;
+      --danger: #b53333;
+      --font-display: "Anthropic Serif", Georgia, "Times New Roman", serif;
+      --font-body: "Anthropic Sans", "Arial", system-ui, -apple-system, sans-serif;
+      --font-mono: "Anthropic Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+      --text-xs: 10px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 20px;
+      --text-xl: 25px;
+      --text-2xl: 32px;
+      --leading-body: 1.6;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-pill: 9999px;
+      --elev-ring: 0 0 0 1px var(--border);
+      --focus-ring: 0 0 0 3px rgba(56, 152, 236, 0.3);
+      --motion-fast: 150ms;
+      --motion-base: 200ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      line-height: var(--leading-body);
+      -webkit-font-smoothing: antialiased;
+    }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; }
+    button { font: inherit; cursor: pointer; }
+    p { text-wrap: pretty; }
+    h1, h2, h3 { text-wrap: balance; }
+    :focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+    .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .sidebar {
+      border-right: 1px solid var(--border-soft);
+      background: var(--surface);
+      padding: var(--space-5) var(--space-4);
+      display: flex; flex-direction: column; gap: var(--space-6);
+      position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    }
+    .sidebar .logo { font-family: var(--font-display); font-weight: 500; font-size: 22px; padding-inline: var(--space-2); text-decoration: none; }
+    .side-nav { display: flex; flex-direction: column; gap: 2px; }
+    .side-nav a { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 15px; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard); }
+    .side-nav a svg { width: 20px; height: 20px; flex: none; }
+    .side-nav a:hover { background: var(--surface-warm); color: var(--fg); }
+    .side-nav a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    .side-foot { margin-top: auto; padding: var(--space-3); border-top: 1px solid var(--border); font-size: 12px; color: var(--meta); }
+
+    .session-list { border-top: 1px solid var(--border); padding-top: var(--space-4); }
+    .session-list .list-title { font-size: 12px; letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); padding-inline: var(--space-3); margin: 0 0 var(--space-2); }
+    .session-list ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+    .session-list li { display: flex; align-items: center; gap: var(--space-3); min-height: 40px; padding: 0 var(--space-3); border-radius: var(--radius-sm); font-size: 14px; color: var(--muted); }
+    .session-list li.current { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    .session-list .step-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; border: 1.5px solid var(--meta); }
+    .session-list li.current .step-dot { border-color: var(--accent); background: var(--accent); }
+    .session-list li.correct .step-dot { border-color: var(--success); background: var(--success); }
+    .session-list li.missed .step-dot { border-color: color-mix(in oklab, var(--warn) 70%, black); background: var(--warn); }
+
+    .topnav-mobile { display: none; }
+    @media (max-width: 850px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .topnav-mobile { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-soft); background: var(--surface); overflow-x: auto; position: sticky; top: 0; z-index: 6; }
+      .topnav-mobile .logo { font-family: var(--font-display); font-weight: 500; font-size: 18px; margin-right: var(--space-2); flex: none; }
+      .topnav-mobile a { flex: none; min-height: 44px; display: inline-flex; align-items: center; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 14px; text-decoration: none; }
+      .topnav-mobile a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    }
+
+    .main { min-width: 0; display: flex; flex-direction: column; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-8); border-bottom: 1px solid var(--border-soft); background: color-mix(in oklab, var(--bg) 92%, transparent); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 5; }
+    @media (max-width: 850px) { .topbar { padding: var(--space-3) var(--space-4); position: static; } }
+    .content { padding: var(--space-8); max-width: 820px; width: 100%; margin-inline: auto; flex: 1; }
+    @media (max-width: 850px) { .content { padding: var(--space-5) var(--space-4); } }
+
+    .meta { font-family: var(--font-mono); font-size: 12px; color: var(--meta); }
+    .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-5); border-radius: var(--radius-md); border: 1px solid transparent; font-size: 15px; font-weight: 500; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard); }
+    .btn:active { transform: translateY(1px); }
+    .btn[hidden] { display: none; }
+    .btn-primary { background: var(--accent-strong); color: var(--accent-on); box-shadow: 0 0 0 1px var(--accent-strong); }
+    .btn-primary:hover { background: var(--accent-strong-hover); box-shadow: 0 0 0 1px var(--accent-strong-hover); }
+    .btn-primary:disabled { background: var(--surface-warm); color: var(--meta); box-shadow: 0 0 0 1px var(--border-soft); cursor: not-allowed; }
+    .btn-secondary { background: var(--surface-warm); color: var(--fg-2); box-shadow: 0 0 0 1px color-mix(in oklab, var(--surface-warm), black 8%); }
+    .btn-secondary:hover { background: color-mix(in oklab, var(--surface-warm), black 5%); }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 500; letter-spacing: 0.12px; white-space: nowrap; }
+    .pill-muted { background: var(--surface-warm); color: var(--fg-2); }
+    .pill-strengthening { background: color-mix(in oklab, var(--success) 12%, var(--surface)); color: color-mix(in oklab, var(--success) 55%, black); }
+    .pill-fuzzy { background: color-mix(in oklab, var(--warn) 18%, var(--surface)); color: color-mix(in oklab, var(--warn) 45%, black); }
+    .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    .practice-head h1 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-2xl); line-height: 1.2; margin: 0 0 var(--space-3); }
+    .practice-head .sub { color: var(--muted); font-size: 15px; max-width: 60ch; margin: 0 0 var(--space-6); }
+
+    .session-meter { margin-bottom: var(--space-8); }
+    .session-meter .meter-label { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-4); flex-wrap: wrap; font-size: 13px; color: var(--muted); margin-bottom: var(--space-2); }
+    .meter-track { height: 6px; border-radius: var(--radius-pill); background: var(--surface-warm); overflow: hidden; }
+    .meter-fill { height: 100%; width: 0%; border-radius: var(--radius-pill); background: var(--accent); transition: width var(--motion-base) var(--ease-standard); }
+
+    .q-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-8); }
+    @media (max-width: 850px) { .q-card { padding: var(--space-5); } }
+    .q-meta { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-4); }
+    .q-tag { display: inline-block; font-size: 12px; font-weight: 500; letter-spacing: 0.12px; color: var(--fg-2); background: var(--surface-warm); border-radius: var(--radius-pill); padding: 4px 12px; }
+    .q-text { font-family: var(--font-display); font-weight: 500; font-size: var(--text-xl); line-height: 1.3; margin: 0 0 var(--space-6); }
+    .q-text:focus:not(:focus-visible) { outline: none; }
+
+    .hint { margin-bottom: var(--space-5); }
+    .hint[hidden] { display: none; }
+    .hint-toggle { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-4); border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: transparent; color: var(--fg-2); font-size: 14px; font-weight: 500; transition: background var(--motion-fast) var(--ease-standard); }
+    .hint-toggle:hover { background: var(--surface-warm); }
+    .hint-toggle svg { width: 16px; height: 16px; }
+    .hint-panel { display: none; margin-top: var(--space-3); padding: var(--space-4) var(--space-5); background: var(--bg); border: 1px solid var(--border-soft); border-radius: var(--radius-md); font-size: 15px; color: var(--fg-2); }
+    .hint-panel.show { display: block; }
+    .hint-panel .hint-src { display: block; margin-top: var(--space-2); font-size: 12px; color: var(--meta); }
+
+    .answers { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-6); }
+    .answers[hidden] { display: none; }
+    .answer-row { display: flex; align-items: center; gap: var(--space-3); min-height: 64px; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: var(--surface); cursor: pointer; font-size: 15px; text-align: left; transition: border-color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard); }
+    .answer-row:hover { border-color: var(--meta); }
+    .answer-row.selected { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 6%, var(--surface)); }
+    .answer-row .radio-dot { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--meta); flex: none; display: grid; place-items: center; }
+    .answer-row.selected .radio-dot { border-color: var(--accent); }
+    .answer-row.selected .radio-dot::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+    .answers.locked .answer-row { cursor: default; }
+    .answers.locked .answer-row:hover { border-color: var(--border-soft); }
+    .answers.locked .answer-row.is-correct:hover { border-color: var(--success); }
+    .answers.locked .answer-row.is-missed:hover { border-color: color-mix(in oklab, var(--warn) 70%, black); }
+    .answer-row.is-correct { border-color: var(--success); background: color-mix(in oklab, var(--success) 7%, var(--surface)); }
+    .answer-row.is-correct .radio-dot { border-color: var(--success); }
+    .answer-row.is-correct .radio-dot::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--success); }
+    .answer-row.is-missed { border-color: color-mix(in oklab, var(--warn) 70%, black); background: color-mix(in oklab, var(--warn) 10%, var(--surface)); }
+    .answer-row.is-missed .radio-dot { border-color: color-mix(in oklab, var(--warn) 70%, black); }
+    .answer-row.is-missed .radio-dot::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: color-mix(in oklab, var(--warn) 70%, black); }
+
+    .recall-wrap { margin-bottom: var(--space-6); }
+    .recall-wrap[hidden] { display: none; }
+    .recall-wrap .rp-label { display: block; font-size: 14px; font-weight: 500; color: var(--fg-2); margin-bottom: var(--space-2); }
+    .recall-wrap textarea { width: 100%; min-height: 110px; resize: vertical; font: inherit; font-size: 15px; line-height: 1.6; color: var(--fg); background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); }
+    .recall-wrap textarea::placeholder { color: var(--meta); }
+    .recall-wrap textarea:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: transparent; }
+    .recall-wrap textarea:disabled { background: var(--surface-warm); color: var(--fg-2); }
+    .recall-wrap.code textarea { font-family: var(--font-mono); font-size: 14px; min-height: 72px; }
+
+    .q-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+    .q-actions .assistive { font-size: 13px; color: var(--meta); }
+
+    .feedback { display: none; margin-top: var(--space-6); padding: var(--space-5) var(--space-6); border-radius: var(--radius-md); font-size: 15px; color: var(--fg-2); }
+    .feedback.show { display: block; }
+    .feedback.ok { background: color-mix(in oklab, var(--success) 10%, var(--surface)); border: 1px solid color-mix(in oklab, var(--success) 35%, transparent); }
+    .feedback.no { background: color-mix(in oklab, var(--warn) 10%, var(--surface)); border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent); }
+    .feedback.note-only { background: var(--bg); border: 1px solid var(--border-soft); }
+    .feedback .fb-title { font-weight: 600; color: var(--fg); }
+    .feedback p { margin: var(--space-2) 0 0; }
+    .feedback .fb-src { display: block; margin-top: var(--space-3); font-size: 12px; color: var(--meta); }
+    .feedback .fb-model { font-family: var(--font-mono); font-size: 14px; background: var(--surface); border: 1px solid var(--border-soft); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); display: inline-block; margin-top: var(--space-2); }
+    .feedback .fb-link { display: inline-flex; align-items: center; gap: 6px; margin-top: var(--space-3); font-size: 14px; font-weight: 500; color: var(--accent-strong); }
+    .feedback .fb-link:hover { text-decoration: underline; }
+    .self-grade { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-4); }
+    .self-grade .self-label { font-size: 13px; color: var(--muted); }
+
+    .summary { display: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-8); text-align: left; }
+    .summary.show { display: block; }
+    @media (max-width: 850px) { .summary { padding: var(--space-5); } }
+    .summary h2 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-xl); margin: 0 0 var(--space-3); }
+    .summary p { color: var(--muted); font-size: 15px; max-width: 58ch; margin: 0 0 var(--space-4); }
+    .summary .summary-rows { border-top: 1px solid var(--border-soft); margin-bottom: var(--space-6); }
+    .summary .s-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+    .summary .s-row .step-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+    .summary .s-row .step-dot.ok { background: var(--success); }
+    .summary .s-row .step-dot.no { background: var(--warn); }
+    .summary .s-row .s-q { flex: 1; min-width: 0; }
+    .summary .s-row .s-state { font-size: 12px; color: var(--meta); white-space: nowrap; }
+    .summary .honest-note { font-size: 13px; color: var(--meta); margin: 0 0 var(--space-6); }
+    .summary .s-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+
+    .pagefoot { border-top: 1px solid var(--border-soft); padding: var(--space-5) var(--space-8); color: var(--meta); font-size: 12px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
+  
+    .skip-link{position:absolute;left:16px;top:-56px;z-index:200;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:var(--radius-sm,8px);font:500 14px var(--font-body);text-decoration:none;transition:top var(--motion-fast,150ms) var(--ease-standard,ease)}
+    .skip-link:focus-visible{top:12px;outline:none;box-shadow:var(--focus-ring)}
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+    <div class="app" data-od-id="app-shell">
+    <nav class="topnav-mobile" aria-label="Primary">
+      <span class="logo">Fieldnotes</span>
+      <a href="course-player-full.html">Course</a>
+      <a href="#" aria-current="page">Practice</a>
+      <a href="test-recovery.html">Test &amp; recovery</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="progress.html">Progress</a>
+      <a href="review-inbox.html">Review</a>
+    </nav>
+
+    <aside class="sidebar" data-od-id="sidebar">
+      <a class="logo" href="index.html">Fieldnotes</a>
+      <nav class="side-nav" aria-label="Primary">
+        <a href="course-player-full.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m10 8 6 4-6 4V8z"/></svg>
+          Course player
+        </a>
+        <a href="#" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          Practice
+        </a>
+        <a href="test-recovery.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+          Test &amp; recovery
+        </a>
+        <a href="roadmap.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 20 3 17V4l6 3 6-3 6 3v13l-6-3-6 3z"/><path d="M9 7v13"/><path d="M15 4v13"/></svg>
+          Roadmap
+        </a>
+        <a href="progress.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 3 5-6"/></svg>
+          Progress
+        </a>
+        <a href="review-inbox.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+          Review inbox
+        </a>
+      </nav>
+      <div class="session-list" data-od-id="session-list">
+        <p class="list-title" id="session-list-title">This session</p>
+        <ol id="session-items"></ol>
+      </div>
+      <div class="side-foot">Sample prototype · No live AI</div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar" data-od-id="topbar">
+        <span class="meta" id="topbar-meta">Practice &amp; recall — full · How neural networks learn</span>
+        <span class="pill pill-muted"><span class="dot"></span>Sample prototype · No live AI</span>
+      </header>
+
+      <main class="content" id="content">
+        <div class="practice-head" data-od-id="practice-head">
+          <h1>Practice &amp; recall</h1>
+          <p class="sub">Four questions on this study: two assisted multiple choice, one free recall, one explain-back you grade yourself. Hints and feedback were written by the instructor — nothing is generated live. Missed questions go to your review inbox.</p>
+        </div>
+
+        <div class="session-meter" data-od-id="session-meter" role="status">
+          <div class="meter-label">
+            <span id="meter-text">Answered <span class="num">0</span> of <span class="num">4</span></span>
+            <span>This session only — not a stored score</span>
+          </div>
+          <div class="meter-track" aria-hidden="true"><div class="meter-fill" id="meter-fill"></div></div>
+        </div>
+
+        <section class="q-card" id="q-card" data-od-id="question-card" aria-labelledby="q-text">
+          <div class="q-meta">
+            <span class="q-tag" id="q-tag"></span>
+            <span class="pill pill-muted" id="recall-pill" data-od-id="recall-state-pill"><span class="dot"></span><span id="recall-pill-text">New</span></span>
+          </div>
+          <h2 class="q-text" id="q-text" tabindex="-1"></h2>
+
+          <div class="hint" id="hint-block" data-od-id="hint">
+            <button type="button" class="hint-toggle" id="hint-toggle" aria-expanded="false" aria-controls="hint-panel">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2z"/></svg>
+              <span id="hint-toggle-label">Show a hint</span>
+            </button>
+            <div class="hint-panel" id="hint-panel">
+              <span id="hint-text"></span>
+              <span class="hint-src">Hint written by the instructor · shown because you asked</span>
+            </div>
+          </div>
+
+          <div class="answers" id="answers" role="radiogroup" aria-label="Answer choices"></div>
+
+          <div class="recall-wrap" id="recall-wrap" hidden>
+            <label class="rp-label" for="recall-input" id="recall-label">Your answer — write before you check</label>
+            <textarea id="recall-input" data-od-id="recall-input" placeholder=""></textarea>
+          </div>
+
+          <div class="q-actions" data-od-id="q-actions">
+            <button type="button" class="btn btn-primary" id="check-btn" data-od-id="check-answer" disabled>Check answer</button>
+            <button type="button" class="btn btn-primary" id="next-btn" data-od-id="next-question" hidden>Next question</button>
+            <span class="assistive" id="assistive-note"></span>
+          </div>
+
+          <div class="feedback" id="feedback" role="status"></div>
+        </section>
+
+        <section class="summary" id="summary" data-od-id="session-summary" aria-labelledby="summary-h">
+          <h2 id="summary-h">Session complete</h2>
+          <p id="summary-line"></p>
+          <div class="summary-rows" id="summary-rows"></div>
+          <p class="honest-note" id="summary-honest">Nothing here is a grade. This score is for this session only and is not stored. Missed questions are queued in your review inbox with the lesson they came from.</p>
+          <div class="s-actions" id="summary-actions"></div>
+        </section>
+      </main>
+
+      <footer class="pagefoot" data-od-id="footer">
+        <span>Fieldnotes redesign · Practice &amp; recall full (screen 11)</span>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var QUESTIONS = [
+        {
+          id: 'q1', kind: 'mc', short: 'Recognition',
+          recall: 'New', recallClass: 'pill-muted',
+          tag: 'Multiple choice · Lesson 3 · Gradient descent',
+          text: 'You run one training step and the loss increases sharply. What is the most likely cause?',
+          hint: 'Think about the hillside: what happens to your position if one step is longer than the valley is wide?',
+          choices: [
+            { t: 'The model has memorized the training data.', correct: false },
+            { t: 'The learning rate is too large, so the step overshot the valley.', correct: true },
+            { t: 'The gradient was computed on too few examples.', correct: false },
+            { t: 'The loss function was chosen incorrectly.', correct: false }
+          ],
+          ok: 'A rising loss right after a step is the classic signature of overshooting — the step was longer than the valley is wide. Halving the learning rate is the usual first move.',
+          no: 'Picture the hillside again. Overshooting the valley floor makes the loss jump up; memorization and small batches behave differently.'
+        },
+        {
+          id: 'q2', kind: 'mc', short: 'Recognition',
+          recall: 'Strengthening', recallClass: 'pill-strengthening',
+          tag: 'Multiple choice · Lesson 2 · What a loss measures',
+          text: 'In one sentence, what does the loss function measure?',
+          hint: 'It is a single number, computed after every prediction, that the training loop tries to shrink.',
+          choices: [
+            { t: 'How wrong the model’s predictions are, as a single number.', correct: true },
+            { t: 'How fast the network runs on the training hardware.', correct: false },
+            { t: 'How many weights the network contains.', correct: false },
+            { t: 'How similar two training examples are to each other.', correct: false }
+          ],
+          ok: 'Exactly — the loss compresses "how wrong are we" into one number, so the optimizer always knows which way is downhill.',
+          no: 'The loss is about correctness, not speed or size. It turns "how wrong are the predictions" into one number the optimizer can minimize.'
+        },
+        {
+          id: 'q3', kind: 'recall', short: 'Recall',
+          recall: 'Fuzzy', recallClass: 'pill-fuzzy',
+          tag: 'Free recall · Lesson 3 · Gradient descent',
+          text: 'Without looking back: write the one line of code that performs a single gradient descent step.',
+          placeholder: 'w = …',
+          model: 'w = w - lr * grad',
+          ok: 'Right. The gradient points uphill, so the step subtracts it — scaled by the learning rate so each step stays small.',
+          no: 'Direction matters: the gradient points uphill, so the update subtracts it. The instructor’s line is shown above.'
+        },
+        {
+          id: 'q4', kind: 'explain', short: 'Explain-back',
+          recall: 'Strengthening', recallClass: 'pill-strengthening',
+          tag: 'Explain it back · Lesson 3 · Gradient descent',
+          text: 'In your own words: why does gradient descent move the weights against the gradient, not along it?',
+          placeholder: 'The gradient points uphill, so…',
+          note: 'The gradient of the loss points in the direction the loss increases fastest — uphill on the hillside. Training wants the loss to shrink, so each step moves a small amount the opposite way. Moving along the gradient would climb the hill, and the loss would grow.',
+          ok: 'Self-graded as explained. Honest self-grading is what makes the explain-back count as recall evidence.',
+          no: 'Logged as still fuzzy — this stays in your review queue at a short interval. That is the queue working, not a failure.'
+        }
+      ];
+
+      function freshState() {
+        return { selected: -1, checked: false, correct: false, hintShown: false, attempt: '', noteShown: false };
+      }
+
+      var qstate = {};
+      QUESTIONS.forEach(function (q) { qstate[q.id] = freshState(); });
+      var roundResults = { 1: {}, 2: {} };
+      var round = 1;
+      var order = QUESTIONS.map(function (q) { return q.id; });
+      var pos = 0;
+      var missedRound1 = [];
+
+      function byId(id) {
+        for (var i = 0; i < QUESTIONS.length; i++) if (QUESTIONS[i].id === id) return QUESTIONS[i];
+        return null;
+      }
+
+      var qTag = document.getElementById('q-tag');
+      var qText = document.getElementById('q-text');
+      var recallPill = document.getElementById('recall-pill');
+      var recallPillText = document.getElementById('recall-pill-text');
+      var answersEl = document.getElementById('answers');
+      var recallWrap = document.getElementById('recall-wrap');
+      var recallInput = document.getElementById('recall-input');
+      var recallLabel = document.getElementById('recall-label');
+      var hintBlock = document.getElementById('hint-block');
+      var hintToggle = document.getElementById('hint-toggle');
+      var hintToggleLabel = document.getElementById('hint-toggle-label');
+      var hintPanel = document.getElementById('hint-panel');
+      var hintText = document.getElementById('hint-text');
+      var checkBtn = document.getElementById('check-btn');
+      var nextBtn = document.getElementById('next-btn');
+      var feedback = document.getElementById('feedback');
+      var meterFill = document.getElementById('meter-fill');
+      var meterText = document.getElementById('meter-text');
+      var topbarMeta = document.getElementById('topbar-meta');
+      var sessionItems = document.getElementById('session-items');
+      var sessionListTitle = document.getElementById('session-list-title');
+      var assistive = document.getElementById('assistive-note');
+      var summary = document.getElementById('summary');
+      var qCard = document.getElementById('q-card');
+
+      function renderSessionList() {
+        sessionListTitle.textContent = round === 1 ? 'This session' : 'Retry round';
+        sessionItems.innerHTML = '';
+        order.forEach(function (id, i) {
+          var q = byId(id);
+          var s = qstate[id];
+          var li = document.createElement('li');
+          li.innerHTML = '<span class="step-dot"></span><span></span>';
+          li.lastChild.textContent = (round === 1 ? 'Question ' + (i + 1) : 'Retry ' + (i + 1)) + ' · ' + q.short;
+          if (s.checked) li.classList.add(s.correct ? 'correct' : 'missed');
+          else if (i === pos) li.classList.add('current');
+          sessionItems.appendChild(li);
+        });
+      }
+
+      function renderMeter() {
+        var answered = order.filter(function (id) { return qstate[id].checked; }).length;
+        meterFill.style.width = (answered / order.length * 100) + '%';
+        meterText.innerHTML = 'Answered <span class="num">' + answered + '</span> of <span class="num">' + order.length + '</span>' + (round === 2 ? ' · retry round' : '');
+      }
+
+      function renderTopbar() {
+        topbarMeta.innerHTML = 'Practice &amp; recall — full · How neural networks learn · ' +
+          (round === 2 ? 'Retry question' : 'Question') +
+          ' <span class="num">' + (pos + 1) + '</span> of <span class="num">' + order.length + '</span>';
+      }
+
+      function showNotePanel() {
+        var q = byId(order[pos]);
+        feedback.className = 'feedback show note-only';
+        feedback.innerHTML =
+          '<span class="fb-title">Instructor’s note</span>' +
+          '<p id="fb-note-text"></p>' +
+          '<span class="fb-src">Note written by the instructor — compare honestly, then grade yourself below.</span>' +
+          '<div class="self-grade" data-od-id="self-grade">' +
+            '<span class="self-label">Compared to the note, how did you do?</span>' +
+            '<button type="button" class="btn btn-secondary" data-grade="explained">I explained it</button>' +
+            '<button type="button" class="btn btn-secondary" data-grade="fuzzy">Still fuzzy</button>' +
+          '</div>';
+        feedback.querySelector('#fb-note-text').textContent = q.note;
+        feedback.querySelectorAll('[data-grade]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var s = qstate[q.id];
+            if (s.checked) return;
+            s.checked = true;
+            s.correct = btn.dataset.grade === 'explained';
+            recordResult(q);
+            renderQuestion(false);
+          });
+        });
+      }
+
+      function showFeedback() {
+        var q = byId(order[pos]);
+        var s = qstate[q.id];
+        feedback.className = 'feedback show ' + (s.correct ? 'ok' : 'no');
+        var html = '<span class="fb-title">' + (s.correct ? 'Right.' : (q.kind === 'explain' ? 'Marked as still fuzzy.' : 'Not quite.')) + '</span>';
+        if (q.kind === 'recall') {
+          html += '<span class="fb-model" id="fb-model"></span>';
+        }
+        if (q.kind === 'explain') {
+          html += '<p id="fb-note-recall"></p>';
+        }
+        html += '<p id="fb-body"></p>';
+        html += '<span class="fb-src">Feedback written by the instructor — prewritten, not generated live.</span>';
+        if (!s.correct) {
+          html += '<a class="fb-link" href="course-player-full.html">Revisit this in the course →</a>';
+          html += '<a class="fb-link" href="review-inbox.html">See it in your review inbox →</a>';
+        }
+        feedback.innerHTML = html;
+        if (q.kind === 'recall') feedback.querySelector('#fb-model').textContent = q.model;
+        if (q.kind === 'explain') feedback.querySelector('#fb-note-recall').textContent = q.note;
+        feedback.querySelector('#fb-body').textContent = s.correct ? q.ok : q.no;
+      }
+
+      function renderQuestion(moveFocus) {
+        var q = byId(order[pos]);
+        var s = qstate[q.id];
+        qTag.textContent = q.tag;
+        qText.textContent = q.text;
+        recallPill.className = 'pill ' + q.recallClass;
+        recallPillText.textContent = q.recall;
+        recallPill.title = q.recall === 'New'
+          ? 'First time this question appears in practice'
+          : (q.recall === 'Fuzzy' ? 'Last recall was hesitant — this one is on a short interval' : 'Recalled successfully before');
+
+        var hasHint = q.kind === 'mc';
+        hintBlock.hidden = !hasHint;
+        if (hasHint) {
+          hintText.textContent = q.hint;
+          hintPanel.classList.toggle('show', s.hintShown);
+          hintToggle.setAttribute('aria-expanded', String(s.hintShown));
+          hintToggleLabel.textContent = s.hintShown ? 'Hide the hint' : 'Show a hint';
+        }
+
+        answersEl.hidden = q.kind !== 'mc';
+        answersEl.classList.toggle('locked', s.checked);
+        answersEl.innerHTML = '';
+        if (q.kind === 'mc') {
+          q.choices.forEach(function (c, i) {
+            var row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'answer-row';
+            row.setAttribute('role', 'radio');
+            row.setAttribute('aria-checked', String(s.selected === i));
+            if (s.selected === i) row.classList.add('selected');
+            if (s.checked && c.correct) { row.classList.remove('selected'); row.classList.add('is-correct'); row.setAttribute('aria-checked', 'true'); }
+            if (s.checked && s.selected === i && !c.correct) { row.classList.remove('selected'); row.classList.add('is-missed'); }
+            row.innerHTML = '<span class="radio-dot"></span><span></span>';
+            row.lastChild.textContent = c.t;
+            row.addEventListener('click', function () { select(i); });
+            answersEl.appendChild(row);
+          });
+        }
+
+        recallWrap.hidden = q.kind === 'mc';
+        recallWrap.classList.toggle('code', q.kind === 'recall');
+        if (q.kind !== 'mc') {
+          recallLabel.textContent = q.kind === 'recall'
+            ? 'Your answer — write it before you check'
+            : 'Your explanation — write it before you compare';
+          recallInput.placeholder = q.placeholder;
+          recallInput.value = s.attempt;
+          recallInput.disabled = s.checked || s.noteShown;
+        }
+
+        feedback.className = 'feedback';
+        feedback.innerHTML = '';
+        if (s.noteShown && !s.checked) showNotePanel();
+        if (s.checked) showFeedback();
+
+        checkBtn.hidden = s.checked || s.noteShown;
+        checkBtn.disabled = q.kind === 'mc' ? s.selected < 0 : s.attempt.trim().length === 0;
+        checkBtn.textContent = q.kind === 'explain' ? 'Compare with the instructor’s note' : 'Check answer';
+        nextBtn.hidden = !s.checked;
+        nextBtn.textContent = pos === order.length - 1 ? (round === 1 ? 'See summary' : 'See final summary') : 'Next question';
+
+        if (s.checked) {
+          assistive.textContent = s.correct
+            ? 'Answered correctly' + (round === 2 ? ' on retry.' : ' on the first try.')
+            : 'Missed — this question is queued in your review inbox.';
+        } else if (q.kind === 'explain') {
+          assistive.textContent = s.noteShown ? 'Grade yourself against the note to continue.' : 'You grade this one yourself against the instructor’s note.';
+        } else {
+          assistive.textContent = 'One attempt per question in this sample.';
+        }
+
+        renderTopbar();
+        renderSessionList();
+        renderMeter();
+        if (moveFocus) qText.focus();
+      }
+
+      function select(i) {
+        var s = qstate[order[pos]];
+        if (s.checked) return;
+        s.selected = i;
+        var rows = answersEl.querySelectorAll('.answer-row');
+        rows.forEach(function (r, j) {
+          r.classList.toggle('selected', j === i);
+          r.setAttribute('aria-checked', String(j === i));
+        });
+        checkBtn.disabled = false;
+      }
+
+      function recordResult(q) {
+        roundResults[round][q.id] = qstate[q.id].correct ? 'correct' : 'missed';
+      }
+
+      hintToggle.addEventListener('click', function () {
+        var s = qstate[order[pos]];
+        s.hintShown = !s.hintShown;
+        hintPanel.classList.toggle('show', s.hintShown);
+        hintToggle.setAttribute('aria-expanded', String(s.hintShown));
+        hintToggleLabel.textContent = s.hintShown ? 'Hide the hint' : 'Show a hint';
+      });
+
+      recallInput.addEventListener('input', function () {
+        var s = qstate[order[pos]];
+        if (s.checked || s.noteShown) return;
+        s.attempt = recallInput.value;
+        checkBtn.disabled = s.attempt.trim().length === 0;
+      });
+
+      checkBtn.addEventListener('click', function () {
+        var q = byId(order[pos]);
+        var s = qstate[q.id];
+        if (s.checked) return;
+        if (q.kind === 'mc') {
+          if (s.selected < 0) return;
+          s.checked = true;
+          s.correct = q.choices[s.selected].correct;
+          recordResult(q);
+          renderQuestion(false);
+        } else if (q.kind === 'recall') {
+          var norm = s.attempt.toLowerCase().replace(/\s+/g, '');
+          s.checked = true;
+          s.correct = norm.indexOf('w=w-lr*grad') !== -1;
+          recordResult(q);
+          renderQuestion(false);
+        } else {
+          if (s.attempt.trim().length === 0) return;
+          s.noteShown = true;
+          renderQuestion(false);
+        }
+      });
+
+      nextBtn.addEventListener('click', function () {
+        if (pos < order.length - 1) {
+          pos += 1;
+          renderQuestion(true);
+        } else {
+          showSummary();
+        }
+      });
+
+      function outcomeText(id) {
+        var r1 = roundResults[1][id];
+        var r2 = roundResults[2][id];
+        if (r1 === 'correct') return { ok: true, label: 'First try' };
+        if (r2 === 'correct') return { ok: true, label: 'Recalled on retry' };
+        return { ok: false, label: 'Missed · queued for review inbox' };
+      }
+
+      function showSummary() {
+        qCard.style.display = 'none';
+        if (round === 1) {
+          missedRound1 = order.filter(function (id) { return roundResults[1][id] === 'missed'; });
+        }
+        var isFinal = round === 2 || missedRound1.length === 0;
+        var rows = document.getElementById('summary-rows');
+        rows.innerHTML = '';
+        QUESTIONS.forEach(function (q) {
+          var res = outcomeText(q.id);
+          var show = isFinal || roundResults[1][q.id];
+          if (!show) return;
+          var row = document.createElement('div');
+          row.className = 's-row';
+          row.setAttribute('data-od-id', 'summary-row-' + q.id);
+          row.innerHTML = '<span class="step-dot ' + (res.ok ? 'ok' : 'no') + '"></span><span class="s-q"></span><span class="s-state"></span>';
+          row.querySelector('.s-q').textContent = q.tag;
+          row.querySelector('.s-state').textContent = res.label;
+          rows.appendChild(row);
+        });
+
+        var actions = document.getElementById('summary-actions');
+        actions.innerHTML = '';
+        document.getElementById('summary-h').textContent = isFinal ? 'Practice complete' : 'Session complete';
+
+        if (round === 1 && missedRound1.length > 0) {
+          var correct1 = order.filter(function (id) { return roundResults[1][id] === 'correct'; }).length;
+          document.getElementById('summary-line').textContent =
+            'Session score: ' + correct1 + ' of ' + order.length + ' on the first try — this session only, not a stored score. ' +
+            'The missed ' + (missedRound1.length === 1 ? 'question is' : 'questions are') + ' queued in your review inbox, and you can retry ' + (missedRound1.length === 1 ? 'it' : 'them') + ' right now.';
+          document.getElementById('summary-honest').textContent =
+            'Nothing here is a grade. Retrying only re-asks what you missed — the review inbox keeps the longer-term schedule.';
+          var retryBtn = document.createElement('button');
+          retryBtn.type = 'button';
+          retryBtn.className = 'btn btn-primary';
+          retryBtn.id = 'retry-missed';
+          retryBtn.setAttribute('data-od-id', 'retry-missed');
+          retryBtn.textContent = 'Retry missed questions (' + missedRound1.length + ')';
+          retryBtn.addEventListener('click', function () {
+            round = 2;
+            order = missedRound1.slice();
+            pos = 0;
+            order.forEach(function (id) { qstate[id] = freshState(); });
+            summary.classList.remove('show');
+            qCard.style.display = '';
+            renderQuestion(true);
+          });
+          actions.appendChild(retryBtn);
+          var inboxLink = document.createElement('a');
+          inboxLink.className = 'btn btn-secondary';
+          inboxLink.href = 'review-inbox.html';
+          inboxLink.setAttribute('data-od-id', 'open-review-inbox');
+          inboxLink.textContent = 'Open review inbox';
+          actions.appendChild(inboxLink);
+        } else {
+          var stillMissed = QUESTIONS.filter(function (q) { return !outcomeText(q.id).ok; }).length;
+          document.getElementById('summary-line').textContent = stillMissed === 0
+            ? 'Every question recalled correctly' + (round === 2 ? ' after the retry round' : ' on the first try') + '. Session score kept on this screen only — the review inbox will space these topics out rather than repeat them tomorrow.'
+            : 'Retry round done. ' + stillMissed + (stillMissed === 1 ? ' question is' : ' questions are') + ' still fuzzy and stays in your review inbox at a short interval — that is the schedule working, not a failure.';
+          document.getElementById('summary-honest').textContent =
+            'Nothing here is a grade and no score is stored. Missed and fuzzy items live in the review inbox with the lesson they came from.';
+          var donePrimary = document.createElement('a');
+          donePrimary.className = 'btn btn-primary';
+          donePrimary.href = stillMissed > 0 ? 'review-inbox.html' : 'course-player-full.html';
+          donePrimary.setAttribute('data-od-id', 'summary-primary');
+          donePrimary.textContent = stillMissed > 0 ? 'Open review inbox' : 'Back to the course';
+          actions.appendChild(donePrimary);
+          var doneSecondary = document.createElement('a');
+          doneSecondary.className = 'btn btn-secondary';
+          doneSecondary.href = 'roadmap.html';
+          doneSecondary.setAttribute('data-od-id', 'summary-roadmap');
+          doneSecondary.textContent = 'See the roadmap';
+          actions.appendChild(doneSecondary);
+        }
+
+        summary.classList.add('show');
+        topbarMeta.innerHTML = 'Practice &amp; recall — full · How neural networks learn · ' + (isFinal ? 'Final summary' : 'Session summary');
+        document.getElementById('summary-h').focus && summary.setAttribute('tabindex', '-1');
+        summary.focus && summary.focus();
+      }
+
+      renderQuestion(false);
+    })();
+  </script>
+</body>
+</html>
