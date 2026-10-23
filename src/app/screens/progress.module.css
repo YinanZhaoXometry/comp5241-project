@@ -1,0 +1,279 @@
+/* Progress screen styles — extracted from the retired demo sample stylesheet
+   when the demo area was replaced by product pages (2026-10-23). */
+
+.pageHeading {
+  margin-bottom: 2rem;
+}
+.overline {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--meta);
+}
+.lead {
+  color: var(--muted);
+  font-size: 1rem;
+  max-width: 48rem;
+}
+.muted {
+  color: var(--meta);
+  font-size: 0.75rem;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.12px;
+  background: var(--surface-warm);
+  color: var(--fg-2);
+}
+.pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0 1.25rem;
+  min-height: 44px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--accent-strong);
+  color: var(--accent-on);
+  box-shadow: 0 0 0 1px var(--accent-strong);
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+.primary:hover {
+  background: color-mix(in oklab, var(--accent-strong), black 8%);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent-strong), black 8%);
+}
+.primary:active {
+  background: color-mix(in oklab, var(--accent-strong), black 14%);
+}
+.bottomNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding-top: 1.5rem;
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--border-soft);
+}
+.bottomNav p {
+  max-width: 32rem;
+  margin: 0;
+}
+.sampleNotice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1.5rem;
+  padding: 1rem 1.25rem;
+  background: color-mix(in oklab, var(--warn) 10%, var(--surface));
+  border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent);
+  border-radius: var(--radius-md);
+  margin-bottom: 1.5rem;
+  font-size: 0.8125rem;
+  color: var(--fg-2);
+}
+.sampleNotice strong {
+  font-weight: 600;
+}
+.sampleNotice > span {
+  color: var(--fg-2);
+}
+.evidence {
+  padding: 1.5rem 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.evidenceHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-soft);
+  padding-bottom: 1rem;
+}
+.evidenceHeader h2,
+.evidenceHeader p {
+  margin: 0.25rem 0;
+}
+.evidenceColumns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2rem;
+  padding-top: 1.5rem;
+}
+.evidenceColumns > div + div {
+  border-left: 1px solid var(--border-soft);
+  padding-left: 1.5rem;
+}
+.evidenceColumns p {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.evidenceColumns h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.375rem;
+  margin: 1rem 0;
+}
+.evidenceColumns .bigMetric {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  font-size: 2.25rem;
+  margin: 0.5rem 0;
+}
+.bigMetric span {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.75rem;
+  color: var(--meta);
+}
+.evidence meter {
+  width: 100%;
+  height: 0.5rem;
+  accent-color: var(--fg-2);
+}
+.evidence meter::-webkit-meter-bar {
+  background: var(--surface-warm);
+  border: 0;
+  border-radius: var(--radius-pill);
+}
+.evidence meter::-webkit-meter-optimum-value {
+  background: var(--fg-2);
+  border-radius: var(--radius-pill);
+}
+.evidence meter::-moz-meter-bar {
+  background: var(--fg-2);
+  border-radius: var(--radius-pill);
+}
+.progressGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+.panel {
+  padding: 1.5rem 2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.coverage {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0 0;
+}
+.coverage li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+  border-top: 1px solid var(--border-soft);
+}
+.coverage li > span {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--meta);
+}
+.coverage strong {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.coverage small {
+  display: block;
+  color: var(--meta);
+  font-size: 0.7rem;
+}
+.reflectionCard {
+  padding: 1.5rem;
+  background: var(--surface-warm);
+  border-radius: var(--radius-md);
+}
+.reflectionCard h2 {
+  margin-top: 1rem;
+}
+.reflectionCard p {
+  font-size: 0.875rem;
+  color: var(--fg-2);
+}
+.reflectionCard a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+.reflectionCard a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 1100px) {
+  .evidence {
+    padding: 1.5rem;
+  }
+  .progressGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .reflectionCard h2 br {
+    display: none;
+  }
+  .evidenceColumns {
+    gap: 1rem;
+  }
+  .evidenceColumns > div + div {
+    padding-left: 1rem;
+  }
+}
+@media (max-width: 600px) {
+  .panel,
+  .evidence {
+    padding: 1.25rem;
+  }
+  .evidenceColumns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .evidenceColumns > div + div {
+    border-left: 0;
+    padding: 1rem 0 0;
+    border-top: 1px solid var(--border-soft);
+  }
+  .evidenceColumns h3 {
+    margin: 0.75rem 0;
+  }
+  .coverage li {
+    gap: 0.75rem;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .coverage li > span:last-child {
+    grid-column: 2;
+  }
+  .bottomNav .primary {
+    width: 100%;
+  }
+}

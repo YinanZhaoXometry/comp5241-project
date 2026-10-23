@@ -28,53 +28,50 @@ transports, with global network trapped. Live activation remains forbidden and
 requires separate eligibility, consent/lineage, durable accounting and operator
 authorization. Coding subscription benefits do not establish product eligibility.
 
-## Screenshot-ready sample study experience
+## Static product pages (designed screens)
 
-The separate [screenshot prototype plan](_bmad-output/initiative-ai-learning-platform/plan-screenshot-study-prototype.md)
-authorizes an unauthenticated, original-content sample under `/demo`. It does not
-replace the working private tracer at `/` or implement the later GenAI epics.
-Every sample screen is labeled **Sample prototype · No live AI**.
+The 2026-10-21 screenshot-prototype plan authorized the original unauthenticated
+sample under `/demo`; on 2026-10-23 the user retired the demo area and the
+designed screens became **static product pages** at real routes, styled per the
+revised visual spine (see the initiative's `plan-visual-spine-revision.md`).
+They do not replace the working private tracer at `/` and do not implement the
+later GenAI epics. The product shell keeps the **Sample prototype · No live AI**
+label.
 
-With the local web server running, the four direct screenshot entry points are:
+Pages with implemented business logic: the tracer flow at `/` (sign-in,
+materials, goal & manual plan, consent, export, deletion). The static styled
+pages (no business logic yet):
 
-| View                                                    | Normal local URL                    | Screenshot preview URL (port 3100)  |
-| ------------------------------------------------------- | ----------------------------------- | ----------------------------------- |
-| Overview and whole-mini-course roadmap                  | http://127.0.0.1:3000/demo          | http://127.0.0.1:3100/demo          |
-| Unit-testing lesson and boundary diagram                | http://127.0.0.1:3000/demo/lesson   | http://127.0.0.1:3100/demo/lesson   |
-| Assisted multiple-choice practice                       | http://127.0.0.1:3000/demo/practice | http://127.0.0.1:3100/demo/practice |
-| Illustrative progress and separate test/recovery status | http://127.0.0.1:3000/demo/progress | http://127.0.0.1:3100/demo/progress |
+| Page                                                   | Route                    |
+| ------------------------------------------------------ | ------------------------ |
+| Library (saved studies)                                | `/library`               |
+| Mini-course player — all six activity formats          | `/course`                |
+| Practice & recall — mixed types, session-only scoring  | `/practice`              |
+| Progress — illustrative evidence                       | `/progress`              |
+| Test & recovery                                        | `/recovery`              |
+| Roadmap                                                | `/roadmap`               |
+| Review inbox                                           | `/review`                |
+| Why explorer                                           | `/why`                   |
+| Optional starting check                                | `/starting-check`        |
+| New study plan — AI-assisted variant                   | `/plan-ai`               |
+| Privacy & data — export and deletion                   | `/data`                  |
+| Instructor studio — courses / approvals / students / participation | `/instructor/*` |
 
-The preview uses the same production build with `npm run start -- --port 3100`;
-it still binds only to loopback. The demo itself needs **no sign-in, database,
-worker, provider configuration or private credentials**. Follow the existing
-runtime selection below before running commands. The full verification harness
-continues to start the real tracer web/worker and isolated synthetic database.
+These pages need **no sign-in, database, worker, provider configuration or
+private credentials**. In-page interactions are memory-only and reset on
+reload; downloads are local Blob objects, never network requests. Styles are
+CSS Modules on the shared token sheet (`src/app/globals.css`) and kit
+(`src/app/kit.module.css`); the explicitly user-approved loader exception
+excludes only module CSS from the global Tailwind transform, preserving root
+styles and security headers. Unknown paths return the standard 404. No
+dependency was added and no ticket metadata was advanced.
 
-The lesson explains an original free-delivery threshold example. Practice feedback
-is prewritten, visibly assisted and unscored. Check-answer requires a selection,
-locks the answer after checking, and supports retry. Retry or refresh clears all
-practice state; no browser storage or backend is used. Progress is fixed **sample
-data**, not measured learning, passed tests or a mastery claim. Future roadmap
-mini-courses are labeled unbuilt, not fake controls or locked courses. AI Fluency
-4D context is a presentation aid, not a working assessment or instructor approval.
-
-Demo code lives entirely under [src/app/demo](src/app/demo/[[...view]]/page.tsx).
-It imports no tracer/auth/database/worker/provider services. Styles use a CSS
-Module; the explicitly user-approved loader exception excludes only module CSS
-from the global Tailwind transform, preserving root styles and security headers.
-Unknown or nested views return a labeled 404. No dependency was added and no
-ticket metadata was advanced.
-
-[Demo browser coverage](tests/browser/demo.spec.ts) adds twelve cases without
-changing the ten tracer cases or their production harness. It covers direct URLs,
-labels/active navigation/actual scoped styling, unknown views, empty/correct/both
-incorrect answers, answer locking, retry/refresh, unchanged sample progress,
-navigation, keyboard/reduced-motion behavior, 320/360/768/1440px layouts and no
-API/external/failed requests or browser errors. The four direct-entry cases write
-full-page desktop (1440px) and mobile (360px) PNGs to their ignored `test-results/`
-directories; a separate case captures feedback. A convenience copy of the final
-synthetic screenshot set is kept locally under `.local/demo-screenshots/`, not
-committed or uploaded.
+[Page browser coverage](tests/browser/pages.spec.ts) renders every page,
+checks active navigation and the shell keyboard contract (skip link first,
+main focusable), sweeps 320/360/768/1440px for horizontal overflow, and
+asserts no API/external/failed requests, no console errors, and unchanged
+security headers. The twelve former demo cases were removed together with the
+demo area; the tracer cases are unchanged.
 
 The full local gate on 2026-10-21 passed: audit0, the existing 113-rule lint
 coverage/probes, module/provider boundaries, both typechecks, 106 unit tests,

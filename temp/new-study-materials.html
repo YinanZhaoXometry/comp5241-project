@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>New study · Materials · Fieldnotes redesign</title>
+  <style>
+    :root {
+      --bg: #f5f4ed;
+      --surface: #faf9f5;
+      --surface-warm: #e8e6dc;
+      --fg: #141413;
+      --fg-2: #3d3d3a;
+      --muted: #5e5d59;
+      --meta: #6d6c64;
+      --border: #f0eee6;
+      --border-soft: #e8e6dc;
+      --accent: #c96442;
+      --accent-on: #faf9f5;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
+    --accent-strong: #a55236;
+    --accent-strong-hover: color-mix(in oklab, var(--accent-strong), black 8%);
+    --accent-strong-active: color-mix(in oklab, var(--accent-strong), black 14%);
+      --success: #17a34a;
+      --warn: #eab308;
+      --danger: #b53333;
+      --font-display: "Anthropic Serif", Georgia, "Times New Roman", serif;
+      --font-body: "Anthropic Sans", "Arial", system-ui, -apple-system, sans-serif;
+      --font-mono: "Anthropic Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+      --text-xs: 10px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 20px;
+      --text-xl: 25px;
+      --text-2xl: 32px;
+      --text-3xl: 52px;
+      --text-4xl: 64px;
+      --leading-body: 1.6;
+      --leading-tight: 1.1;
+      --tracking-display: 0em;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --section-y-desktop: 96px;
+      --section-y-tablet: 64px;
+      --section-y-phone: 48px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-pill: 9999px;
+      --elev-flat: none;
+      --elev-ring: 0 0 0 1px var(--border);
+      --elev-raised: rgba(0, 0, 0, 0.05) 0px 4px 24px;
+      --focus-ring: 0 0 0 3px rgba(56, 152, 236, 0.3);
+      --motion-fast: 150ms;
+      --motion-base: 200ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+      --container-max: 1200px;
+      --container-gutter-desktop: 24px;
+      --container-gutter-tablet: 16px;
+      --container-gutter-phone: 12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      line-height: var(--leading-body);
+      -webkit-font-smoothing: antialiased;
+    }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; }
+    button { font: inherit; cursor: pointer; }
+    p { text-wrap: pretty; }
+    h1, h2, h3 { text-wrap: balance; }
+    :focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+    .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .sidebar {
+      border-right: 1px solid var(--border-soft);
+      background: var(--surface);
+      padding: var(--space-5) var(--space-4);
+      display: flex; flex-direction: column; gap: var(--space-6);
+      position: sticky; top: 0; height: 100vh;
+    }
+    .sidebar .logo { font-family: var(--font-display); font-weight: 500; font-size: 22px; padding-inline: var(--space-2); text-decoration: none; }
+    .side-nav { display: flex; flex-direction: column; gap: 2px; }
+    .side-nav a { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 15px; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard); }
+    .side-nav a svg { width: 20px; height: 20px; flex: none; }
+    .side-nav a:hover { background: var(--surface-warm); color: var(--fg); }
+    .side-nav a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    .side-foot { margin-top: auto; padding: var(--space-3); border-top: 1px solid var(--border); font-size: 12px; color: var(--meta); }
+
+    .topnav-mobile { display: none; }
+    @media (max-width: 850px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .topnav-mobile { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-soft); background: var(--surface); overflow-x: auto; position: sticky; top: 0; z-index: 6; }
+      .topnav-mobile .logo { font-family: var(--font-display); font-weight: 500; font-size: 18px; margin-right: var(--space-2); flex: none; }
+      .topnav-mobile a { flex: none; min-height: 44px; display: inline-flex; align-items: center; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 14px; text-decoration: none; }
+      .topnav-mobile a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    }
+
+    .main { min-width: 0; display: flex; flex-direction: column; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-8); border-bottom: 1px solid var(--border-soft); background: color-mix(in oklab, var(--bg) 92%, transparent); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 5; }
+    @media (max-width: 850px) { .topbar { padding: var(--space-3) var(--space-4); position: static; } }
+    .content { padding: var(--space-8); max-width: 820px; width: 100%; margin-inline: auto; flex: 1; }
+    @media (max-width: 850px) { .content { padding: var(--space-5) var(--space-4); } }
+
+    .meta { font-family: var(--font-mono); font-size: 12px; color: var(--meta); }
+    .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-5); border-radius: var(--radius-md); border: 1px solid transparent; font-size: 15px; font-weight: 500; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard); }
+    .btn:active { transform: translateY(1px); }
+    .btn[hidden] { display: none; }
+    .btn-primary { background: var(--accent-strong); color: var(--accent-on); box-shadow: 0 0 0 1px var(--accent-strong); }
+    .btn-primary:hover { background: var(--accent-strong-hover); box-shadow: 0 0 0 1px var(--accent-strong-hover); }
+    .btn-primary:disabled { background: var(--surface-warm); color: var(--meta); box-shadow: 0 0 0 1px var(--border-soft); cursor: not-allowed; }
+    .btn-secondary { background: var(--surface-warm); color: var(--fg-2); box-shadow: 0 0 0 1px color-mix(in oklab, var(--surface-warm), black 8%); }
+    .btn-secondary:hover { background: color-mix(in oklab, var(--surface-warm), black 5%); }
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 500; letter-spacing: 0.12px; white-space: nowrap; }
+    .pill-muted { background: var(--surface-warm); color: var(--fg-2); }
+    .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    .pagefoot { border-top: 1px solid var(--border-soft); padding: var(--space-5) var(--space-8); color: var(--meta); font-size: 12px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
+
+    .page-head h1 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-2xl); line-height: 1.2; margin: 0 0 var(--space-3); }
+    .page-head .sub { color: var(--muted); font-size: 15px; max-width: 60ch; margin: 0 0 var(--space-5); }
+
+    .steps { display: flex; align-items: baseline; gap: var(--space-4); flex-wrap: wrap; font-size: 13px; color: var(--meta); margin-bottom: var(--space-8); }
+    .steps .sep { color: var(--border-soft); }
+    .steps .step.current { color: var(--fg); font-weight: 600; }
+
+    .file-list { display: flex; flex-direction: column; gap: var(--space-4); }
+    .file-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-5) var(--space-6); display: flex; gap: var(--space-4); align-items: flex-start; }
+    @media (max-width: 850px) { .file-card { padding: var(--space-4); flex-direction: column; } }
+    .file-icon { width: 40px; height: 40px; flex: none; border-radius: var(--radius-sm); background: var(--surface-warm); display: grid; place-items: center; color: var(--fg-2); }
+    .file-icon svg { width: 20px; height: 20px; }
+    .file-body { flex: 1; min-width: 0; }
+    .file-name { font-size: 15px; font-weight: 600; margin: 0; overflow-wrap: anywhere; }
+    .file-meta { margin: 2px 0 0; font-family: var(--font-mono); font-size: 12px; color: var(--meta); }
+    .file-snippet { margin: var(--space-3) 0 0; padding-left: var(--space-3); border-left: 2px solid var(--border-soft); font-size: 14px; color: var(--fg-2); }
+    .file-error-note { margin: var(--space-3) 0 0; font-size: 14px; color: color-mix(in oklab, var(--warn) 55%, black); }
+    .file-card.is-error { background: color-mix(in oklab, var(--warn) 7%, var(--surface)); border-color: color-mix(in oklab, var(--warn) 40%, transparent); }
+
+    .file-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-4); }
+    .ack { display: inline-flex; align-items: center; gap: var(--space-3); min-height: 44px; padding: 0 var(--space-3) 0 0; cursor: pointer; font-size: 14px; color: var(--fg-2); user-select: none; }
+    .ack input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
+    .ack .box { width: 20px; height: 20px; flex: none; border: 1.5px solid var(--meta); border-radius: 6px; display: grid; place-items: center; background: var(--surface); transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard); }
+    .ack .box svg { width: 12px; height: 12px; opacity: 0; color: var(--accent-on); transition: opacity var(--motion-fast) var(--ease-standard); }
+    .ack input:checked + .box { background: var(--accent); border-color: var(--accent); }
+    .ack input:checked + .box svg { opacity: 1; }
+    .ack input:focus-visible + .box { box-shadow: var(--focus-ring); }
+    .ack.done { color: var(--muted); }
+
+    .btn-quiet { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 var(--space-4); border-radius: var(--radius-md); border: 1px solid transparent; background: transparent; color: var(--fg-2); font-size: 14px; font-weight: 500; transition: background var(--motion-fast) var(--ease-standard); }
+    .btn-quiet:hover { background: var(--surface-warm); }
+
+    .add-slot { border: 1.5px dashed var(--border-soft); border-radius: var(--radius-lg); padding: var(--space-5) var(--space-6); display: flex; align-items: center; gap: var(--space-3); color: var(--meta); font-size: 14px; }
+    .add-slot svg { width: 18px; height: 18px; flex: none; }
+
+    .flow-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; margin-top: var(--space-8); padding-top: var(--space-5); border-top: 1px solid var(--border-soft); }
+    .flow-foot .hint-text { font-size: 13px; color: var(--meta); }
+    .flow-foot .right { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+  
+    .skip-link{position:absolute;left:16px;top:-56px;z-index:200;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:var(--radius-sm,8px);font:500 14px var(--font-body);text-decoration:none;transition:top var(--motion-fast,150ms) var(--ease-standard,ease)}
+    .skip-link:focus-visible{top:12px;outline:none;box-shadow:var(--focus-ring)}
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+    <div class="app" data-od-id="app-shell">
+    <nav class="topnav-mobile" aria-label="Primary">
+      <span class="logo">Fieldnotes</span>
+      <a href="index.html">Overview</a>
+      <a href="library.html">Library</a>
+      <a href="course-player.html">Course</a>
+      <a href="practice.html">Practice</a>
+      <a href="progress.html">Progress</a>
+      <a href="review-inbox.html">Review</a>
+    </nav>
+
+    <aside class="sidebar" data-od-id="sidebar">
+      <a class="logo" href="index.html">Fieldnotes</a>
+      <nav class="side-nav" aria-label="Primary">
+        <a href="index.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Overview
+        </a>
+        <a href="library.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Saved studies
+        </a>
+        <a href="course-player.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+          Course player
+        </a>
+        <a href="practice.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          Practice
+        </a>
+        <a href="progress.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 3 5-6"/></svg>
+          Progress
+        </a>
+        <a href="review-inbox.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+          Review inbox
+        </a>
+      </nav>
+      <div class="side-foot">Sample prototype · No live AI</div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar" data-od-id="topbar">
+        <span class="meta">New study · How neural networks learn · Step 1 of 3</span>
+        <span class="pill pill-muted"><span class="dot"></span>Sample prototype · No live AI</span>
+      </header>
+
+      <main class="content" id="content">
+        <div class="page-head" data-od-id="page-head">
+          <h1>New study — Materials</h1>
+          <p class="sub">Check what was read from each file before moving on. The course is built only from the files you keep here — nothing outside them is used.</p>
+        </div>
+
+        <p class="steps" data-od-id="steps" aria-label="Steps">
+          <span class="step current">01 Materials</span>
+          <span class="sep" aria-hidden="true">·</span>
+          <span class="step">02 Goal &amp; plan</span>
+          <span class="sep" aria-hidden="true">·</span>
+          <span class="step">03 Review</span>
+        </p>
+
+        <div class="file-list" data-od-id="file-list" id="file-list">
+          <section class="file-card" data-od-id="file-card-1" data-file-id="1">
+            <span class="file-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            </span>
+            <div class="file-body">
+              <p class="file-name">Neural Networks — Lecture Notes.pdf</p>
+              <p class="file-meta">PDF · <span class="num">24</span> pages · ~<span class="num">6,100</span> words</p>
+              <p class="file-snippet">&ldquo;A neural network learns by adjusting weights: each training example nudges every weight a small amount in the direction that lowers the loss&hellip;&rdquo;</p>
+              <div class="file-actions">
+                <label class="ack" data-od-id="ack-1">
+                  <input type="checkbox" class="ack-input" />
+                  <span class="box" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                  <span class="ack-label">Acknowledge — this file is mine and the preview looks right</span>
+                </label>
+                <button type="button" class="btn-quiet retry-btn" data-od-id="retry-1">Retry</button>
+                <button type="button" class="btn-quiet remove-btn" data-od-id="remove-1">Remove</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="file-card" data-od-id="file-card-2" data-file-id="2">
+            <span class="file-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            </span>
+            <div class="file-body">
+              <p class="file-name">gradient-descent-walkthrough.md</p>
+              <p class="file-meta">Markdown · ~<span class="num">1,840</span> words</p>
+              <p class="file-snippet">&ldquo;Picture standing on a foggy hillside. The loss is your altitude. The gradient tells you which way is up — so you step the other way, scaled by the learning rate.&rdquo;</p>
+              <div class="file-actions">
+                <label class="ack" data-od-id="ack-2">
+                  <input type="checkbox" class="ack-input" />
+                  <span class="box" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                  <span class="ack-label">Acknowledge — this file is mine and the preview looks right</span>
+                </label>
+                <button type="button" class="btn-quiet retry-btn" data-od-id="retry-2">Retry</button>
+                <button type="button" class="btn-quiet remove-btn" data-od-id="remove-2">Remove</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="file-card is-error" data-od-id="file-card-3" data-file-id="3" id="file-card-3">
+            <span class="file-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="18" x2="12" y2="21"/></svg>
+            </span>
+            <div class="file-body">
+              <p class="file-name">backprop-slides.pptx</p>
+              <p class="file-meta">PowerPoint · uploaded just now</p>
+              <p class="file-error-note" role="status">This file couldn&rsquo;t be read — the slides may be image-only. Retry the upload, or remove it and continue without it.</p>
+              <div class="file-actions">
+                <button type="button" class="btn-quiet" id="retry-error" data-od-id="retry-3">Retry</button>
+                <button type="button" class="btn-quiet remove-btn" data-od-id="remove-3">Remove</button>
+              </div>
+            </div>
+          </section>
+
+          <div class="add-slot" data-od-id="add-slot">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>Drop more files here — adding files is disabled in this sample.</span>
+          </div>
+        </div>
+
+        <div class="flow-foot" data-od-id="flow-foot">
+          <a class="btn-quiet" href="library.html" data-od-id="back">← Back</a>
+          <div class="right">
+            <span class="hint-text" id="continue-hint" role="status">Acknowledge every file to continue.</span>
+            <button type="button" class="btn btn-primary" id="continue-btn" data-od-id="continue-to-plan" disabled>Continue to goal &amp; plan</button>
+          </div>
+        </div>
+      </main>
+
+      <footer class="pagefoot" data-od-id="footer">
+        <span>Fieldnotes redesign · New study — Materials sample (screen 3)</span>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var list = document.getElementById('file-list');
+      var continueBtn = document.getElementById('continue-btn');
+      var hint = document.getElementById('continue-hint');
+
+      function refresh() {
+        var cards = list.querySelectorAll('.file-card');
+        var allAcked = cards.length > 0;
+        cards.forEach(function (card) {
+          var input = card.querySelector('.ack-input');
+          if (!input || !input.checked) allAcked = false;
+        });
+        continueBtn.disabled = !allAcked;
+        hint.textContent = allAcked
+          ? 'All files acknowledged.'
+          : 'Acknowledge every file to continue.';
+      }
+
+      list.addEventListener('change', function (e) {
+        if (e.target.classList.contains('ack-input')) {
+          var label = e.target.closest('.ack');
+          label.classList.toggle('done', e.target.checked);
+          refresh();
+        }
+      });
+
+      list.addEventListener('click', function (e) {
+        var removeBtn = e.target.closest('.remove-btn');
+        if (removeBtn) {
+          var card = removeBtn.closest('.file-card');
+          card.remove();
+          refresh();
+          return;
+        }
+        if (e.target.closest('#retry-error')) {
+          var errCard = document.getElementById('file-card-3');
+          errCard.classList.remove('is-error');
+          var body = errCard.querySelector('.file-body');
+          body.querySelector('.file-meta').innerHTML = 'PowerPoint · <span class="num">18</span> slides · ~<span class="num">900</span> words';
+          body.querySelector('.file-error-note').outerHTML =
+            '<p class="file-snippet">&ldquo;Backpropagation applies the chain rule layer by layer, so each weight learns how much it contributed to the error&hellip;&rdquo;</p>';
+          body.querySelector('.file-actions').innerHTML =
+            '<label class="ack" data-od-id="ack-3">' +
+              '<input type="checkbox" class="ack-input" />' +
+              '<span class="box" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>' +
+              '<span class="ack-label">Acknowledge — this file is mine and the preview looks right</span>' +
+            '</label>' +
+            '<button type="button" class="btn-quiet remove-btn" data-od-id="remove-3">Remove</button>';
+          refresh();
+        }
+      });
+
+      continueBtn.addEventListener('click', function () {
+        if (!continueBtn.disabled) window.location.href = 'new-study-plan.html';
+      });
+
+      refresh();
+    })();
+  </script>
+</body>
+</html>

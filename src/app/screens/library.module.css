@@ -1,0 +1,157 @@
+/* Screen-specific styles for the Library screen (static port of
+   temp/library.html). Tokens live in globals.css :root and shared recipes
+   in kit.module.css — no raw hex here, only var() tokens and color-mix()
+   on tokens. Rules are scoped under `.screen` so they win over
+   globals.css's element-level styles (h1/h2/p margins, link underline
+   offset) regardless of stylesheet order.
+
+   Coverage meters are native <progress> elements (jsx-a11y
+   prefer-tag-over-role forbids the literal role="progressbar"): pill
+   track in Warm Sand, fill dark --fg-2 per DESIGN.md §2, green
+   (--success) variant for the Mastered row only. */
+
+/* ── content column ──────────────────────────────────────────────────── */
+.screen {
+  min-width: 0;
+  width: 100%;
+  max-width: 1080px;
+  margin-inline: auto;
+}
+
+/* ── section head: h1 + subtitle left, primary CTA right ─────────────── */
+.screen .sectionHead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 24px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.screen .subtitle {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ── search field (inert on this static page) ────────────────────────── */
+.screen .searchWrap {
+  position: relative;
+  max-width: 420px;
+  margin-bottom: 24px;
+}
+.screen .searchIcon {
+  position: absolute;
+  left: 13px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  color: var(--meta);
+  pointer-events: none;
+}
+.searchInput {
+  composes: input from "../kit.module.css";
+  padding-left: 40px;
+}
+
+/* ── study rows ──────────────────────────────────────────────────────── */
+.screen .studyList {
+  display: flex;
+  flex-direction: column;
+}
+.screen .studyRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px 24px;
+  padding: 20px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  align-items: center;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+.screen .studyRow + .studyRow {
+  margin-top: 12px;
+}
+.screen .studyRow:hover {
+  border-color: var(--border-soft);
+  box-shadow: var(--elev-ring);
+}
+.studyTitle {
+  composes: display3 from "../kit.module.css";
+  margin-bottom: 2px;
+}
+.screen .studyDesc {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  max-width: 60ch;
+}
+.screen .rowMeta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.screen .studySide {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* ── coverage meters (native progress) ───────────────────────────────── */
+.screen .meter {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 140px;
+  height: 8px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface-warm);
+  overflow: hidden;
+}
+.screen .meter::-webkit-progress-bar {
+  background: var(--surface-warm);
+  border-radius: var(--radius-pill);
+}
+.screen .meter::-webkit-progress-value {
+  background: var(--fg-2);
+  border-radius: var(--radius-pill);
+}
+.screen .meter::-moz-progress-bar {
+  background: var(--fg-2);
+  border-radius: var(--radius-pill);
+}
+.screen .meterGreen::-webkit-progress-value {
+  background: var(--success);
+}
+.screen .meterGreen::-moz-progress-bar {
+  background: var(--success);
+}
+
+/* ── single column below 640px (floor 360px, no horizontal overflow) ─── */
+@media (max-width: 640px) {
+  .screen .studyRow {
+    grid-template-columns: 1fr;
+  }
+  .screen .studySide {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+  .screen .meter {
+    flex: 1;
+    width: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen .studyRow {
+    transition-duration: 0.01ms !important;
+  }
+}

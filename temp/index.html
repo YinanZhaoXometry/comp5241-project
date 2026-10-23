@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fieldnotes redesign · Overview</title>
+  <style>
+    :root {
+      --bg: #f5f4ed;
+      --surface: #faf9f5;
+      --surface-warm: #e8e6dc;
+      --fg: #141413;
+      --fg-2: #3d3d3a;
+      --muted: #5e5d59;
+      --meta: #6d6c64;
+      --border: #f0eee6;
+      --border-soft: #e8e6dc;
+      --accent: #c96442;
+      --accent-on: #faf9f5;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
+    --accent-strong: #a55236;
+    --accent-strong-hover: color-mix(in oklab, var(--accent-strong), black 8%);
+    --accent-strong-active: color-mix(in oklab, var(--accent-strong), black 14%);
+      --success: #17a34a;
+      --warn: #eab308;
+      --danger: #b53333;
+      --font-display: "Anthropic Serif", Georgia, "Times New Roman", serif;
+      --font-body: "Anthropic Sans", "Arial", system-ui, -apple-system, sans-serif;
+      --font-mono: "Anthropic Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+      --text-xs: 10px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 20px;
+      --text-xl: 25px;
+      --text-2xl: 32px;
+      --text-3xl: 52px;
+      --text-4xl: 64px;
+      --leading-body: 1.6;
+      --leading-tight: 1.1;
+      --tracking-display: 0em;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --section-y-desktop: 96px;
+      --section-y-tablet: 64px;
+      --section-y-phone: 48px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-pill: 9999px;
+      --elev-flat: none;
+      --elev-ring: 0 0 0 1px var(--border);
+      --elev-raised: rgba(0, 0, 0, 0.05) 0px 4px 24px;
+      --focus-ring: 0 0 0 3px rgba(56, 152, 236, 0.3);
+      --motion-fast: 150ms;
+      --motion-base: 200ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+      --container-max: 1200px;
+      --container-gutter-desktop: 24px;
+      --container-gutter-tablet: 16px;
+      --container-gutter-phone: 12px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      line-height: var(--leading-body);
+      -webkit-font-smoothing: antialiased;
+    }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; text-decoration: none; }
+    p { text-wrap: pretty; }
+    h1, h2 { text-wrap: balance; }
+    :focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+    .container { max-width: 960px; margin-inline: auto; padding-inline: var(--container-gutter-desktop); }
+    @media (max-width: 850px) { .container { padding-inline: var(--container-gutter-tablet); } }
+    @media (max-width: 600px) { .container { padding-inline: var(--container-gutter-phone); } }
+
+    .hero { padding-block: clamp(64px, 10vw, 120px) var(--section-y-tablet); }
+    .eyebrow { font-size: var(--text-xs); letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin: 0 0 var(--space-4); }
+    h1 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-3xl); line-height: var(--leading-tight); margin: 0 0 var(--space-5); max-width: 18ch; }
+    .lead { font-size: var(--text-lg); color: var(--muted); max-width: 56ch; margin: 0; }
+
+    .deliverables { padding-bottom: var(--section-y-tablet); }
+    .del-group { font-size: var(--text-xs); letter-spacing: 0.5px; text-transform: uppercase; color: var(--meta); margin: var(--space-8) 0 var(--space-2); }
+    .del-group:first-child { margin-top: 0; }
+    .del-row {
+      display: grid; grid-template-columns: 1fr auto; gap: var(--space-4);
+      align-items: baseline;
+      padding: var(--space-5) 0;
+      border-top: 1px solid var(--border-soft);
+    }
+    .del-row:last-child { border-bottom: 1px solid var(--border-soft); }
+    .del-row h2 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-xl); margin: 0; }
+    .del-row h2 a { display: inline-flex; align-items: center; min-height: 44px; transition: color var(--motion-fast) var(--ease-standard); }
+    .del-row h2 a:hover { color: var(--accent); }
+    .del-row p { margin: 4px 0 0; color: var(--muted); font-size: var(--text-sm); max-width: 62ch; }
+    .del-row .meta { font-family: var(--font-mono); font-size: 12px; color: var(--meta); white-space: nowrap; }
+
+    .notes { padding-bottom: var(--section-y-tablet); }
+    .notes h2 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-xl); margin: 0 0 var(--space-4); }
+    .notes ul { margin: 0; padding-left: var(--space-5); color: var(--muted); font-size: 15px; display: grid; gap: var(--space-2); }
+
+    .pagefoot { border-top: 1px solid var(--border-soft); padding-block: var(--space-8); color: var(--meta); font-size: 13px; }
+    .row-between { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
+  
+    .skip-link{position:absolute;left:16px;top:-56px;z-index:200;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:var(--radius-sm,8px);font:500 14px var(--font-body);text-decoration:none;transition:top var(--motion-fast,150ms) var(--ease-standard,ease)}
+    .skip-link:focus-visible{top:12px;outline:none;box-shadow:var(--focus-ring)}
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+    <main id="content">
+    <section class="hero" data-od-id="hero">
+      <div class="container">
+        <p class="eyebrow">Fieldnotes · Visual refresh · 23 Oct 2026</p>
+        <h1>The redesign, screen by screen.</h1>
+        <p class="lead">A visual spine revision on a warm parchment canvas: terracotta accent, Georgia serif titles, soft 8–16px geometry, and ring-based depth. All 22 screens plus the setup-flow map and the system-states gallery are designed; behavior from the validated experience spine carries over unchanged unless a screen says otherwise.</p>
+      </div>
+    </section>
+
+    <section class="deliverables" data-od-id="deliverables">
+      <div class="container">
+        <p class="del-group">Foundations</p>
+        <article class="del-row" data-od-id="del-foundations">
+          <div>
+            <h2><a href="foundations.html">Foundations</a></h2>
+            <p>Token sheet and component kit — color ramps, type scale, radius and elevation policy, buttons, forms, 64px answer rows, badges, meters, tables, code blocks, notices, motion spec.</p>
+          </div>
+          <span class="meta">foundations.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-design-md">
+          <div>
+            <h2><a href="DESIGN.md">DESIGN.md — spine revision draft</a></h2>
+            <p>The drop-in replacement for the design spine: frontmatter token sheet, revised color semantics, component specs, changelog vs the previous spine, and the five memlog entries to write on adoption.</p>
+          </div>
+          <span class="meta">DESIGN.md</span>
+        </article>
+
+        <p class="del-group">Group 1 — screens with existing code</p>
+        <article class="del-row" data-od-id="del-sign-in">
+          <div>
+            <h2><a href="sign-in.html">Sign in</a></h2>
+            <p>Calm single-purpose sign-in with the tracer honesty label, quiet email field, and the setup flow's entry point.</p>
+          </div>
+          <span class="meta">sign-in.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-library">
+          <div>
+            <h2><a href="library.html">Library — Saved studies</a></h2>
+            <p>App shell with 240px sidebar (collapses to top nav below 850px), study list with honest coverage meters, review-due and draft states, search, and the permanent sample-prototype label.</p>
+          </div>
+          <span class="meta">library.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-new-study-materials">
+          <div>
+            <h2><a href="new-study-materials.html">New study — Materials</a></h2>
+            <p>Tracer step 01 — per-file previews with acknowledge, retry and cancel states, honest parsing copy, and the tracer "not approved for real data" label.</p>
+          </div>
+          <span class="meta">new-study-materials.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-new-study-plan">
+          <div>
+            <h2><a href="new-study-plan.html">New study — Goal &amp; plan (manual)</a></h2>
+            <p>Tracer steps 02–03 — the manual-only plan editor as it exists today: goal field, lesson list editing, and plan summary.</p>
+          </div>
+          <span class="meta">new-study-plan.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-privacy-data">
+          <div>
+            <h2><a href="privacy-data.html">Privacy &amp; data</a></h2>
+            <p>AI-processing consent panel — plain-language data boundaries, granular consents with analytics off by default, gated agree action, and quiet links to export and deletion.</p>
+          </div>
+          <span class="meta">privacy-data.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-demo-overview">
+          <div>
+            <h2><a href="demo-overview.html">Demo shell + Overview</a></h2>
+            <p>Hero, learning loop, roadmap teaser, and the AI Fluency 4D grid — the demo's front door with permanent sample labeling.</p>
+          </div>
+          <span class="meta">demo-overview.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-player">
+          <div>
+            <h2><a href="course-player.html">Mini-course player — sample</a></h2>
+            <p>Lesson map with step states, serif promise callout, code block on warm near-black, assisted check-your-understanding with feedback, sticky notebook aside, prev/next navigation.</p>
+          </div>
+          <span class="meta">course-player.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-practice">
+          <div>
+            <h2><a href="practice.html">Practice &amp; recall — sample</a></h2>
+            <p>Assisted multiple choice with instructor-written hints and feedback, one-attempt honesty, session-only progress meter (no stored score), and a calm summary that routes misses to the review inbox.</p>
+          </div>
+          <span class="meta">practice.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-progress">
+          <div>
+            <h2><a href="progress.html">Progress — sample</a></h2>
+            <p>Evidence-of-learning meters with per-meter provenance, honest "no evidence yet" states, topic coverage list, a working reflection card, and a suggested next step that routes to the review inbox.</p>
+          </div>
+          <span class="meta">progress.html</span>
+        </article>
+
+        <p class="del-group">Group 2 — key learner screens</p>
+        <article class="del-row" data-od-id="del-course-player-full">
+          <div>
+            <h2><a href="course-player-full.html">Mini-course player — full</a></h2>
+            <p>All activity formats — text+images, simulations, role play / mock interview, mini-games, AI-narrated slides, and online coding — in one lesson shell with working format switching.</p>
+          </div>
+          <span class="meta">course-player-full.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-practice-full">
+          <div>
+            <h2><a href="practice-full.html">Practice &amp; recall — full</a></h2>
+            <p>Mixed question types (assisted MC, free recall, self-graded explain-back), recall-state pills, honest session-only scoring, and a working retry-missed round.</p>
+          </div>
+          <span class="meta">practice-full.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-test-recovery">
+          <div>
+            <h2><a href="test-recovery.html">Test &amp; recovery</a></h2>
+            <p>Gap-targeted diagnostic with per-topic Solid / Needs work results, an inline recovery checklist (refresher + retry), and honest scheduling copy — no grades.</p>
+          </div>
+          <span class="meta">test-recovery.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-roadmap">
+          <div>
+            <h2><a href="roadmap.html">Roadmap — full</a></h2>
+            <p>Eight-node, three-phase study roadmap with Done / Current / Upcoming / Locked states, honest unlock conditions, and an evidence-based "where you are" panel.</p>
+          </div>
+          <span class="meta">roadmap.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-review-inbox">
+          <div>
+            <h2><a href="review-inbox.html">Review inbox</a></h2>
+            <p>Spaced-review queue with working due / scheduled / paused / done views, write-before-you-peek recall with instructor-written notes, self-assessment that reschedules honestly, and a real empty state that invents no work.</p>
+          </div>
+          <span class="meta">review-inbox.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-why-explorer">
+          <div>
+            <h2><a href="why-explorer.html">Why-explorer</a></h2>
+            <p>First-ever visual design for the spine-only screen — honest "why" answers (lesson order, early practice, returning review, no grades) as an accordion, plus a trace-your-path strip.</p>
+          </div>
+          <span class="meta">why-explorer.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-starting-check">
+          <div>
+            <h2><a href="starting-check.html">Optional starting check</a></h2>
+            <p>Setup state U6 — three self-rating questions (explicitly not a test), a calm recommendation that the learner can override, and a real skip path.</p>
+          </div>
+          <span class="meta">starting-check.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-new-study-plan-ai">
+          <div>
+            <h2><a href="new-study-plan-ai.html">New study — Goal &amp; plan (AI-assisted)</a></h2>
+            <p>The AI route of the plan editor — goal prompt, a clearly-labeled drafted plan for review (editable, removable with undo), and accept-as-mine semantics.</p>
+          </div>
+          <span class="meta">new-study-plan-ai.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-owner-export">
+          <div>
+            <h2><a href="owner-export.html">Owner export / deletion receipt</a></h2>
+            <p>U7 export with a real downloadable sample JSON, and U8 deletion as a quiet two-step danger zone ending in a receipt — danger stays scarce.</p>
+          </div>
+          <span class="meta">owner-export.html</span>
+        </article>
+
+        <p class="del-group">Group 3 — instructor shell</p>
+        <article class="del-row" data-od-id="del-instructor-courses">
+          <div>
+            <h2><a href="instructor-courses.html">Instructor — Courses</a></h2>
+            <p>Course list with customize-existing and generate-from-topic paths, exact-version approval entry points, and version status pills.</p>
+          </div>
+          <span class="meta">instructor-courses.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-instructor-approvals">
+          <div>
+            <h2><a href="instructor-approvals.html">Instructor — Approvals</a></h2>
+            <p>Approval queue with exact-version diff presentation — version id and content hash, lesson-by-lesson change pills, before/after blocks, and a confirm-dialog approve flow.</p>
+          </div>
+          <span class="meta">instructor-approvals.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-instructor-students">
+          <div>
+            <h2><a href="instructor-students.html">Instructor — Students</a></h2>
+            <p>Roster with working status filters, CSV template download, and a paste-list import with per-row validation that flags problems in amber, not red.</p>
+          </div>
+          <span class="meta">instructor-students.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-instructor-participation">
+          <div>
+            <h2><a href="instructor-participation.html">Instructor — Participation</a></h2>
+            <p>Surveillance-free engagement tracking — provenance-labeled summary cards, honest missing-data legend, per-lesson completion bars, and no rankings or gamification.</p>
+          </div>
+          <span class="meta">instructor-participation.html</span>
+        </article>
+
+        <p class="del-group">States, designed as states</p>
+        <article class="del-row" data-od-id="del-setup-flow">
+          <div>
+            <h2><a href="setup-flow.html">Setup flow — U0 to U8</a></h2>
+            <p>The full account lifecycle as connected state cards — signed out through deletion receipt — with designed / spine-only pills and links into the built screens.</p>
+          </div>
+          <span class="meta">setup-flow.html</span>
+        </article>
+        <article class="del-row" data-od-id="del-states">
+          <div>
+            <h2><a href="states.html">System states gallery</a></h2>
+            <p>Loading skeletons, honest empty states, amber error with retry, offline-honest banner, a focus-managed confirm dialog, and the quiet two-step danger zone.</p>
+          </div>
+          <span class="meta">states.html</span>
+        </article>
+      </div>
+    </section>
+
+    <section class="notes" data-od-id="notes">
+      <div class="container">
+        <h2>What changed vs the current spine</h2>
+        <ul>
+          <li>Palette: green ink + lime/olive semantics → warm neutral ramp with a single terracotta accent. Recorded in the brief as a spine revision.</li>
+          <li>Type: Georgia serif display + system sans body — no webfont dependency, so CSP <span class="meta" style="font-family: var(--font-mono); font-size: 12px;">font-src 'self'</span> holds without a plan change.</li>
+          <li>Shape: radii move from 4–6px to 8/12/16px; pills stay fully round.</li>
+          <li>Depth: tonal-only spine decision revisited — ring shadows everywhere, plus one whisper-soft shadow allowed on overlays only.</li>
+          <li>Accessibility floor unchanged: 4.5:1 body text, 3:1 borders, visible focus ring, 44px targets, 64px answer rows, reduced-motion gating.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="pagefoot" data-od-id="footer">
+    <div class="container row-between">
+      <span>Fieldnotes redesign · working prototype</span>
+      <span class="meta" style="font-family: var(--font-mono); font-size: 12px;">Sample prototype · No live AI · English only</span>
+    </div>
+  </footer>
+</body>
+</html>

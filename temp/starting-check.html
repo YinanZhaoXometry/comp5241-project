@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Optional starting check · Fieldnotes redesign</title>
+  <style>
+    :root {
+      --bg: #f5f4ed;
+      --surface: #faf9f5;
+      --surface-warm: #e8e6dc;
+      --fg: #141413;
+      --fg-2: #3d3d3a;
+      --muted: #5e5d59;
+      --meta: #6d6c64;
+      --border: #f0eee6;
+      --border-soft: #e8e6dc;
+      --accent: #c96442;
+      --accent-on: #faf9f5;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
+    --accent-strong: #a55236;
+    --accent-strong-hover: color-mix(in oklab, var(--accent-strong), black 8%);
+    --accent-strong-active: color-mix(in oklab, var(--accent-strong), black 14%);
+      --success: #17a34a;
+      --warn: #eab308;
+      --danger: #b53333;
+      --font-display: "Anthropic Serif", Georgia, "Times New Roman", serif;
+      --font-body: "Anthropic Sans", "Arial", system-ui, -apple-system, sans-serif;
+      --font-mono: "Anthropic Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+      --text-xs: 10px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 20px;
+      --text-xl: 25px;
+      --text-2xl: 32px;
+      --leading-body: 1.6;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-pill: 9999px;
+      --elev-ring: 0 0 0 1px var(--border);
+      --elev-raised: rgba(0, 0, 0, 0.05) 0px 4px 24px;
+      --focus-ring: 0 0 0 3px rgba(56, 152, 236, 0.3);
+      --motion-fast: 150ms;
+      --motion-base: 200ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      line-height: var(--leading-body);
+      -webkit-font-smoothing: antialiased;
+    }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; }
+    button { font: inherit; cursor: pointer; }
+    p { text-wrap: pretty; }
+    h1, h2, h3 { text-wrap: balance; }
+    :focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+    .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .sidebar {
+      border-right: 1px solid var(--border-soft);
+      background: var(--surface);
+      padding: var(--space-5) var(--space-4);
+      display: flex; flex-direction: column; gap: var(--space-6);
+      position: sticky; top: 0; height: 100vh;
+    }
+    .sidebar .logo { font-family: var(--font-display); font-weight: 500; font-size: 22px; padding-inline: var(--space-2); text-decoration: none; }
+    .side-nav { display: flex; flex-direction: column; gap: 2px; }
+    .side-nav a { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 15px; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard); }
+    .side-nav a svg { width: 20px; height: 20px; flex: none; }
+    .side-nav a:hover { background: var(--surface-warm); color: var(--fg); }
+    .side-nav a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    .side-foot { margin-top: auto; padding: var(--space-3); border-top: 1px solid var(--border); font-size: 12px; color: var(--meta); }
+
+    .topnav-mobile { display: none; }
+    @media (max-width: 850px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .topnav-mobile { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-soft); background: var(--surface); overflow-x: auto; position: sticky; top: 0; z-index: 6; }
+      .topnav-mobile .logo { font-family: var(--font-display); font-weight: 500; font-size: 18px; margin-right: var(--space-2); flex: none; }
+      .topnav-mobile a { flex: none; min-height: 44px; display: inline-flex; align-items: center; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 14px; text-decoration: none; }
+      .topnav-mobile a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    }
+
+    .main { min-width: 0; display: flex; flex-direction: column; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-8); border-bottom: 1px solid var(--border-soft); background: color-mix(in oklab, var(--bg) 92%, transparent); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 5; }
+    @media (max-width: 850px) { .topbar { padding: var(--space-3) var(--space-4); position: static; } }
+    .content { padding: var(--space-8); max-width: 720px; width: 100%; margin-inline: auto; flex: 1; }
+    @media (max-width: 850px) { .content { padding: var(--space-5) var(--space-4); } }
+
+    .meta { font-family: var(--font-mono); font-size: 12px; color: var(--meta); }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-5); border-radius: var(--radius-md); border: 1px solid transparent; font-size: 15px; font-weight: 500; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard); }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent-strong); color: var(--accent-on); box-shadow: 0 0 0 1px var(--accent-strong); }
+    .btn-primary:hover { background: var(--accent-strong-hover); box-shadow: 0 0 0 1px var(--accent-strong-hover); }
+    .btn-primary:disabled { background: var(--surface-warm); color: var(--meta); box-shadow: 0 0 0 1px var(--border-soft); cursor: not-allowed; }
+    .btn-secondary { background: var(--surface-warm); color: var(--fg-2); box-shadow: 0 0 0 1px color-mix(in oklab, var(--surface-warm), black 8%); }
+    .btn-secondary:hover { background: color-mix(in oklab, var(--surface-warm), black 5%); }
+
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 500; letter-spacing: 0.12px; white-space: nowrap; }
+    .pill-muted { background: var(--surface-warm); color: var(--fg-2); }
+    .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    .quiet-link { display: inline-flex; align-items: center; min-height: 44px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; font-size: 15px; }
+    .quiet-link:hover { color: var(--fg); }
+
+    .pagefoot { border-top: 1px solid var(--border-soft); padding: var(--space-5) var(--space-8); color: var(--meta); font-size: 12px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
+
+    /* page styles — starting check */
+    .check-head { padding: var(--space-8) 0 var(--space-6); }
+    .check-head h1 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-2xl); line-height: 1.2; margin: var(--space-3) 0; }
+    .check-head .sub { color: var(--muted); font-size: 15px; margin: 0; max-width: 58ch; }
+    .optional-note { font-size: 13px; color: var(--fg-2); background: var(--surface-warm); border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); margin: var(--space-4) 0 0; }
+
+    .check-q { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); margin-bottom: var(--space-5); }
+    @media (max-width: 850px) { .check-q { padding: var(--space-5); } }
+    .check-q h2 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-lg); margin: 0 0 var(--space-2); }
+    .check-q .q-note { font-size: 13px; color: var(--meta); margin: 0 0 var(--space-4); }
+    .check-q .answers { display: flex; flex-direction: column; gap: var(--space-3); }
+    .answer-row { display: flex; align-items: center; gap: var(--space-3); min-height: 64px; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: var(--surface); cursor: pointer; transition: border-color var(--motion-fast) var(--ease-standard), background var(--motion-fast) var(--ease-standard); text-align: left; width: 100%; }
+    .answer-row:hover { border-color: var(--meta); }
+    .answer-row.selected { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 6%, var(--surface)); }
+    .answer-row .radio-dot { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--meta); flex: none; display: grid; place-items: center; }
+    .answer-row.selected .radio-dot { border-color: var(--accent); }
+    .answer-row.selected .radio-dot::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+
+    .check-actions { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; margin-top: var(--space-2); }
+
+    .result { display: none; margin-top: var(--space-6); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); }
+    .result.show { display: block; }
+    .result h2 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-lg); margin: 0 0 var(--space-2); }
+    .result p { margin: 0 0 var(--space-3); color: var(--fg-2); font-size: 15px; }
+    .result .result-note { font-size: 13px; color: var(--muted); border-top: 1px solid var(--border); padding-top: var(--space-3); margin-top: var(--space-2); }
+    .result .result-actions { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; margin-top: var(--space-4); }
+  
+    .skip-link{position:absolute;left:16px;top:-56px;z-index:200;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:var(--radius-sm,8px);font:500 14px var(--font-body);text-decoration:none;transition:top var(--motion-fast,150ms) var(--ease-standard,ease)}
+    .skip-link:focus-visible{top:12px;outline:none;box-shadow:var(--focus-ring)}
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+    <div class="app" data-od-id="app-shell">
+    <nav class="topnav-mobile" aria-label="Primary">
+      <span class="logo">Fieldnotes</span>
+      <a href="sign-in.html">Sign in</a>
+      <a href="setup-flow.html" aria-current="page">Setup</a>
+      <a href="library.html">Library</a>
+    </nav>
+
+    <aside class="sidebar" data-od-id="sidebar">
+      <a class="logo" href="index.html">Fieldnotes</a>
+      <nav class="side-nav" aria-label="Primary">
+        <a href="sign-in.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></svg>
+          Sign in
+        </a>
+        <a href="setup-flow.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3"/><path d="M12 18v3"/><path d="M3 12h3"/><path d="M18 12h3"/><circle cx="12" cy="12" r="3"/></svg>
+          Setup flow
+        </a>
+        <a href="library.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Library
+        </a>
+      </nav>
+      <div class="side-foot">Sample prototype · No live AI</div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar" data-od-id="topbar">
+        <span class="meta">Setup · Optional starting check · State U6</span>
+        <span class="pill pill-muted"><span class="dot"></span>Sample prototype · No live AI</span>
+      </header>
+
+      <main class="content" id="content">
+        <div class="check-head" data-od-id="check-head">
+          <h1>A quick starting check</h1>
+          <p class="sub">Three questions so your first lessons meet you where you are. This is not a test — nothing is scored, and nothing here is stored against you.</p>
+          <p class="optional-note" data-od-id="check-optional-note">This check is optional. You can skip it and start at lesson 1 — you will not be asked again, and you can redo it later from settings.</p>
+        </div>
+
+        <form id="starting-check-form" data-od-id="starting-check-form" novalidate>
+          <section class="check-q" data-od-id="check-q-algebra" aria-labelledby="q-algebra-h">
+            <h2 id="q-algebra-h">How comfortable are you with basic algebra?</h2>
+            <p class="q-note">Things like rearranging y = mx + b, or reading a slope off a line.</p>
+            <div class="answers" role="radiogroup" aria-labelledby="q-algebra-h">
+              <button type="button" class="answer-row" role="radio" aria-checked="false" data-q="algebra" data-v="low"><span class="radio-dot" aria-hidden="true"></span><span>It has been a while — I'd want the gentle version.</span></button>
+              <button type="button" class="answer-row" role="radio" aria-checked="false" data-q="algebra" data-v="mid"><span class="radio-dot" aria-hidden="true"></span><span>Comfortable enough with a worked example nearby.</span></button>
+              <button type="button" class="answer-row" role="radio" aria-checked="false" data-q="algebra" data-v="high"><span class="radio-dot" aria-hidden="true"></span><span>Comfortable — I use it regularly.</span></button>
+            </div>
+          </section>
+
+          <section class="check-q" data-od-id="check-q-code" aria-labelledby="q-code-h">
+            <h2 id="q-code-h">Have you read code before?</h2>
+            <p class="q-note">The study shows small code snippets. Reading them helps, but each one is also explained in words.</p>
+            <div class="answers" role="radiogroup" aria-labelledby="q-code-h">
+              <button type="button" class="answer-row" role="radio" aria-checked="false" data-q="code" data-v="low"><span class="radio-dot" aria-hidden="true"></span><span>Never — code looks like noise to me.</span></button>
+              <button type="button" class="answer-row" role="radio" aria-checked="false" data-q="code" data-v="mid"><span class="radio-dot" aria-hidden="true"></span><span>A little — I can follow short examples.</span></button>
+              <button type="button" class="answer-row" role="radio" aria-checked="false" data-q="code" data-v="high"><span class="radio-dot" aria-hidden="true"></span><span>Yes — I read or write code regularly.</span></button>
+            </div>
+          </section>
+
+          <section class="check-q" data-od-id="check-q-ml" aria-labelledby="q-ml-h">
+            <h2 id="q-ml-h">How much do you already know about neural networks?</h2>
+            <p class="q-note">Honest answers help here — "nothing yet" is a perfectly good answer.</p>
+            <div class="answers" role="radiogroup" aria-labelledby="q-ml-h">
+              <button type="button" class="answer-row" role="radio" aria-checked="false" data-q="ml" data-v="low"><span class="radio-dot" aria-hidden="true"></span><span>Nothing yet — that's why I'm here.</span></button>
+              <button type="button" class="answer-row" role="radio" aria-checked="false" data-q="ml" data-v="mid"><span class="radio-dot" aria-hidden="true"></span><span>I've read about them, but never worked through the math.</span></button>
+              <button type="button" class="answer-row" role="radio" aria-checked="false" data-q="ml" data-v="high"><span class="radio-dot" aria-hidden="true"></span><span>I've trained one, or worked through the math by hand.</span></button>
+            </div>
+          </section>
+
+          <div class="check-actions" data-od-id="check-actions">
+            <button type="submit" class="btn btn-primary" id="see-start-btn" data-od-id="check-cta-see-start" disabled>See my starting point</button>
+            <a class="quiet-link" href="library.html" data-od-id="check-skip">Skip this — start at lesson 1</a>
+          </div>
+        </form>
+
+        <div class="result" id="result" role="status" data-od-id="check-result">
+          <h2 id="result-title">Our suggestion</h2>
+          <p id="result-text"></p>
+          <p class="result-note">This is a suggestion, not a placement. You decide where to start, and you can move forward or back at any time — the roadmap never locks you in.</p>
+          <div class="result-actions">
+            <a class="btn btn-secondary" href="library.html" id="result-continue" data-od-id="check-cta-continue">Continue to the study</a>
+            <button type="button" class="quiet-link" id="result-redo" data-od-id="check-redo" style="background:none;border:0;">Change my answers</button>
+          </div>
+        </div>
+      </main>
+
+      <footer class="pagefoot" data-od-id="footer">
+        <span>Fieldnotes redesign · Optional starting check (screen 16 · setup state U6)</span>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var answers = {};
+      var rows = Array.prototype.slice.call(document.querySelectorAll('.answer-row'));
+      var submitBtn = document.getElementById('see-start-btn');
+      var form = document.getElementById('starting-check-form');
+      var result = document.getElementById('result');
+      var resultText = document.getElementById('result-text');
+      var resultContinue = document.getElementById('result-continue');
+      var redoBtn = document.getElementById('result-redo');
+
+      rows.forEach(function (row) {
+        row.addEventListener('click', function () {
+          var q = row.dataset.q;
+          answers[q] = row.dataset.v;
+          rows.forEach(function (r) {
+            if (r.dataset.q === q) {
+              var selected = r === row;
+              r.classList.toggle('selected', selected);
+              r.setAttribute('aria-checked', selected ? 'true' : 'false');
+            }
+          });
+          submitBtn.disabled = !(answers.algebra && answers.code && answers.ml);
+        });
+      });
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var lows = ['algebra', 'code', 'ml'].filter(function (k) { return answers[k] === 'low'; }).length;
+        var highs = ['algebra', 'code', 'ml'].filter(function (k) { return answers[k] === 'high'; }).length;
+        if (lows >= 2) {
+          resultText.textContent = "We'll start you at lesson 1, \"The perceptron, by hand.\" It assumes no background, and every code snippet there is walked through in words first.";
+        } else if (highs >= 2) {
+          resultText.textContent = "You may find lesson 2, \"What a loss measures,\" a comfortable start — lesson 1 covers ground you likely know. Lesson 1 stays open if you want the refresher.";
+        } else {
+          resultText.textContent = "We'd suggest starting at lesson 1, \"The perceptron, by hand\" — it's short, and it makes the rest of the study much easier. Skimming it costs little; missing it costs more.";
+        }
+        result.classList.add('show');
+        result.scrollIntoView({ block: 'nearest' });
+        resultContinue.focus();
+      });
+
+      redoBtn.addEventListener('click', function () {
+        result.classList.remove('show');
+        rows.forEach(function (r) {
+          r.classList.remove('selected');
+          r.setAttribute('aria-checked', 'false');
+        });
+        answers = {};
+        submitBtn.disabled = true;
+        rows[0].focus();
+      });
+    })();
+  </script>
+</body>
+</html>

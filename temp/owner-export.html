@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Your data · Fieldnotes redesign</title>
+  <style>
+    :root {
+      --bg: #f5f4ed;
+      --surface: #faf9f5;
+      --surface-warm: #e8e6dc;
+      --fg: #141413;
+      --fg-2: #3d3d3a;
+      --muted: #5e5d59;
+      --meta: #6d6c64;
+      --border: #f0eee6;
+      --border-soft: #e8e6dc;
+      --accent: #c96442;
+      --accent-on: #faf9f5;
+      --accent-hover: color-mix(in oklab, var(--accent), black 8%);
+      --accent-active: color-mix(in oklab, var(--accent), black 14%);
+    --accent-strong: #a55236;
+    --accent-strong-hover: color-mix(in oklab, var(--accent-strong), black 8%);
+    --accent-strong-active: color-mix(in oklab, var(--accent-strong), black 14%);
+      --success: #17a34a;
+      --warn: #eab308;
+      --danger: #b53333;
+      --font-display: "Anthropic Serif", Georgia, "Times New Roman", serif;
+      --font-body: "Anthropic Sans", "Arial", system-ui, -apple-system, sans-serif;
+      --font-mono: "Anthropic Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+      --text-xs: 10px;
+      --text-sm: 14px;
+      --text-base: 16px;
+      --text-lg: 20px;
+      --text-xl: 25px;
+      --text-2xl: 32px;
+      --leading-body: 1.6;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+      --space-8: 32px;
+      --space-12: 48px;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-pill: 9999px;
+      --elev-ring: 0 0 0 1px var(--border);
+      --elev-raised: rgba(0, 0, 0, 0.05) 0px 4px 24px;
+      --focus-ring: 0 0 0 3px rgba(56, 152, 236, 0.3);
+      --motion-fast: 150ms;
+      --motion-base: 200ms;
+      --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      line-height: var(--leading-body);
+      -webkit-font-smoothing: antialiased;
+    }
+    img, svg { display: block; max-width: 100%; }
+    a { color: inherit; }
+    button { font: inherit; cursor: pointer; }
+    p { text-wrap: pretty; }
+    h1, h2, h3 { text-wrap: balance; }
+    :focus-visible { outline: none; box-shadow: var(--focus-ring); }
+
+    .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .sidebar {
+      border-right: 1px solid var(--border-soft);
+      background: var(--surface);
+      padding: var(--space-5) var(--space-4);
+      display: flex; flex-direction: column; gap: var(--space-6);
+      position: sticky; top: 0; height: 100vh;
+    }
+    .sidebar .logo { font-family: var(--font-display); font-weight: 500; font-size: 22px; padding-inline: var(--space-2); text-decoration: none; }
+    .side-nav { display: flex; flex-direction: column; gap: 2px; }
+    .side-nav a { display: flex; align-items: center; gap: var(--space-3); min-height: 44px; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 15px; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard); }
+    .side-nav a svg { width: 20px; height: 20px; flex: none; }
+    .side-nav a:hover { background: var(--surface-warm); color: var(--fg); }
+    .side-nav a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    .side-foot { margin-top: auto; padding: var(--space-3); border-top: 1px solid var(--border); font-size: 12px; color: var(--meta); }
+
+    .topnav-mobile { display: none; }
+    @media (max-width: 850px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .topnav-mobile { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-soft); background: var(--surface); overflow-x: auto; position: sticky; top: 0; z-index: 6; }
+      .topnav-mobile .logo { font-family: var(--font-display); font-weight: 500; font-size: 18px; margin-right: var(--space-2); flex: none; }
+      .topnav-mobile a { flex: none; min-height: 44px; display: inline-flex; align-items: center; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--muted); font-size: 14px; text-decoration: none; }
+      .topnav-mobile a[aria-current="page"] { background: var(--surface-warm); color: var(--fg); font-weight: 500; }
+    }
+
+    .main { min-width: 0; display: flex; flex-direction: column; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-8); border-bottom: 1px solid var(--border-soft); background: color-mix(in oklab, var(--bg) 92%, transparent); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 5; }
+    @media (max-width: 850px) { .topbar { padding: var(--space-3) var(--space-4); position: static; } }
+    .content { padding: var(--space-8); max-width: 880px; width: 100%; margin-inline: auto; flex: 1; }
+    @media (max-width: 850px) { .content { padding: var(--space-5) var(--space-4); } }
+
+    .meta { font-family: var(--font-mono); font-size: 12px; color: var(--meta); }
+
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 44px; padding: 0 var(--space-5); border-radius: var(--radius-md); border: 1px solid transparent; font-size: 15px; font-weight: 500; text-decoration: none; transition: background var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard); }
+    .btn:active { transform: translateY(1px); }
+    .btn-primary { background: var(--accent-strong); color: var(--accent-on); box-shadow: 0 0 0 1px var(--accent-strong); }
+    .btn-primary:hover { background: var(--accent-strong-hover); box-shadow: 0 0 0 1px var(--accent-strong-hover); }
+    .btn-primary:disabled { background: var(--surface-warm); color: var(--meta); box-shadow: 0 0 0 1px var(--border-soft); cursor: not-allowed; }
+    .btn-secondary { background: var(--surface-warm); color: var(--fg-2); box-shadow: 0 0 0 1px color-mix(in oklab, var(--surface-warm), black 8%); }
+    .btn-secondary:hover { background: color-mix(in oklab, var(--surface-warm), black 5%); }
+    .btn-quiet { background: transparent; color: var(--fg-2); border-color: var(--border-soft); }
+    .btn-quiet:hover { border-color: var(--meta); }
+    .btn-danger { background: transparent; color: var(--danger); border-color: color-mix(in oklab, var(--danger) 35%, transparent); }
+    .btn-danger:hover { background: color-mix(in oklab, var(--danger) 8%, transparent); border-color: var(--danger); }
+    .btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-danger:disabled:hover { background: transparent; border-color: color-mix(in oklab, var(--danger) 35%, transparent); }
+    .btn[disabled] { cursor: not-allowed; }
+
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 500; letter-spacing: 0.12px; white-space: nowrap; }
+    .pill-muted { background: var(--surface-warm); color: var(--fg-2); }
+    .pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    .pagefoot { border-top: 1px solid var(--border-soft); padding: var(--space-5) var(--space-8); color: var(--meta); font-size: 12px; }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+    }
+
+    /* page styles — owner export / deletion */
+    .data-head { padding: var(--space-8) 0 var(--space-6); max-width: 640px; }
+    .data-head h1 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-2xl); line-height: 1.2; margin: var(--space-3) 0; }
+    .data-head .sub { color: var(--muted); font-size: 15px; margin: 0; }
+
+    .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-6); margin-bottom: var(--space-6); }
+    @media (max-width: 850px) { .panel { padding: var(--space-5); } }
+    .panel h2 { font-family: var(--font-display); font-weight: 500; font-size: var(--text-xl); margin: 0 0 var(--space-2); }
+    .panel .panel-sub { color: var(--muted); font-size: 15px; margin: 0 0 var(--space-5); max-width: 60ch; }
+    .panel .included { margin: 0 0 var(--space-5); padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-2); }
+    .panel .included li { display: flex; gap: var(--space-3); align-items: baseline; font-size: 15px; color: var(--fg-2); }
+    .panel .included li::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--meta); flex: none; transform: translateY(-2px); }
+    .panel .included li .li-meta { color: var(--meta); font-size: 13px; }
+
+    .export-status { min-height: 24px; font-size: 14px; color: var(--muted); margin: var(--space-4) 0 0; }
+    .export-actions { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+
+    .panel-danger { border-color: color-mix(in oklab, var(--danger) 35%, transparent); }
+    .panel-danger h2 { color: var(--fg); }
+    .danger-explain { font-size: 14px; color: var(--muted); margin: 0 0 var(--space-5); max-width: 60ch; }
+    .confirm-row { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-4); max-width: 420px; }
+    .confirm-row label { font-size: 13px; color: var(--muted); }
+    .confirm-row input { min-height: 44px; padding: 0 var(--space-4); border: 1px solid var(--meta); border-radius: var(--radius-md); background: var(--surface); color: var(--fg); font: inherit; font-size: 15px; }
+    .confirm-row input:focus-visible { outline: none; box-shadow: var(--focus-ring); border-color: transparent; }
+
+    .receipt { display: none; border: 1px solid var(--border-soft); border-radius: var(--radius-md); background: var(--bg); padding: var(--space-5); margin-top: var(--space-5); }
+    .receipt.show { display: block; }
+    .receipt h3 { font-family: var(--font-display); font-weight: 500; font-size: 17px; margin: 0 0 var(--space-3); }
+    .receipt dl { display: grid; grid-template-columns: minmax(0, 180px) 1fr; gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-3); font-size: 14px; }
+    .receipt dt { color: var(--muted); }
+    .receipt dd { margin: 0; font-family: var(--font-mono); font-size: 13px; color: var(--fg-2); overflow-wrap: anywhere; }
+    @media (max-width: 640px) { .receipt dl { grid-template-columns: 1fr; } }
+    .receipt .receipt-note { font-size: 13px; color: var(--meta); margin: 0; border-top: 1px solid var(--border); padding-top: var(--space-3); }
+  
+    .skip-link{position:absolute;left:16px;top:-56px;z-index:200;background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:var(--radius-sm,8px);font:500 14px var(--font-body);text-decoration:none;transition:top var(--motion-fast,150ms) var(--ease-standard,ease)}
+    .skip-link:focus-visible{top:12px;outline:none;box-shadow:var(--focus-ring)}
+</style>
+</head>
+<body>
+  <a class="skip-link" href="#content">Skip to content</a>
+    <div class="app" data-od-id="app-shell">
+    <nav class="topnav-mobile" aria-label="Primary">
+      <span class="logo">Fieldnotes</span>
+      <a href="library.html">Library</a>
+      <a href="progress.html">Progress</a>
+      <a href="#" aria-current="page">Your data</a>
+    </nav>
+
+    <aside class="sidebar" data-od-id="sidebar">
+      <a class="logo" href="index.html">Fieldnotes</a>
+      <nav class="side-nav" aria-label="Primary">
+        <a href="index.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+          Overview
+        </a>
+        <a href="library.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Library
+        </a>
+        <a href="progress.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 14 4-4 4 3 5-6"/></svg>
+          Progress
+        </a>
+        <a href="#" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10h8"/><path d="M8 14h5"/></svg>
+          Your data
+        </a>
+      </nav>
+      <div class="side-foot">Sample prototype · No live AI</div>
+    </aside>
+
+    <div class="main">
+      <header class="topbar" data-od-id="topbar">
+        <span class="meta">Settings · Your data · Sample workspace</span>
+        <span class="pill pill-muted"><span class="dot"></span>Sample prototype · No live AI</span>
+      </header>
+
+      <main class="content" id="content">
+        <div class="data-head" data-od-id="data-head">
+          <h1>Your data</h1>
+          <p class="sub">Everything in this workspace belongs to you. Take it with you, or remove it entirely — both actions are shown here honestly, including what this sample can and cannot do.</p>
+        </div>
+
+        <section class="panel" data-od-id="export-panel" aria-labelledby="export-h">
+          <h2 id="export-h">Export your data</h2>
+          <p class="panel-sub">One JSON file containing everything the sample workspace holds for you:</p>
+          <ul class="included">
+            <li>Studies <span class="li-meta">— names, goals, and the plan you confirmed</span></li>
+            <li>Materials list <span class="li-meta">— titles and upload dates, not the files themselves</span></li>
+            <li>Practice history <span class="li-meta">— attempts, misses, and which feedback you saw</span></li>
+            <li>Reflections <span class="li-meta">— the notes you wrote on the progress screen</span></li>
+          </ul>
+          <div class="export-actions">
+            <button type="button" class="btn btn-primary" id="prepare-btn" data-od-id="export-prepare">Prepare export</button>
+            <button type="button" class="btn btn-secondary" id="download-btn" data-od-id="export-download" disabled>Download JSON</button>
+          </div>
+          <p class="export-status" id="export-status" role="status" aria-live="polite">In this sample, export is simulated — the file contains sample data, generated on this page. Nothing is sent anywhere.</p>
+        </section>
+
+        <section class="panel panel-danger" data-od-id="delete-panel" aria-labelledby="delete-h">
+          <h2 id="delete-h">Delete everything</h2>
+          <p class="danger-explain">This removes every study, practice record, and reflection in the workspace. In this sample nothing is really stored, so nothing is really deleted — the receipt below shows what the real flow would confirm. In a live product this cannot be undone.</p>
+          <div class="confirm-row" data-od-id="delete-confirm">
+            <label for="delete-confirm-input">Type DELETE to enable the button</label>
+            <input id="delete-confirm-input" type="text" autocomplete="off" spellcheck="false" placeholder="DELETE" />
+          </div>
+          <div class="export-actions">
+            <button type="button" class="btn btn-danger" id="delete-btn" data-od-id="delete-cta" disabled>Delete everything in this workspace</button>
+          </div>
+
+          <div class="receipt" id="receipt" role="status" data-od-id="deletion-receipt">
+            <h3>Deletion receipt (sample)</h3>
+            <dl>
+              <dt>What was deleted</dt>
+              <dd>1 study, 8 lessons of practice history, 3 reflections, materials list</dd>
+              <dt>When</dt>
+              <dd id="receipt-time">—</dd>
+              <dt>Reference code</dt>
+              <dd id="receipt-ref">—</dd>
+            </dl>
+            <p class="receipt-note">This receipt is simulated. In a live product it would be your only confirmation that deletion completed — there is no recovery, and support cannot restore the data.</p>
+          </div>
+        </section>
+      </main>
+
+      <footer class="pagefoot" data-od-id="footer">
+        <span>Fieldnotes redesign · Owner export / deletion receipt (screen 18 · states U7, U8)</span>
+      </footer>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var prepareBtn = document.getElementById('prepare-btn');
+      var downloadBtn = document.getElementById('download-btn');
+      var status = document.getElementById('export-status');
+      var exportUrl = null;
+
+      prepareBtn.addEventListener('click', function () {
+        prepareBtn.disabled = true;
+        status.textContent = 'Preparing your export — gathering studies, practice history, and reflections…';
+        window.setTimeout(function () {
+          var payload = {
+            exportedAt: new Date().toISOString(),
+            sample: true,
+            note: 'Simulated export from the Fieldnotes sample workspace. Not real user data.',
+            studies: [
+              {
+                name: 'How neural networks learn',
+                goal: 'Explain perceptrons, gradient descent, and backpropagation in plain words.',
+                lessonsPlanned: 8
+              }
+            ],
+            materials: [
+              { title: 'Lecture slides, week 3', uploaded: 'sample date' },
+              { title: 'Course notes, chapters 1–2', uploaded: 'sample date' }
+            ],
+            practiceHistory: [
+              { lesson: 'Gradient descent, step by step', attempts: 3, misses: 1 },
+              { lesson: 'What a loss measures', attempts: 2, misses: 1 }
+            ],
+            reflections: [
+              { lesson: 'Lesson 2', text: 'Sample reflection text.' }
+            ]
+          };
+          var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+          if (exportUrl) URL.revokeObjectURL(exportUrl);
+          exportUrl = URL.createObjectURL(blob);
+          downloadBtn.disabled = false;
+          status.textContent = 'Your export is ready. The file is generated on this page from sample data.';
+        }, 1200);
+      });
+
+      downloadBtn.addEventListener('click', function () {
+        if (!exportUrl) return;
+        var a = document.createElement('a');
+        a.href = exportUrl;
+        a.download = 'fieldnotes-sample-export.json';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        status.textContent = 'Download started. The file is a sample export — nothing was read from a server.';
+      });
+
+      var input = document.getElementById('delete-confirm-input');
+      var deleteBtn = document.getElementById('delete-btn');
+      var receipt = document.getElementById('receipt');
+      var receiptTime = document.getElementById('receipt-time');
+      var receiptRef = document.getElementById('receipt-ref');
+
+      input.addEventListener('input', function () {
+        deleteBtn.disabled = input.value.trim() !== 'DELETE';
+      });
+
+      deleteBtn.addEventListener('click', function () {
+        var ok = window.confirm('Delete everything in this sample workspace? In a live product this cannot be undone. In this sample, no real data exists — this shows the receipt state only.');
+        if (!ok) return;
+        receiptTime.textContent = new Date().toLocaleString();
+        receiptRef.textContent = 'SAMPLE-DEL-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+        receipt.classList.add('show');
+        input.value = '';
+        input.disabled = true;
+        deleteBtn.disabled = true;
+        receipt.scrollIntoView({ block: 'nearest' });
+      });
+    })();
+  </script>
+</body>
+</html>

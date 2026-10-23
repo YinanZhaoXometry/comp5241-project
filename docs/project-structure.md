@@ -18,7 +18,10 @@ project-new/
 │   │   ├── page.tsx · study-app.tsx · plan-editor.tsx · materials.tsx    private tracer UI
 │   │   ├── privacy-panel.tsx · goal-stage.tsx · check-stage.tsx ·        S3/S4/S7 stage panels
 │   │   │   export-panel.tsx · danger-zone.tsx                            S8/S9 panels
-│   │   └── demo/           isolated unauthenticated screenshot prototype ("No live AI")
+│   │   ├── shell/          product + instructor page shells (sidebar/topnav, honesty label)
+│   │   ├── screens/        static styled screen content (library, course, practice, …)
+│   │   └── library·course·practice·progress·recovery·roadmap·review·why·       static product pages
+│   │       starting-check·plan-ai·data·instructor/*                            (no business logic)
 │   ├── contracts/          domain contracts; import no adapters/modules/platform/next/pg
 │   │   ├── setup.ts        tracer setup/plan contracts
 │   │   ├── documents.ts    bounded document/extraction contracts
@@ -69,8 +72,9 @@ project-new/
 │   ├── integration/        real PostgreSQL: tracer, batches, documents, migrations,
 │   │                       parser stack, consent, preferences, handoff, diagnostic,
 │   │                       export, lifecycle, retention, restore
-│   ├── browser/            Playwright: tracer, demo, batches, consent, preferences,
-│   │                       handoff, check, export, lifecycle — production build
+│   ├── browser/            Playwright: tracer, pages (static product pages), batches,
+│   │                       consent, preferences, handoff, check, export, lifecycle —
+│   │                       production build
 │   └── fixtures/           original synthetic documents only
 ├── docs/                   guides: ai-provider-adapter, bounded-document-extraction,
 │                           backup-restore, lint-coverage, project-structure (this file)
@@ -125,7 +129,7 @@ README setup from scratch.
 - `tsconfig.json` / `tsconfig.worker.json` — web and worker typecheck separately
   (`typecheck`, `typecheck:worker`).
 - `next.config.ts` — loopback binding, security headers, the narrow CSS-Module
-  loader exception for `src/app/demo`.
+  loader exception for `*.module.css` (path-agnostic; applies to all module CSS).
 - `next-env.d.ts` — generated; the user's development imports stay uncommitted
   (see Gotchas in [CONTRIBUTING.md](../CONTRIBUTING.md)).
 - `playwright.config.ts` / `vitest.config.ts` — browser and unit/integration test setup.
