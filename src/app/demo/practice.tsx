@@ -52,7 +52,7 @@ export function Practice() {
               {checked && <button className={styles.secondary} type="button" onClick={retry}>Try again</button>}
             </div>
           </form>
-          <output aria-live="polite" aria-atomic="true" className={checked ? styles.feedback : undefined}>
+          <output aria-live="polite" aria-atomic="true" className={checked ? `${styles.feedback} ${correct ? styles.feedbackOk : styles.feedbackNo}` : undefined}>
             {checked && selected !== null && <><strong className={styles.feedbackHeading}>{correct ? "That checks the boundary." : "Not quite. Here is what to look for."}</strong><span className={styles.feedbackBody}>{answers[selected].explanation}</span><span className={styles.feedbackMeta}>Prewritten feedback · Assisted practice · No score awarded</span></>}
           </output>
         </section>
