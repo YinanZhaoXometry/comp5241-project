@@ -3,7 +3,7 @@ title: 'Isolated backup and protective restore'
 type: 'feature'
 ticket: 13
 created: '2026-10-22'
-status: 'built'
+status: done
 baseline_revision: 'd0a0ee3'
 route: 'full'
 route_source: 'auto'

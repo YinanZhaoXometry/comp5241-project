@@ -3,7 +3,7 @@ title: 'Root-scoped deletion and complete late-work suppression'
 type: 'feature'
 ticket: 9
 created: '2026-10-22'
-status: 'built'
+status: done
 baseline_revision: 'd851f8f77314ab8f7d8f38e84cac266f7f31916e'
 route: 'full'
 route_source: 'auto'

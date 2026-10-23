@@ -3,7 +3,7 @@ title: 'Bounded four-format extraction and explicit preview'
 type: 'feature'
 ticket: 2
 created: '2026-10-21'
-status: 'built'
+status: done
 baseline_revision: 'a04f898632c101e2a238e053084a37c948e74138'
 route: 'full'
 route_source: 'auto'
