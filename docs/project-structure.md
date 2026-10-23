@@ -19,6 +19,7 @@ project-new/
 │   │   ├── privacy-panel.tsx · goal-stage.tsx · check-stage.tsx ·        S3/S4/S7 stage panels
 │   │   │   export-panel.tsx · danger-zone.tsx                            S8/S9 panels
 │   │   └── demo/           isolated unauthenticated screenshot prototype ("No live AI")
+│   │       └── screens/    revised-spine sample screens (product/instructor/states views)
 │   ├── contracts/          domain contracts; import no adapters/modules/platform/next/pg
 │   │   ├── setup.ts        tracer setup/plan contracts
 │   │   ├── documents.ts    bounded document/extraction contracts

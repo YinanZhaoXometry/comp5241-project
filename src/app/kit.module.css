@@ -1,0 +1,484 @@
+/* Fieldnotes shared component kit (2026-10-23 spine revision).
+   Canonical spec: _bmad-output/.../ux-ai-learning-platform/DESIGN.md §7 and
+   temp/foundations.html. Tokens live in globals.css :root — no raw hex here.
+   Display font is Georgia (DESIGN.md wins over the reference files' placeholder
+   "Anthropic Serif"); meter fills are dark --fg-2 per DESIGN.md §2. */
+
+/* ── layout helpers ──────────────────────────────────────────────────── */
+.container {
+  max-width: 1200px;
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+.section {
+  padding-block: 64px;
+}
+.section + .section {
+  border-top: 1px solid var(--border-soft);
+}
+.secHead {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 32px;
+  max-width: 64ch;
+}
+.secHead p {
+  margin: 0;
+  color: var(--muted);
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+.grid3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+@media (max-width: 920px) {
+  .grid2,
+  .grid3 {
+    grid-template-columns: 1fr;
+  }
+}
+.rowBetween {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* ── type ────────────────────────────────────────────────────────────── */
+.display1 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 52px;
+  line-height: 1.1;
+  margin: 0;
+  text-wrap: balance;
+}
+.display2 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 32px;
+  line-height: 1.2;
+  margin: 0;
+  text-wrap: balance;
+}
+.display3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 25px;
+  line-height: 1.2;
+  margin: 0;
+  text-wrap: balance;
+}
+.lead {
+  font-size: 20px;
+  color: var(--muted);
+  max-width: 56ch;
+  margin: 0;
+}
+.eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--meta);
+  margin: 0 0 12px;
+}
+.overline {
+  composes: eyebrow;
+}
+.metaText {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--meta);
+}
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── buttons ─────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-size: 15px;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    background var(--motion-fast) var(--ease-standard),
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btnPrimary {
+  composes: btn;
+  background: var(--accent-strong);
+  color: var(--accent-on);
+  box-shadow: 0 0 0 1px var(--accent-strong);
+}
+.btnPrimary:hover {
+  background: color-mix(in oklab, var(--accent-strong), black 8%);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent-strong), black 8%);
+}
+.btnPrimary:active {
+  background: color-mix(in oklab, var(--accent-strong), black 14%);
+}
+.btnSecondary {
+  composes: btn;
+  background: var(--surface-warm);
+  color: var(--fg-2);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--surface-warm), black 8%);
+}
+.btnSecondary:hover {
+  background: color-mix(in oklab, var(--surface-warm), black 5%);
+}
+.btnQuiet {
+  composes: btn;
+  background: transparent;
+  color: var(--fg-2);
+  border-color: var(--border-soft);
+}
+.btnQuiet:hover {
+  border-color: var(--meta);
+}
+.btnDanger {
+  composes: btn;
+  background: transparent;
+  color: var(--danger);
+  border-color: color-mix(in oklab, var(--danger) 35%, transparent);
+}
+.btnDanger:hover {
+  background: color-mix(in oklab, var(--danger) 8%, transparent);
+  border-color: var(--danger);
+}
+.btn:disabled,
+.btnPrimary:disabled,
+.btnSecondary:disabled,
+.btnQuiet:disabled,
+.btnDanger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+.btnRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+/* ── forms ───────────────────────────────────────────────────────────── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg-2);
+}
+.help {
+  font-size: 13px;
+  color: var(--meta);
+}
+.input,
+.textarea {
+  width: 100%;
+  padding: 10px 14px;
+  min-height: 44px;
+  border: 1px solid var(--meta);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  font-size: 15px;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    box-shadow var(--motion-fast) var(--ease-standard);
+}
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--meta);
+}
+.input:focus-visible,
+.textarea:focus-visible {
+  border-color: var(--focus);
+  box-shadow: var(--focus-ring);
+}
+.textarea {
+  min-height: 110px;
+  resize: vertical;
+  line-height: 1.6;
+}
+
+/* ── answer rows ─────────────────────────────────────────────────────── */
+.answerRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-standard),
+    background var(--motion-fast) var(--ease-standard);
+}
+.answerRow:hover {
+  border-color: var(--meta);
+}
+.answerRowSelected {
+  composes: answerRow;
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 6%, var(--surface));
+}
+.answerRowLocked {
+  composes: answerRow;
+  cursor: default;
+}
+.answerRowLocked:hover {
+  border-color: var(--border-soft);
+}
+.answerRowSelected.answerRowLocked:hover {
+  border-color: var(--accent);
+}
+.radioDot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--meta);
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.answerRowSelected .radioDot {
+  border-color: var(--accent);
+}
+.answerRowSelected .radioDot::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* ── pills ───────────────────────────────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12px;
+}
+.pill .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.pillAccent {
+  composes: pill;
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface));
+  color: var(--accent-strong);
+}
+.pillMuted {
+  composes: pill;
+  background: var(--surface-warm);
+  color: var(--fg-2);
+}
+.pillSuccess {
+  composes: pill;
+  background: color-mix(in oklab, var(--success) 12%, var(--surface));
+  color: color-mix(in oklab, var(--success), black 20%);
+}
+.pillWarn {
+  composes: pill;
+  background: color-mix(in oklab, var(--warn) 12%, var(--surface));
+  color: var(--fg-2);
+}
+.pillDanger {
+  composes: pill;
+  background: color-mix(in oklab, var(--danger) 10%, var(--surface));
+  color: var(--danger);
+}
+
+/* ── cards, callouts, code ───────────────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 24px;
+  min-width: 0;
+}
+.card h3 {
+  margin-bottom: 8px;
+}
+.card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+}
+.cardRaised {
+  composes: card;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-raised);
+}
+.callout {
+  border-left: 2px solid var(--accent);
+  background: var(--surface);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 16px 20px;
+}
+.callout p {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 15px;
+}
+.calloutSerif {
+  composes: callout;
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 1.4;
+}
+.codeblock {
+  background: var(--fg);
+  color: var(--surface-warm);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-x: auto;
+  margin: 0;
+}
+.codeblock .cm {
+  color: var(--meta);
+}
+
+/* ── meters ──────────────────────────────────────────────────────────── */
+.meter {
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-warm);
+  overflow: hidden;
+}
+.meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--fg-2);
+}
+.meterGreen > span {
+  background: var(--success);
+}
+
+/* ── tables ──────────────────────────────────────────────────────────── */
+.dsTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.dsTable th,
+.dsTable td {
+  padding: 12px 16px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.dsTable th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.12px;
+  text-transform: uppercase;
+  background: var(--surface);
+}
+.dsTable tbody tr:last-child td {
+  border-bottom: 0;
+}
+.dsTable tbody tr:hover {
+  background: color-mix(in oklab, var(--fg) 3%, transparent);
+}
+
+/* ── notices & empty states ──────────────────────────────────────────── */
+.notice {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 16px 20px;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--warn) 10%, var(--surface));
+  border: 1px solid color-mix(in oklab, var(--warn) 35%, transparent);
+  color: var(--fg-2);
+  font-size: 14px;
+}
+.empty {
+  border: 1px dashed var(--border-soft);
+  border-radius: var(--radius-lg);
+  padding: 48px 24px;
+  text-align: center;
+}
+.empty h3 {
+  margin-bottom: 8px;
+}
+.empty p {
+  margin: 0 auto 20px;
+  color: var(--muted);
+  max-width: 44ch;
+}
+
+/* ── dialog (overlay — the one whisper-shadow surface) ───────────────── */
+.dialogPanel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-raised);
+  padding: 24px;
+  max-width: 480px;
+  width: calc(100% - 32px);
+}
+.dialogBackdrop {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in oklab, var(--fg) 32%, transparent);
+  display: grid;
+  place-items: center;
+  z-index: 100;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .btnPrimary,
+  .btnSecondary,
+  .btnQuiet,
+  .btnDanger,
+  .input,
+  .textarea,
+  .answerRow,
+  .answerRowSelected {
+    transition-duration: 0.01ms !important;
+  }
+}

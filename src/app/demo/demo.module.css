@@ -120,6 +120,16 @@
   display: grid;
   gap: 0.5rem;
 }
+.navGroup {
+  display: grid;
+  gap: 0.5rem;
+}
+.navGroup .navLabel {
+  margin: 1.5rem 0 0 !important;
+}
+.navGroup:first-child .navLabel {
+  margin-top: 0 !important;
+}
 .nav a {
   display: flex;
   align-items: center;
