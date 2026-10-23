@@ -112,6 +112,9 @@
   padding: 0 20px;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
+  background: transparent;
+  color: var(--fg-2);
+  box-shadow: none;
   font-size: 15px;
   font-weight: 500;
   text-decoration: none;
@@ -154,6 +157,10 @@
 .btnQuiet:hover {
   border-color: var(--meta);
 }
+.btnQuiet:active {
+  background: transparent;
+  border-color: var(--meta);
+}
 .btnDanger {
   composes: btn;
   background: transparent;
@@ -163,6 +170,13 @@
 .btnDanger:hover {
   background: color-mix(in oklab, var(--danger) 8%, transparent);
   border-color: var(--danger);
+}
+.btnDanger:active {
+  background: color-mix(in oklab, var(--danger) 14%, transparent);
+  border-color: var(--danger);
+}
+.btnSecondary:active {
+  background: color-mix(in oklab, var(--surface-warm), black 8%);
 }
 .btn:disabled,
 .btnPrimary:disabled,
