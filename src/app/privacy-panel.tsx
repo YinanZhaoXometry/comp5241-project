@@ -176,7 +176,7 @@ export function PrivacyPanel() {
                 Nothing is preselected. Re-consent is required whenever the processor, purpose,
                 categories or retention terms change. Declining keeps all manual work.
               </p>
-              <button className="quiet" disabled={busy} onClick={() => decideAction("declined")}>
+              <button className="secondary" disabled={busy} onClick={() => decideAction("declined")}>
                 Not now
               </button>
               <button disabled={busy} onClick={() => decideAction("granted")}>
