@@ -1,7 +1,7 @@
 ---
 title: 'Editable immutable plan and exact confirmation handoff'
 type: 'feature'
-ticket: 'S5'
+ticket: 5
 created: '2026-10-22'
 status: 'built'
 baseline_revision: 'd851f8f77314ab8f7d8f38e84cac266f7f31916e'

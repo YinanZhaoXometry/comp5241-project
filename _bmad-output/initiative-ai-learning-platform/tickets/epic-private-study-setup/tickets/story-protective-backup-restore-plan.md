@@ -1,7 +1,7 @@
 ---
 title: 'Isolated backup and protective restore'
 type: 'feature'
-ticket: S13
+ticket: 13
 created: '2026-10-22'
 status: 'built'
 baseline_revision: 'd0a0ee3'

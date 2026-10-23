@@ -1,7 +1,7 @@
 ---
 title: 'Authenticated consistent personal-setup export'
 type: 'feature'
-ticket: 'S8'
+ticket: 8
 created: '2026-10-22'
 status: 'built'
 baseline_revision: 'd851f8f77314ab8f7d8f38e84cac266f7f31916e'

@@ -3,7 +3,7 @@ title: 'Optional starting check infrastructure (S7 infrastructure subset)'
 type: 'feature'
 ticket: 7
 created: '2026-10-22'
-status: 'built'
+status: built
 baseline_revision: 'd851f8f77314ab8f7d8f38e84cac266f7f31916e'
 route: 'full'
 route_source: 'auto'
@@ -16,6 +16,8 @@ context:
   - '{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md'
   - '{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md'
   - '{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/execution-plan-remaining-stories.md'
+blocked_at: "2026-10-24"
+blocked_reason: "take-path acceptance (validated 3-5-item check on an eligible generator) waits for S6/F3 provider evidence; infrastructure + skip path built and gated"
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">

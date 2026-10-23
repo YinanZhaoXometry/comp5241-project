@@ -1,7 +1,8 @@
-# Ordered private-study-setup stories, 2026-10-21. Leaf ticket files now exist for
-# entries 1, 2, 3, 4, 5, 7, 8, 9, 10 and 13 with status 'built' — local synthetic
-# gate evidence only. Entries 6, 7-closure and 12 remain blocked on F3/F6; the epic
-# is not closed. No entry status/assignee/estimate field below has been advanced.
+# Ordered private-study-setup stories, 2026-10-21. Plan files in this folder carry
+# status 'built' for entries 1, 2, 3, 4, 5, 7 (infrastructure subset), 8, 9, 10, 11
+# and 13 — local synthetic gate evidence only; leaf ticket files are not pulled.
+# Entries 6, 7 take-path closure and 12 remain blocked on F3/F6; the epic is not
+# closed. No entry status/assignee/estimate field below has been advanced.
 # covers uses THIS epic's R1-R4, not initiative R IDs. Details live in adopted companions.
 # One lane protects shared schema, scoped fixtures and lifecycle evolution.
 # unknown gates the start; hitl identifies actual human work but is not a readiness gate.

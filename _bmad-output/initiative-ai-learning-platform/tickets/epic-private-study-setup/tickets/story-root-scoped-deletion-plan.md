@@ -1,7 +1,7 @@
 ---
 title: 'Root-scoped deletion and complete late-work suppression'
 type: 'feature'
-ticket: 'S9'
+ticket: 9
 created: '2026-10-22'
 status: 'built'
 baseline_revision: 'd851f8f77314ab8f7d8f38e84cac266f7f31916e'
