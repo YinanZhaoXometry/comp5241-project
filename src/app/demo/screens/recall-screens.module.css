@@ -1,0 +1,1208 @@
+/* Screen-specific styles for the five recall-flow demo screens
+   (review inbox, why explorer, starting check, AI-assisted plan,
+   owner export / deletion receipt). Ported from the temp/*.html
+   reference prototypes to the 2026-10-23 Fieldnotes spine: tokens
+   live in globals.css :root, shared recipes in kit.module.css.
+   No raw hex here — var() tokens and color-mix() on tokens only.
+
+   Every rule is scoped under `.screen`, and the base under
+   `.screen.screen`, so these win over the shell's element-level
+   styles (.demo h1/.demo p/…) in demo.module.css regardless of
+   stylesheet order. */
+
+/* ── base ────────────────────────────────────────────────────────────── */
+.screen.screen {
+  color: var(--fg);
+  font-size: 16px;
+  min-width: 0;
+  margin-inline: auto;
+}
+.screen.w720 {
+  max-width: 720px;
+}
+.screen.w820 {
+  max-width: 820px;
+}
+.screen.w880 {
+  max-width: 880px;
+}
+.screen.w960 {
+  max-width: 960px;
+}
+.screen.screen h1,
+.screen.screen h2,
+.screen.screen h3 {
+  font-family: var(--font-display);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+.screen .pageHead {
+  max-width: 640px;
+  margin-bottom: 24px;
+}
+.screen .pageH1 {
+  font-size: 32px;
+  margin: 0 0 12px;
+}
+.screen .sub {
+  color: var(--muted);
+  font-size: 15px;
+  margin: 0;
+  max-width: 62ch;
+}
+.screen .metaTxt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--meta);
+}
+.screen .srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.screen .notePlate {
+  font-size: 13px;
+  color: var(--fg-2);
+  background: var(--surface-warm);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  margin: 0;
+}
+.screen .quietLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: 15px;
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.screen .quietLink:hover {
+  color: var(--fg);
+}
+
+/* Keyboard focus for the custom controls below — the spine's Focus
+   Blue ring, never suppressed (kit buttons keep the global ring). */
+.screen .segBtn:focus-visible,
+.screen .chip:focus-visible,
+.screen .qaHead:focus-visible,
+.screen .undoBtn:focus-visible,
+.screen .answerInput:focus-visible,
+.screen .quietLinkBtn:focus-visible,
+.screen .quietLink:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+/* ── segmented view switch (review inbox tabs, plan mode toggle) ─────── */
+.screen .seg {
+  display: inline-flex;
+  gap: 2px;
+  position: relative;
+  background: var(--surface-warm);
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 4px;
+  margin: 0 0 24px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.screen .segBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--fg-2);
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.screen .segBtn:hover {
+  background: color-mix(in oklab, var(--surface) 55%, transparent);
+  color: var(--fg);
+}
+.screen .segBtn:active {
+  background: color-mix(in oklab, var(--surface) 55%, transparent);
+}
+.screen .segBtnOn,
+.screen .segBtnOn:hover {
+  background: var(--surface);
+  color: var(--fg);
+  box-shadow: var(--elev-ring);
+}
+.screen .segCnt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--meta);
+  margin-left: 0;
+}
+
+/* ── review inbox ────────────────────────────────────────────────────── */
+.screen .summary {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 16px 0 24px;
+  border-bottom: 1px solid var(--border-soft);
+  margin: 0 0 24px;
+}
+.screen .sum {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.screen .sumNum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 25px;
+  color: var(--fg);
+}
+.screen .sumLabel {
+  font-size: 13px;
+  color: var(--muted);
+}
+.screen .sumNote {
+  font-size: 12px;
+  color: var(--meta);
+  margin-left: auto;
+  max-width: 34ch;
+}
+.screen .queue {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.screen .revCard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+.screen .revTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.screen .revTitle {
+  font-size: 20px;
+  line-height: 1.3;
+  margin: 0;
+}
+.screen .revWhy {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+.screen .revSrc {
+  font-size: 12px;
+  color: var(--meta);
+  margin: 0 0 16px;
+}
+.screen .revActions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.screen .pillMissed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12px;
+  white-space: nowrap;
+  background: color-mix(in oklab, var(--warn) 18%, var(--surface));
+  color: color-mix(in oklab, var(--warn) 45%, black);
+}
+.screen .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.screen .recall {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-soft);
+}
+.screen .recall[hidden] {
+  display: none;
+}
+.screen .recallPrompt {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 17px;
+  line-height: 1.45;
+  margin: 0 0 16px;
+  max-width: 52ch;
+}
+.screen .recallLabel {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--meta);
+  margin-bottom: 8px;
+}
+.screen .recallFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.screen .recallNote {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  font-size: 14px;
+  color: var(--fg-2);
+}
+.screen .noteLabel {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--meta);
+  margin-bottom: 4px;
+}
+.screen .selfLabel {
+  font-size: 13px;
+  color: var(--muted);
+  align-self: center;
+}
+.screen .selfAssess {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.screen .selfAssess[hidden] {
+  display: none;
+}
+.screen .doneNote {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+.screen .doneNote[hidden] {
+  display: none;
+}
+.screen .pausedNote {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 16px;
+  max-width: 62ch;
+}
+.screen .schedRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+.screen .schedName {
+  font-size: 15px;
+  font-weight: 500;
+}
+.screen .schedWhy {
+  display: block;
+  font-size: 12px;
+  color: var(--meta);
+  margin-top: 2px;
+  font-weight: 400;
+}
+.screen .schedWhen {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.screen .schedDate {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.screen .emptyH3 {
+  font-size: 25px;
+  margin: 0 0 8px;
+}
+.screen .emptyP {
+  margin: 0 auto 20px;
+  color: var(--muted);
+  max-width: 44ch;
+}
+
+/* ── why explorer ────────────────────────────────────────────────────── */
+.screen .whyHead {
+  padding: 32px 0 24px;
+  max-width: 640px;
+}
+.screen .qaList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 24px;
+}
+.screen .qa {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: border-color var(--motion-fast) var(--ease-standard);
+}
+.screen .qa:hover {
+  border-color: var(--border-soft);
+}
+.screen .qaHead {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+  padding: 12px 20px;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  text-align: left;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 18px;
+  color: var(--fg);
+  border-radius: 0;
+}
+.screen .qaBody {
+  padding: 0 20px 20px;
+}
+.screen .qaBody[hidden] {
+  display: none;
+}
+.screen .qaP {
+  margin: 0 0 12px;
+  color: var(--fg-2);
+  font-size: 15px;
+  max-width: 62ch;
+}
+.screen .qaDetail {
+  font-size: 13px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin: 8px 0 0;
+  max-width: 62ch;
+}
+.screen .chev {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--meta);
+  transition: transform var(--motion-base) var(--ease-standard);
+}
+.screen .qaOpen .chev {
+  transform: rotate(180deg);
+}
+.screen .pathSection {
+  margin-top: 48px;
+}
+.screen .pathH2 {
+  font-size: 25px;
+  margin: 0 0 8px;
+}
+.screen .pathSub {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 0 0 24px;
+  max-width: 64ch;
+}
+.screen .loop {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.screen .loopStep {
+  flex: 1 1 140px;
+  min-width: 0;
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  box-shadow: var(--elev-ring);
+  padding: 16px;
+}
+.screen .loopStepOn {
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--accent) 45%, var(--border));
+}
+.screen .stepNum {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--meta);
+}
+.screen .stepNumOn {
+  color: var(--accent-strong);
+}
+.screen .stepH3 {
+  font-size: 17px;
+  margin: 4px 0;
+}
+.screen .stepP {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.screen .loopArrow {
+  align-self: center;
+  flex: none;
+  color: var(--meta);
+  padding: 0 4px;
+  display: inline-flex;
+}
+.screen .whyFoot {
+  margin-top: 48px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-soft);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* ── starting check ──────────────────────────────────────────────────── */
+.screen .checkHead {
+  padding: 32px 0 24px;
+}
+.screen .optNote {
+  margin-top: 16px;
+}
+.screen .checkForm {
+  display: flex;
+  flex-direction: column;
+}
+.screen .checkQ {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.screen .qTitle {
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+.screen .qNote {
+  font-size: 13px;
+  color: var(--meta);
+  margin: 0 0 16px;
+}
+.screen .answers {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+/* Native radio covering the whole kit answer row: clicking anywhere selects,
+   and the focus ring hugs the row (the input itself stays invisible). */
+.screen .answerWrap {
+  position: relative;
+}
+.screen .answerInput {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  opacity: 0;
+  cursor: pointer;
+  appearance: none;
+}
+.screen .answerLabel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 400;
+}
+.screen .checkActions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.screen .seeStart:disabled {
+  background: var(--surface-warm);
+  color: var(--meta);
+  box-shadow: 0 0 0 1px var(--border-soft);
+  opacity: 1;
+  cursor: not-allowed;
+}
+.screen .result {
+  margin-top: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+.screen .resText {
+  margin: 0 0 12px;
+  color: var(--fg-2);
+  font-size: 15px;
+}
+.screen .resNote {
+  font-size: 13px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  margin: 8px 0 0;
+}
+.screen .resActions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.screen .quietLinkBtn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 8px;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: 15px;
+  transition: color var(--motion-fast) var(--ease-standard);
+}
+.screen .quietLinkBtn:hover {
+  color: var(--fg);
+  background: none;
+}
+.screen .quietLinkBtn:active {
+  background: none;
+}
+
+/* ── plan · AI-assisted ──────────────────────────────────────────────── */
+.screen .steps {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--meta);
+  margin: 0 0 32px;
+}
+.screen .stepOn {
+  color: var(--fg);
+  font-weight: 600;
+}
+.screen .stepSep {
+  color: var(--border-soft);
+}
+.screen .planGrid {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr;
+  gap: 24px;
+  align-items: start;
+}
+.screen .panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+.screen .panelH2 {
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+.screen .panelSub {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 20px;
+}
+.screen .goalCount {
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--meta);
+  text-align: right;
+}
+.screen .chips {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+.screen .chipsLabel {
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--meta);
+  margin: 0 0 4px;
+}
+.screen .chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 4px 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--fg-2);
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.screen .chip:hover {
+  background: var(--surface-warm);
+}
+.screen .chip:active {
+  background: var(--surface-warm);
+}
+.screen .draftBanner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.screen .draftEmptyText {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.screen .titleField {
+  margin-bottom: 20px;
+}
+.screen .titleLabel {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--meta);
+  margin-bottom: 8px;
+}
+.screen .titleInput {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 600;
+}
+.screen .subhead {
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--meta);
+  margin: 24px 0 8px;
+}
+.screen .lessonList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.screen .lessonRow {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.screen .lessonNum {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  margin-top: 8px;
+  border-radius: 50%;
+  background: var(--surface-warm);
+  color: var(--fg-2);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.screen .lessonMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.screen .lessonTitleInput {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 15px;
+  width: 100%;
+}
+.screen .rationale {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.screen .lessonSub {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.screen .lessonMin {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.screen .minInput {
+  width: 64px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  text-align: right;
+}
+.screen .lessonCov {
+  font-size: 12px;
+  color: var(--meta);
+}
+.screen .lessonRemove {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg-2);
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.screen .lessonRemove:hover {
+  background: var(--surface-warm);
+}
+.screen .lessonRemove:active {
+  background: var(--surface-warm);
+}
+.screen .addLesson {
+  width: 100%;
+  background: var(--surface-warm);
+  color: var(--fg-2);
+  border: 1px dashed color-mix(in oklab, var(--fg-2) 30%, transparent);
+  box-shadow: none;
+}
+.screen .addLesson:hover {
+  background: color-mix(in oklab, var(--surface-warm), black 5%);
+}
+.screen .addLesson:active {
+  background: color-mix(in oklab, var(--surface-warm), black 5%);
+}
+.screen .checkList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 20px 0 0;
+}
+.screen .checkRow {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.screen .checkMain {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.screen .undoBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 8px 12px 8px 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-warm);
+  font-size: 14px;
+  color: var(--fg-2);
+}
+.screen .undoBar[hidden] {
+  display: none;
+}
+.screen .undoBtn {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--fg);
+  box-shadow: none;
+  font-weight: 600;
+  font-size: 14px;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+.screen .undoBtn:hover {
+  background: var(--surface);
+}
+.screen .undoBtn:active {
+  background: var(--surface);
+}
+.screen .flowFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 32px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-soft);
+}
+.screen .hintText {
+  font-size: 13px;
+  color: var(--meta);
+  max-width: 44ch;
+}
+.screen .flowRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.screen .savedNote {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 14px;
+  color: var(--fg-2);
+}
+.screen .savedNote[hidden] {
+  display: none;
+}
+.screen .tick {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--success) 14%, var(--surface));
+  color: var(--success);
+  display: grid;
+  place-items: center;
+}
+.screen .tick svg {
+  width: 12px;
+  height: 12px;
+}
+.screen .neutralNotice {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: var(--surface-warm);
+  color: var(--fg-2);
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+.screen .neutralNotice p {
+  margin: 0;
+}
+
+/* ── owner export / deletion receipt ─────────────────────────────────── */
+.screen .dataPanel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.screen .dataH2 {
+  font-size: 25px;
+  margin: 0 0 8px;
+}
+.screen .dataSub {
+  color: var(--muted);
+  font-size: 15px;
+  margin: 0 0 20px;
+  max-width: 60ch;
+}
+.screen .included {
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.screen .included li {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 15px;
+  color: var(--fg-2);
+}
+.screen .included li::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--meta);
+  flex: none;
+  transform: translateY(-2px);
+}
+.screen .liMeta {
+  color: var(--meta);
+  font-size: 13px;
+}
+.screen .exportActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.screen .exportStatus {
+  min-height: 24px;
+  font-size: 14px;
+  color: var(--muted);
+  margin: 16px 0 0;
+}
+.screen .dangerArmed {
+  border-color: color-mix(in oklab, var(--danger) 35%, transparent);
+}
+.screen .dangerExplain {
+  font-size: 14px;
+  color: var(--muted);
+  margin: 0 0 20px;
+  max-width: 60ch;
+}
+.screen .confirmRow {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+  max-width: 420px;
+}
+.screen .confirmLabel {
+  font-size: 13px;
+  color: var(--muted);
+}
+.screen .confirmInput {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--meta);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 15px;
+}
+.screen .receipt {
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  padding: 20px;
+  margin-top: 20px;
+}
+.screen .receiptH3 {
+  font-size: 17px;
+  margin: 0 0 12px;
+}
+.screen .receiptH3:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.screen .receiptDl {
+  display: grid;
+  grid-template-columns: minmax(0, 180px) 1fr;
+  gap: 8px 16px;
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+.screen .receiptDt {
+  color: var(--muted);
+}
+.screen .receiptDd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg-2);
+  overflow-wrap: anywhere;
+}
+.screen .receiptNote {
+  font-size: 13px;
+  color: var(--meta);
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.screen .dlgH3 {
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+.screen .dlgP {
+  margin: 0 0 16px;
+  color: var(--fg-2);
+  font-size: 15px;
+}
+/* Native dialog styled as the overlay backdrop; the kit panel nests inside.
+   showModal() puts it in the top layer — the only whisper-shadow surface. */
+.screen .dlg {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: color-mix(in oklab, var(--fg) 32%, transparent);
+  color: var(--fg);
+  width: 100vw;
+  height: 100vh;
+  max-width: none;
+  max-height: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.screen .dlg::backdrop {
+  background: transparent;
+}
+.screen .dlgBackdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: default;
+}
+.screen .dlgBackdrop:hover,
+.screen .dlgBackdrop:active {
+  background: transparent;
+  box-shadow: none;
+}
+.screen .dlgPanel {
+  position: relative;
+}
+
+/* ── responsive ──────────────────────────────────────────────────────── */
+@media (max-width: 850px) {
+  .screen .revCard,
+  .screen .checkQ,
+  .screen .panel,
+  .screen .dataPanel {
+    padding: 20px;
+  }
+  .screen .planGrid {
+    grid-template-columns: 1fr;
+  }
+  .screen .lessonRow,
+  .screen .checkRow {
+    flex-wrap: wrap;
+  }
+}
+@media (max-width: 720px) {
+  .screen .sumNote {
+    margin-left: 0;
+  }
+  .screen .schedRow {
+    grid-template-columns: 1fr;
+  }
+  .screen .schedWhen {
+    justify-content: space-between;
+  }
+}
+@media (max-width: 700px) {
+  .screen .loop {
+    flex-direction: column;
+    flex-wrap: nowrap;
+  }
+  .screen .loopStep {
+    flex: none;
+  }
+  .screen .loopArrow svg {
+    transform: rotate(90deg);
+  }
+}
+@media (max-width: 640px) {
+  .screen .receiptDl {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── reduced motion ──────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .screen *,
+  .screen.screen {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
