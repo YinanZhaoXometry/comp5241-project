@@ -204,7 +204,9 @@ async function captureDiagnostics(client: PoolClient, ownerId: string, sink: Cap
     } else if (part.table !== 'diagnostic_bundle' && columns.has('bundle_id') && bundleIds.length) {
       rows = (await client.query<Record<string, unknown>>(`SELECT * FROM app.${part.table} WHERE bundle_id=ANY($1::uuid[]) ORDER BY 1 LIMIT 10000`, [bundleIds])).rows;
     } else {
-      sink.skipped.push({ category, reason: `Table app.${part.table} is not owner-scoped in this deployment; this export version cannot inventory it` });
+      // The item-bank tables (answer ids, rationales, the bank itself) are not
+      // owner content; owners receive their diagnostic evidence, not the key.
+      sink.skipped.push({ category, reason: `Deliberately excluded: app.${part.table} holds the diagnostic item bank (answer keys and rationales), which is not owner content; owner diagnostic evidence is exported separately` });
       continue;
     }
     for (const [index, item] of rows.entries()) {

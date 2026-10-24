@@ -132,10 +132,11 @@ describe('authenticated consistent personal-setup export', () => {
     expect(manifest.entries.some(entry => foreign.rows.some(item => item.id === entry.objectId))).toBe(false);
     // Integrated deployment: P1's receipt tables are owner-scoped and
     // inventoried; the diagnostic bundle/item tables key by root/bundle rather
-    // than owner, so exactly those two are honestly skipped while the
-    // owner-scoped diagnostic evidence is captured.
+    // than owner, so exactly those two are skipped — deliberately, as the
+    // answer-key item bank is not owner content — while the owner-scoped
+    // diagnostic evidence is captured.
     expect(manifest.skipped.map(item => item.category)).toEqual(['diagnostic-evidence', 'diagnostic-evidence']);
-    expect(manifest.skipped.every(item => item.reason.includes('owner-scoped'))).toBe(true);
+    expect(manifest.skipped.every(item => item.reason.includes('Deliberately excluded') && item.reason.includes('answer keys'))).toBe(true);
     // Every storage key in the manifest is a real registered copy of this owner.
     const withKeys = manifest.entries.filter(entry => entry.storageKey);
     expect(withKeys.length).toBeGreaterThanOrEqual(2);

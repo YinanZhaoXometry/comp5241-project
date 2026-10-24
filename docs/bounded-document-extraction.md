@@ -26,6 +26,21 @@ and fresh admission was written. The image digest and fingerprint changed; the
 quarantined Expat admission remains rejected. This is a maintenance pin of an
 already-admitted component, not a new risk waiver.
 
+**Active admission record.** The authoritative image digest, fingerprint and
+audit hash of the *currently admitted* parser live in the git-ignored
+`.local/parser-admission.json` (mode 0600), re-written on every
+`npm run extractor:build` re-admission — runtime verifies against that file,
+never against this document, and maintenance re-admissions legitimately change
+it (see the musl re-pin above). To print the active values:
+`python3 -c "import json;d=json.load(open('.local/parser-admission.json'));print(d['image'],d['fingerprint'],d['auditHash'],d['verifiedAt'])"`.
+Digest of record as of 2026-10-24: image
+`sha256:7ea9a1b78c9dcf702ba9871c0797b24f70fed37ea2c03e584e28f96df8a5f2cf`,
+fingerprint `6dfa11cc8437070d2208df0d2f9f308a4556cad66d66d1be8461d2627ce7af62`,
+audit `e4856ec14b26a356fdda6f673c1a5f722734a2c802431109da3e18cccecd3adb`,
+verified 2026-10-23T17:38:06Z (Python 3.14.8, pypdf 6.21.1, lxml 6.1.3,
+libxml2 2.15.4, libxslt 1.1.45, XMP disabled). Earlier digests named in
+revision history are superseded, not active.
+
 Also on 2026-10-22 the gate's `migrate` step refused with "Applied migration
 changed": an editor had appended a trailing newline to both applied migration
 files after the last passing gate. The byte-exact applied content was restored
