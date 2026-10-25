@@ -1,8 +1,7 @@
-# Ordered private-study-setup stories, 2026-10-21 (S12 re-sliced 2026-10-25 into
-# local half 12 + deferred release half 14). Entries 1-13 carry done/built plans;
-# the sole open entry is 14 (authorized release verification), blocked on its
-# F6-family unknown. The epic stays in-progress until 14 resolves; no release
-# claim. Leaf ticket files are not pulled.
+# Ordered private-study-setup stories, 2026-10-21. CONDITIONALLY CLOSED 2026-10-25:
+# entries 1-13 done; 14 (authorized release verification) DROPPED-DEFERRED by
+# owner decision "do it later" — revivable as a new entry under its own
+# authorization, never silently resurrected. No deployment/release claim.
 # covers uses THIS epic's R1-R4, not initiative R IDs. Details live in adopted companions.
 # One lane protects shared schema, scoped fixtures and lifecycle evolution.
 # unknown gates the start; hitl identifies actual human work but is not a readiness gate.
