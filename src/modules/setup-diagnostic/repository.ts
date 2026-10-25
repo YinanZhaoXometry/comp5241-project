@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import type { Assistance, DiagnosticChoice, ItemOutcome, ItemPath } from "../../contracts/diagnostic";
+import type { Assistance, DiagnosticChoice, DiagnosticSource, ItemOutcome, ItemPath } from "../../contracts/diagnostic";
 import type { MaterializedItem } from "./bundle";
 import { fail } from "../../platform/errors";
 
@@ -31,9 +31,9 @@ export async function registerDiagnosticObject(client: PoolClient, rootId: strin
   await client.query("INSERT INTO app.lifecycle_object(id,root_id,kind,parent_ids) VALUES($1,$2,'diagnostic',$3)", [id, rootId, parents]);
   return id;
 }
-export async function insertBundle(client: PoolClient, id: string, rootId: string, planId: string, itemCount: number) {
+export async function insertBundle(client: PoolClient, id: string, rootId: string, planId: string, itemCount: number, source: DiagnosticSource = "manual-synthetic") {
   try {
-    await client.query("INSERT INTO app.diagnostic_bundle(id,root_id,plan_id,source,item_count) VALUES($1,$2,$3,'manual-synthetic',$4)", [id, rootId, planId, itemCount]);
+    await client.query("INSERT INTO app.diagnostic_bundle(id,root_id,plan_id,source,item_count) VALUES($1,$2,$3,$4,$5)", [id, rootId, planId, source, itemCount]);
   } catch (error) {
     if ((error as { code?: string }).code === "23505") fail("CONFLICT"); // one bundle per confirmed plan revision
     throw error;

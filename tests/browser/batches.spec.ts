@@ -78,7 +78,10 @@ test(`new preview/download/selection/control/upload endpoints deny ${role} and r
   const owner = await login(page); await page.getByLabel("Synthetic study materials").setInputFiles(sample[0]);
   const created = page.waitForResponse(response => response.url().endsWith("/api/v1/batches") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Upload materials", exact: true }).click(); const batch = await (await created).json();
-  await expect(page.getByRole("button", { name: "Inspect preview · source.txt", exact: true })).toBeVisible();
+  // Extraction latency under a cold parser backlog can exceed the default 15s
+  // expect timeout; the story boundary is 120 seconds, so wait on that clock
+  // exactly like the four-format test above.
+  await expect(page.getByRole("button", { name: "Inspect preview · source.txt", exact: true })).toBeVisible({ timeout: 120000 });
   const study = await (await page.request.get(`/api/v1/studies/${batch.rootId}`)).json(); const slot = study.slots[0];
     const account = await provisionSynthetic(`batch-denied-${role}`, role); const client = await playwright.request.newContext({ baseURL: origin });
     try {

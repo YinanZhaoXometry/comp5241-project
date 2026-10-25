@@ -7,7 +7,7 @@ import { commandSchema } from "./setup";
 // unanswered items stay Unknown. Per-item answers and rationales are never
 // part of any read model until that item has been submitted.
 
-export const diagnosticSources = ["manual-synthetic"] as const;
+export const diagnosticSources = ["manual-synthetic", "ai-generated"] as const;
 export const assistances = ["unaided", "assisted"] as const;
 export const itemOutcomes = ["correct", "incorrect", "unknown"] as const;
 export const itemPaths = ["item-submit", "item-skip"] as const;
@@ -83,7 +83,10 @@ export type CheckState = {
   rootId: string;
   revision: number;
   synthetic: true;
-  source: DiagnosticSource;
+  // Null until a bundle exists for the confirmed plan; then the bundle's
+  // actual origin — the manual synthetic fixture or the owner-admitted
+  // generator (whose items the learner reviews per item, never trusts blind).
+  source: DiagnosticSource | null;
   status: "no-confirmed-plan" | "offered" | "unavailable" | "active" | "finished";
   historical: boolean;
   bundleId: string | null;

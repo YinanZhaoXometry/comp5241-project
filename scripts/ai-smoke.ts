@@ -62,4 +62,36 @@ const evidence = {
 };
 await writeFile(resolve('.local/ai-smoke-latest.json'), JSON.stringify(evidence, null, 2), 'utf8');
 console.log(JSON.stringify({ event: 'ai-smoke-draft', ok: evidence.probe2.parsed, usage: evidence.probe2.usage, topics: evidence.probe2.draft && 'topics' in evidence.probe2.draft ? evidence.probe2.draft.topics.length : null, elapsedMs: evidence.probe2.elapsedMs }));
-process.exit(evidence.probe2.parsed ? 0 : 3);
+
+// Probe 3 — the REAL S7 take-path demonstration: generate a 3–5-item starting
+// check through the production prompt builder and strict item validator.
+const { buildCheckMessages, parseCheckOutput } = await import('../src/modules/ai-setup/generation');
+const outcomes = ['Explain arrange-act-assert', 'Explain test doubles', 'Judge coverage reports'];
+const checkStarted = Date.now();
+const checkResult = await port.complete(textCompletionRequestSchema.parse({
+  messages: buildCheckMessages({
+    goal: 'Exam preparation',
+    topic: 'unit testing',
+    outcomes,
+    excerpts: [
+      { name: 'synthetic-notes.txt', text: 'Unit testing checks a single unit of behavior. Arrange inputs, act on the unit, assert the expected outcome.' },
+      { name: 'synthetic-doubles.txt', text: 'A test double stands in for a dependency. Coverage tools report which lines executed, not whether assertions were meaningful.' },
+    ],
+  }),
+  maxOutputTokens: 1200,
+}));
+const checkParsed = checkResult.ok ? parseCheckOutput(checkResult.text, { outcomesCount: outcomes.length, sourcesCount: 2 }) : null;
+const finalEvidence = {
+  ...evidence,
+  probe3: {
+    ok: checkResult.ok,
+    parsed: checkParsed?.ok === true,
+    items: checkParsed?.ok ? checkParsed.items.length : null,
+    usage: checkResult.ok ? checkResult.usage : null,
+    failure: checkResult.ok ? null : checkResult.error.code,
+    elapsedMs: Date.now() - checkStarted,
+  },
+};
+await writeFile(resolve('.local/ai-smoke-latest.json'), JSON.stringify(finalEvidence, null, 2), 'utf8');
+console.log(JSON.stringify({ event: 'ai-smoke-check', ok: finalEvidence.probe3.parsed, items: finalEvidence.probe3.items, usage: finalEvidence.probe3.usage, elapsedMs: finalEvidence.probe3.elapsedMs }));
+process.exit(finalEvidence.probe2.parsed && finalEvidence.probe3.parsed ? 0 : 3);

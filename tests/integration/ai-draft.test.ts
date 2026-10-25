@@ -67,7 +67,7 @@ async function jobOf(identity: Identity, rootId: string): Promise<AiDraftJob> {
     [identity.userId, rootId],
   );
   if (!row.rows[0]) throw new Error('no draft request row');
-  return { schemaVersion: 1, requestId: row.rows[0].id, admissionId: row.rows[0].admission_id, rootId: row.rows[0].root_id, ownerId: identity.userId, sessionId: identity.sessionId };
+  return { schemaVersion: 1, requestId: row.rows[0].id, admissionId: row.rows[0].admission_id, rootId: row.rows[0].root_id, ownerId: identity.userId, sessionId: identity.sessionId, kind: 'plan' as const };
 }
 
 const draftRows = (ownerId: string) =>

@@ -7,6 +7,11 @@ import type { AiErrorCode } from "./ai-provider";
 // edits and confirms through the unchanged savePlan/confirmPlan path — the AI
 // never auto-confirms and a draft is never a plan revision.
 export const AI_DRAFT_QUEUE = "ai-draft";
+// Which pipeline an advisory request belongs to: the S6 plan draft or the S7
+// starting-check item generation. Both share the queue, admission machinery,
+// budget ledger and honest terminal states.
+export const aiRequestKinds = ["plan", "check"] as const;
+export type AiRequestKind = (typeof aiRequestKinds)[number];
 export const aiDraftTopicsSchema = z.array(z.string().trim().min(1).max(160)).min(3).max(6);
 export const aiDraftResultSchema = z.strictObject({
   topics: aiDraftTopicsSchema,
@@ -23,6 +28,7 @@ export const aiDraftJobSchema = z.strictObject({
   rootId: uuid,
   ownerId: uuid,
   sessionId: uuid,
+  kind: z.enum(aiRequestKinds),
 });
 export type AiDraftTopics = z.infer<typeof aiDraftTopicsSchema>;
 export type AiDraftResult = z.infer<typeof aiDraftResultSchema>;
@@ -34,10 +40,11 @@ export type { Command, Plan };
 export type AiDraftFailureCode = AiErrorCode | "rejected-late";
 export type AiDraftUsage = { inputTokens: number; outputTokens: number; totalTokens: number };
 export type AiDraftStatus = "pending" | "ready" | "failed";
-// Owner-scoped view of the latest draft request for a study root.
+// Owner-scoped view of the latest request of one kind for a study root.
 export type AiDraftView = {
   requestId: string;
   rootId: string;
+  kind: AiRequestKind;
   status: AiDraftStatus;
   failureCode: string | null;
   result: AiDraftResult | null;

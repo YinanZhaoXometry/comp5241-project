@@ -4,18 +4,29 @@ import { textCompletionRequestSchema, type TextCompletionPort } from "../../cont
 import { transaction } from "../../adapters/postgres/database";
 import * as files from "../../adapters/private-files";
 import { createLiveCompletion, AI_BUDGET } from "../../adapters/ai-live";
-import { copyKey } from "../materials-setup/repository";
+import { copyKey, planRevision } from "../materials-setup/repository";
 import { preferenceRow } from "../setup-preferences/repository";
 import { settleDispatch } from "../processing-consent/service";
 import { authorize } from "../identity-access/access";
 import * as lifecycle from "../lifecycle-platform/repository";
+import * as diagnostic from "../setup-diagnostic/repository";
 import { errorCode } from "../../platform/errors";
-import { buildDraftMessages, parseDraftOutput } from "./generation";
+import { buildDraftMessages, buildCheckMessages, parseDraftOutput, parseCheckOutput } from "./generation";
 import * as repository from "./repository";
 
 export { AI_DRAFT_QUEUE };
 
-type Claim = { goal: string; topic: string; excerpts: { name: string; text: string }[]; admissionId: string };
+type Claim = {
+  kind: "plan" | "check";
+  goal: string;
+  topic: string;
+  excerpts: { name: string; text: string }[];
+  admissionId: string;
+  // check-kind only: the confirmed plan revision the items must link to, and
+  // its outcomes for objective resolution and bound validation.
+  confirmedPlanId?: string;
+  outcomes?: string[];
+};
 
 // One attempt, no retry loops (mirroring the adapter's maxRetries: 0): the
 // request row is the single durable record and lands in an honest terminal
@@ -42,14 +53,26 @@ export async function runAiDraft(job: AiDraftJob, completion?: () => TextComplet
       if (!(await lifecycle.objectsActive(client, identity.userId, objectIds))) return "fenced" as const;
       const preference = await preferenceRow(client, identity.userId);
       const excerpts = [];
-      for (const extractionId of objectIds.slice(1)) {
+      // The admission scope is [selection.id, extractionId…] — the extractions
+      // are every element after the first; a check also pins the confirmed plan
+      // revision as the LAST object.
+      const extractionIds = objectIds.slice(1, request.kind === "check" ? -1 : objectIds.length);
+      for (const extractionId of extractionIds) {
         const found = await client.query<{ filename: string }>(
           "SELECT b.filename FROM app.selection_source s JOIN app.batch_slot b ON b.id=s.slot_id WHERE s.extraction_id=$1 ORDER BY b.position LIMIT 1",
           [extractionId],
         );
         excerpts.push({ name: found.rows[0]?.filename ?? "selected source", text: await files.readExtracted(await copyKey(client, extractionId)) });
       }
-      return { goal: preference?.goal ?? "", topic: preference?.topic ?? "", excerpts, admissionId: request.admission_id };
+      let confirmedPlanId: string | undefined;
+      let outcomes: string[] | null = null;
+      if (request.kind === "check") {
+        confirmedPlanId = objectIds[objectIds.length - 1];
+        const confirmed = confirmedPlanId ? await planRevision(client, confirmedPlanId) : null;
+        if (!confirmed) return "fenced" as const;
+        outcomes = confirmed.plan.outcomes;
+      }
+      return { kind: request.kind, goal: preference?.goal ?? "", topic: preference?.topic ?? "", excerpts, admissionId: request.admission_id, confirmedPlanId, outcomes: outcomes ?? undefined };
     });
   } catch (error) {
     const code = errorCode(error);
@@ -67,21 +90,56 @@ export async function runAiDraft(job: AiDraftJob, completion?: () => TextComplet
     await failRequest("provider-unavailable");
     return;
   }
-  const request = textCompletionRequestSchema.safeParse({ messages: buildDraftMessages(claim), maxOutputTokens: AI_BUDGET.maxOutputTokens });
+  const messages = claim.kind === "check"
+    ? buildCheckMessages({ goal: claim.goal, topic: claim.topic, outcomes: claim.outcomes ?? [], excerpts: claim.excerpts })
+    : buildDraftMessages(claim);
+  const request = textCompletionRequestSchema.safeParse({ messages, maxOutputTokens: AI_BUDGET.maxOutputTokens });
   if (!request.success) { await failRequest("invalid-input"); return; }
   const outcome = await port.complete(request.data);
   if (!outcome.ok) { await failRequest(outcome.error.code); return; }
-  const draft = parseDraftOutput(outcome.text);
-  if (!draft.ok) { await failRequest("invalid-output"); return; }
+  // Parse BEFORE settling: an unparseable reply fails honestly without
+  // consuming the admission, exactly like the plan-draft path.
+  const parsedCheck = claim.kind === "check"
+    ? parseCheckOutput(outcome.text, { outcomesCount: claim.outcomes?.length ?? 0, sourcesCount: claim.excerpts.length })
+    : null;
+  const parsedDraft = claim.kind === "plan" ? parseDraftOutput(outcome.text) : null;
+  const checkItems = parsedCheck?.ok === true ? parsedCheck.items : null;
+  const planResult = parsedDraft?.ok === true ? parsedDraft.result : null;
+  if ((claim.kind === "check" && !checkItems) || (claim.kind === "plan" && !planResult)) { await failRequest("invalid-output"); return; }
   // Phase 3 — settlement before persistence: the existing machinery re-checks
-  // everything; only an ACCEPTED settle may store the result and the ledger.
+  // everything; only an ACCEPTED settle may store any effect. A check's items
+  // land in the diagnostic tables (the standard bundle the take flow runs on);
+  // a plan draft lands as the advisory result row. Rejected-late output is
+  // discarded in both cases.
   try {
     const settled = await settleDispatch(identity, claim.admissionId);
     if (settled.outcome !== "accepted") { await failRequest("rejected-late"); return; }
-    await transaction(async client => {
-      await repository.markReady(client, job.requestId, draft.result, outcome.provenance.returnedModel, outcome.usage);
-      await repository.insertLedger(client, job.ownerId, job.requestId, outcome.usage);
-    });
+    if (claim.kind === "check") {
+      const items = checkItems!;
+      await transaction(async client => {
+        // One bundle per confirmed plan revision: a duplicate delivery settles
+        // as ready against the existing bundle instead of failing the job.
+        const existing = await diagnostic.bundleByPlan(client, claim.confirmedPlanId!);
+        const bundleId = existing?.id ?? await diagnostic.registerDiagnosticObject(client, job.rootId, [claim.confirmedPlanId!]);
+        if (!existing) {
+          await diagnostic.insertBundle(client, bundleId, job.rootId, claim.confirmedPlanId!, items.length, "ai-generated");
+          for (const [index, item] of items.entries()) {
+            // Resolve the model's index links against the SAME confirmed plan
+            // revision the admission pinned — exactly like the manual path.
+            const objective = claim.outcomes![item.objectiveIndex];
+            const sourceRef = claim.excerpts[item.sourcePosition]?.name ?? "selected source";
+            await diagnostic.insertItem(client, crypto.randomUUID(), bundleId, index + 1, { ...item, objective, sourceRef });
+          }
+        }
+        await repository.markReady(client, job.requestId, null, outcome.provenance.returnedModel, outcome.usage);
+        await repository.insertLedger(client, job.ownerId, job.requestId, outcome.usage);
+      });
+    } else {
+      await transaction(async client => {
+        await repository.markReady(client, job.requestId, planResult, outcome.provenance.returnedModel, outcome.usage);
+        await repository.insertLedger(client, job.ownerId, job.requestId, outcome.usage);
+      });
+    }
   } catch (error) {
     const code = errorCode(error);
     await failRequest(code === "UNAUTHENTICATED" || code === "FORBIDDEN_OR_NOT_FOUND" ? "rejected-late" : "processing-blocked");

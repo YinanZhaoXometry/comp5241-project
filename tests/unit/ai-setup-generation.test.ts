@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildDraftMessages, parseDraftOutput } from '../../src/modules/ai-setup/generation';
+import { buildDraftMessages, buildCheckMessages, parseDraftOutput, parseCheckOutput } from '../../src/modules/ai-setup/generation';
 import { textCompletionRequestSchema } from '../../src/contracts/ai-provider';
 import { AI_BUDGET, createDestinationTransport } from '../../src/adapters/ai-live';
 
@@ -88,5 +88,39 @@ describe('destination-enforcing transport', () => {
       await expect(transport('https://api.example.test/coding/v1/v1/chat/completions')).rejects.toThrow('Destination not allowed');
       expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     } finally { vi.unstubAllGlobals(); }
+  });
+});
+
+// S7 starting-check generation (take-path closure) — pure halves only.
+const validItem = (objectiveIndex: number, sourcePosition: number) => ({
+  objectiveIndex, sourcePosition,
+  prompt: `Question about outcome ${objectiveIndex} per the source?`,
+  choices: [{ id: "a", text: "Wrong on purpose." }, { id: "b", text: "Correct per the source text." }],
+  answerId: "b",
+  rationale: "The source states this directly.",
+});
+const validCheck = (items: unknown[]) => JSON.stringify({ items });
+
+describe('bounded starting-check prompt and strict item validation', () => {
+  it('builds a bounded message pair listing indexed outcomes and positioned sources', () => {
+    const messages = buildCheckMessages({ goal: 'Exam preparation', topic: 'unit testing', outcomes: ['Explain AAA', 'Use doubles', 'Judge coverage'], excerpts: [{ name: 'notes.txt', text: 'n'.repeat(8192) }] });
+    const parsed = textCompletionRequestSchema.safeParse({ messages, maxOutputTokens: 1200 });
+    expect(parsed.success).toBe(true);
+    expect(messages[1].content).toContain('0: Explain AAA');
+    expect(messages[1].content).toContain('--- source 0: notes.txt ---');
+  });
+
+  it('accepts 3–5 items whose links resolve and rejects every honest failure', () => {
+    const bounds = { outcomesCount: 3, sourcesCount: 2 };
+    expect(parseCheckOutput(validCheck([validItem(0, 0), validItem(1, 1), validItem(2, 0)]), bounds).ok).toBe(true);
+    expect(parseCheckOutput(validCheck([validItem(0, 0), validItem(1, 1)]), bounds).ok).toBe(false); // too few
+    expect(parseCheckOutput(validCheck([validItem(3, 0), validItem(0, 1), validItem(1, 0)]), bounds).ok).toBe(false); // outcome out of range
+    expect(parseCheckOutput(validCheck([validItem(0, 2), validItem(0, 1), validItem(1, 0)]), bounds).ok).toBe(false); // source out of range
+    const wrongAnswer = { ...validItem(0, 0), answerId: "z" };
+    expect(parseCheckOutput(validCheck([wrongAnswer, validItem(1, 1), validItem(2, 0)]), bounds).ok).toBe(false); // answer matches no choice
+    const duplicateIds = { ...validItem(0, 0), choices: [{ id: "a", text: "x" }, { id: "a", text: "y" }] };
+    expect(parseCheckOutput(validCheck([duplicateIds, validItem(1, 1), validItem(2, 0)]), bounds).ok).toBe(false);
+    expect(parseCheckOutput('Here are your questions!', bounds).ok).toBe(false);
+    expect(parseCheckOutput(validCheck([validItem(0, 0), validItem(1, 1), validItem(2, 0)]) + '}', bounds).ok).toBe(true); // brace recovery
   });
 });

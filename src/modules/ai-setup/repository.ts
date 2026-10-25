@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import type { AdmissionOutcome } from "../../contracts/consent";
-import type { AiDraftResult, AiDraftStatus, AiDraftUsage } from "../../contracts/ai-setup";
+import type { AiDraftResult, AiDraftStatus, AiDraftUsage, AiRequestKind } from "../../contracts/ai-setup";
 
 // Module-owned rows for S6. Write ownership: only this module writes
 // app.ai_draft_request and app.ai_dispatch_ledger; the lifecycle coordinator
@@ -12,6 +12,7 @@ export type DraftRequestRow = {
   root_id: string;
   owner_id: string;
   admission_id: string;
+  kind: AiRequestKind;
   status: AiDraftStatus;
   failure_code: string | null;
   result: AiDraftResult | null;
@@ -22,12 +23,12 @@ export type DraftRequestRow = {
 };
 export type DraftWithScope = DraftRequestRow & { object_ids: string[]; admission_outcome: AdmissionOutcome };
 
-const columns = 'd.id,d.root_id,d.owner_id,d.admission_id,d.status,d.failure_code,d.result,d.model,d.usage,d.created_at,d.settled_at,a.object_ids,a.outcome AS "admissionOutcome"';
+const columns = 'd.id,d.root_id,d.owner_id,d.admission_id,d.kind,d.status,d.failure_code,d.result,d.model,d.usage,d.created_at,d.settled_at,a.object_ids,a.outcome AS "admissionOutcome"';
 
-export async function insertDraftRequest(client: PoolClient, row: { id: string; rootId: string; ownerId: string; admissionId: string }) {
+export async function insertDraftRequest(client: PoolClient, row: { id: string; rootId: string; ownerId: string; admissionId: string; kind: AiRequestKind }) {
   await client.query(
-    "INSERT INTO app.ai_draft_request(id,root_id,owner_id,admission_id,status) VALUES($1,$2,$3,$4,'pending')",
-    [row.id, row.rootId, row.ownerId, row.admissionId],
+    "INSERT INTO app.ai_draft_request(id,root_id,owner_id,admission_id,kind,status) VALUES($1,$2,$3,$4,$5,'pending')",
+    [row.id, row.rootId, row.ownerId, row.admissionId, row.kind],
   );
 }
 export async function draftById(client: PoolClient, ownerId: string, requestId: string): Promise<DraftWithScope | null> {
@@ -37,18 +38,19 @@ export async function draftById(client: PoolClient, ownerId: string, requestId: 
   );
   return result.rows[0] ?? null;
 }
-// Latest request for a study root (owner-scoped): the advisory UI reads one
-// state, not a history — older rows stay for the deletion ledger only.
-export async function draftByRoot(client: PoolClient, ownerId: string, rootId: string): Promise<DraftWithScope | null> {
+// Latest request of one kind for a study root (owner-scoped): the advisory UI
+// reads one state, not a history — older rows stay for the deletion ledger only.
+export async function draftByRoot(client: PoolClient, ownerId: string, rootId: string, kind: AiRequestKind = "plan"): Promise<DraftWithScope | null> {
   const result = await client.query<DraftWithScope>(
-    `SELECT ${columns} FROM app.ai_draft_request d JOIN app.dispatch_admission a ON a.id=d.admission_id WHERE d.root_id=$1 AND d.owner_id=$2 ORDER BY d.created_at DESC, d.id DESC LIMIT 1`,
-    [rootId, ownerId],
+    `SELECT ${columns} FROM app.ai_draft_request d JOIN app.dispatch_admission a ON a.id=d.admission_id WHERE d.root_id=$1 AND d.owner_id=$2 AND d.kind=$3 ORDER BY d.created_at DESC, d.id DESC LIMIT 1`,
+    [rootId, ownerId, kind],
   );
   return result.rows[0] ?? null;
 }
 // Terminal, single-direction transitions from pending; a settled row never
-// changes again (idempotent duplicate deliveries are no-ops).
-export async function markReady(client: PoolClient, requestId: string, result: AiDraftResult, model: string, usage: AiDraftUsage) {
+// changes again (idempotent duplicate deliveries are no-ops). A check-kind
+// row stores no result payload — its effect is the diagnostic bundle itself.
+export async function markReady(client: PoolClient, requestId: string, result: AiDraftResult | null, model: string, usage: AiDraftUsage) {
   await client.query(
     "UPDATE app.ai_draft_request SET status='ready',result=$2,model=$3,usage=$4,settled_at=clock_timestamp() WHERE id=$1 AND status='pending'",
     [requestId, result, model, usage],
