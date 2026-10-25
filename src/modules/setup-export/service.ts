@@ -52,8 +52,18 @@ export async function listExports(identity: { userId: string; sessionId: string 
             ? 'dispatch_admission'
             : category === 'diagnostic-evidence'
               ? 'diagnostic_evidence'
-              : null;
+              : category === 'ai-drafts'
+                ? 'ai_draft_request'
+                : null;
       const present = table ? await tablePresent(client, table) : false;
+      if (category === 'ai-drafts') {
+        categories.push(
+          present
+            ? { category, label, count: null, available: true, note: 'Present; deliberately excluded from the artifact — see the manifest skip note' }
+            : { category, label, count: null, available: false, note: 'Not present in this deployment' },
+        );
+        continue;
+      }
       categories.push(
         present
           ? { category, label, count: null, available: true, note: 'Present; exact counts appear in the export manifest' }

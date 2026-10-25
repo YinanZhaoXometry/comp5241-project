@@ -181,5 +181,53 @@ const diagnosticPort: LifecyclePort = {
   },
 };
 
+// S6: app.ai_draft_request rows are root-scoped derivatives of the exact
+// acknowledged selection/extractions the admission pinned. Deny rides the
+// existing fences — the worker re-checks lineage before dispatch and
+// settleDispatch re-checks before any result is accepted — so no blind state
+// write is needed here. app.ai_dispatch_ledger rows are CONTENT-FREE
+// owner-scoped accounting (token counts only, untrusted provider claims);
+// they are deliberately retention-exempt from ROOT purges (the FK sets
+// request_id NULL) so a deletion never makes the owner's budget ledger
+// under-count already-dispatched tokens. Whole-personal removal purges them.
+const aiSetupPort: LifecyclePort = {
+  name: 'ai-setup',
+  label: 'AI draft requests',
+  async preview(client, scope) {
+    if (!scope.rootIds.length) return [];
+    if (!(await tableReady(client, 'app.ai_draft_request', ['root_id'])))
+      return [];
+    const rows = await client.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM app.ai_draft_request WHERE root_id=ANY($1::uuid[])',
+      [scope.rootIds],
+    );
+    return [{ key: 'ai-drafts', label: this.label, count: rows.rows[0].count }];
+  },
+  async deny() {
+    // Fenced by lineage invalidation + worker/settlement re-checks; see above.
+  },
+  async purge(client, scope) {
+    if (scope.personal) {
+      if (await tableReady(client, 'app.ai_dispatch_ledger', ['owner_id']))
+        await client.query('DELETE FROM app.ai_dispatch_ledger WHERE owner_id=$1', [
+          scope.ownerId,
+        ]);
+      if (await tableReady(client, 'app.ai_draft_request', ['owner_id']))
+        await client.query('DELETE FROM app.ai_draft_request WHERE owner_id=$1', [
+          scope.ownerId,
+        ]);
+      return;
+    }
+    if (!scope.rootIds.length) return;
+    if (await tableReady(client, 'app.ai_draft_request', ['root_id']))
+      await client.query(
+        'DELETE FROM app.ai_draft_request WHERE root_id=ANY($1::uuid[])',
+        [scope.rootIds],
+      );
+    // Ledger rows survive root purge by design (content-free accounting).
+  },
+};
+
 registerLifecyclePort(exportPort);
 registerLifecyclePort(diagnosticPort);
+registerLifecyclePort(aiSetupPort);

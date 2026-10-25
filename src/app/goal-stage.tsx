@@ -7,11 +7,12 @@ import { errorCode } from "../platform/errors";
 import { api, command } from "./client";
 
 const detected = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ""; } })();
-type Props = { busy: boolean; onBusy: (value: boolean) => void; onFailure: (error: unknown) => void; onDirty: (value: boolean) => void };
+type Props = { busy: boolean; onBusy: (value: boolean) => void; onFailure: (error: unknown) => void; onDirty: (value: boolean) => void; appliedTopic?: { value: string; stamp: number } | null };
 
 // S4 goal stage: server-saved goal/topic state plus optional preferences.
-// The topic is Manual — no topic inference exists in this release (S6 is blocked).
-export function GoalStage({ busy, onBusy, onFailure, onDirty }: Props) {
+// Entry stays Manual: when AI assist is allowed, its topic chips only PRE-FILL
+// this field as an unsaved suggestion the learner edits and saves.
+export function GoalStage({ busy, onBusy, onFailure, onDirty, appliedTopic }: Props) {
   const [goal, setGoal] = useState<Goal | null>(null);
   const [topic, setTopic] = useState("");
   const [clarification, setClarification] = useState("");
@@ -25,6 +26,16 @@ export function GoalStage({ busy, onBusy, onFailure, onDirty }: Props) {
   const saveIntent = useRef<{ body: string; key: ReturnType<typeof command> } | null>(null);
   const form = useRef<HTMLFormElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  // AI assist (S6) applies a suggested topic as an UNSAVED edit; the stamp
+  // deduplicates repeated applications of the same suggestion.
+  const appliedRef = useRef(appliedTopic);
+  useEffect(() => {
+    if (!appliedTopic || appliedRef.current?.stamp === appliedTopic.stamp) return;
+    appliedRef.current = appliedTopic;
+    setTopic(appliedTopic.value);
+    onDirty(true); setConflict(false);
+    setStatus("AI topic suggestion applied — unsaved until you save. Edit it freely.");
+  }, [appliedTopic, onDirty]);
   // The load runs once per mount: the parent passes a fresh onFailure identity
   // every render, and re-running this fetch on each poll would clobber the
   // explicit "Saved · revision N" status and the learner's in-progress state.
@@ -82,7 +93,7 @@ export function GoalStage({ busy, onBusy, onFailure, onDirty }: Props) {
     } catch (error) { onFailure(error); } finally { onBusy(false); }
   }
   return <section className="panel"><p className="eyebrow">MANUAL TOPIC · SAVED SERVER-SIDE</p><h2 ref={heading} tabIndex={-1}>02 · Topic & goal</h2><output>{status}</output>
-    <form ref={form} onSubmit={event => { void save(event); }}><fieldset disabled={busy} className="plan-fields"><legend className="fine">Manual entry only — no AI topic inference exists in this release. Saved state resumes after back, refresh or sign-in.</legend>
+    <form ref={form} onSubmit={event => { void save(event); }}><fieldset disabled={busy} className="plan-fields"><legend className="fine">Manual entry stays primary. If you allow AI processing, its suggestions only pre-fill fields — you edit, save and confirm. Saved state resumes after back, refresh or sign-in.</legend>
       <label htmlFor="stage-topic">Topic (Manual)</label><input id="stage-topic" name="topic" maxLength={160} value={topic} onChange={event => { setTopic(event.target.value); markEdit(); }} />
       <label htmlFor="stage-goal">Goal</label><select id="stage-goal" name="goal" value={goal ?? ""} onChange={event => { setGoal((event.target.value || null) as Goal | null); markEdit(); }}><option value="">Not set</option>{goals.map(value => <option key={value}>{value}</option>)}</select>
       {goal === "Other" && <><label htmlFor="stage-clarification">Short clarification · Other goal</label><input id="stage-clarification" name="clarification" maxLength={240} value={clarification} onChange={event => { setClarification(event.target.value); markEdit(); }} /></>}

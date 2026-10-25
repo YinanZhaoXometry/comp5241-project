@@ -27,7 +27,10 @@ const responseSchema = z.object({
   object: z.literal("chat.completion"), model,
   choices: z.array(z.object({
     index: z.literal(0), finish_reason: z.string().max(64),
-    message: z.strictObject({ role: z.literal("assistant"), content: z.string().max(AI_LIMITS.outputBytes).nullable(), refusal: z.string().max(AI_LIMITS.responseBytes).nullable().optional() }),
+    // reasoning_content is the separate thinking channel several
+    // OpenAI-compatible providers (Kimi k3, DeepSeek-R…) emit beside content;
+    // it is tolerated, bounded and NEVER projected — only content completes.
+    message: z.strictObject({ role: z.literal("assistant"), content: z.string().max(AI_LIMITS.outputBytes).nullable(), refusal: z.string().max(AI_LIMITS.responseBytes).nullable().optional(), reasoning_content: z.string().max(AI_LIMITS.responseBytes).nullable().optional() }),
   })).length(1),
   usage: z.object({ prompt_tokens: count, completion_tokens: count, total_tokens: count }),
 });

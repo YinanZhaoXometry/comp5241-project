@@ -10,6 +10,7 @@ import { getDisclosure, decide, withdraw } from "../../../../modules/processing-
 import { getPreferences, savePreferences } from "../../../../modules/setup-preferences/service";
 import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finishCheck, flagUnclear } from "../../../../modules/setup-diagnostic/service";
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
+import { requestAiDraft, getAiDraft } from "../../../../modules/ai-setup/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -107,13 +108,18 @@ async function handle(request: Request, context: Context) {
         if (!action) return protectedResponse(identity, rootId, study, request.signal, false, objects);
         if (action === "text") return protectedResponse(identity, rootId, study.text ?? "", request.signal, true, objects);
         if (action === "plan") return protectedResponse(identity, rootId, { draft: study.draft, confirmed: study.confirmed }, request.signal, false, objects);
+        if (action === "ai-draft") {
+          const draft = await getAiDraft(identity, rootId);
+          return protectedResponse(identity, rootId, draft, request.signal, false, draft.objectIds);
+        }
       }
       if (request.method === "POST") {
         const body = await jsonBody(request);
         const result = action === "plan" ? await savePlan(identity, rootId, body as SavePlan)
           : action === "confirmation" ? await confirmPlan(identity, rootId, body as Confirm)
-          : action === "removal" ? await removeRoot(identity, rootId, body as Command) : null;
-        if (result) return Response.json(result, { headers: privateHeaders });
+          : action === "removal" ? await removeRoot(identity, rootId, body as Command)
+          : action === "ai-draft" ? await requestAiDraft(identity, rootId, body) : null;
+        if (result) return Response.json(result, { status: action === "ai-draft" ? 202 : 200, headers: privateHeaders });
       }
     }
     if (path[0] === "preferences" && path.length === 1) {

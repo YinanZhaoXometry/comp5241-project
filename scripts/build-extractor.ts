@@ -25,7 +25,7 @@ await reconcileParsers();
 const isolation = JSON.parse((await sandbox(image, ["--probe", "isolation"])).toString());
 assert.ok(Object.values(isolation).every(value => value === true));
 const versions = JSON.parse((await sandbox(image, ["--probe", "versions"])).toString());
-assert.equal(versions.python, "3.14.8"); assert.equal(versions.pypdf, "6.21.1");
+assert.equal(versions.python, "3.14.8"); assert.equal(versions.pypdf, "6.21.2");
 // Binary-wheel native libraries are not reliably inventoried by image scanners.
 // Check the source-built runtime and compiled versions, and absence of Expat.
 assert.equal(versions.lxml, "6.1.3");

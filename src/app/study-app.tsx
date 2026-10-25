@@ -10,6 +10,8 @@ import { GoalStage } from "./goal-stage";
 import { CheckStage } from "./check-stage";
 import { ExportPanel } from "./export-panel";
 import { DangerZone } from "./danger-zone";
+import { AiAssist } from "./ai-assist";
+import type { Plan } from "../contracts/setup";
 import { errorCode, messages } from "../platform/errors";
 import type { Study } from "../modules/materials-setup/service";
 import type { Receipt } from "../contracts/setup";
@@ -29,6 +31,8 @@ export function StudyApp({ prefillEmail }: Readonly<{ prefillEmail?: string }>) 
   const [receipt, setReceipt] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [viewGeneration, setViewGeneration] = useState(0);
+  const [aiTopic, setAiTopic] = useState<{ value: string; stamp: number } | null>(null);
+  const [aiDraft, setAiDraft] = useState<{ plan: Plan; stamp: number } | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const actionKeys = useRef(new Map<string, ReturnType<typeof command>>());
   const generation = useRef(0);
@@ -36,7 +40,7 @@ export function StudyApp({ prefillEmail }: Readonly<{ prefillEmail?: string }>) 
     generation.current += 1;
     uploadAbort.current?.abort(); uploadAbort.current = null; setUploading(false);
     setViewGeneration(generation.current); setBusy(false);
-    setSession(null); setEntries([]); setStudy(null); setDirty(false); setReceipt(null); actionKeys.current.clear();
+    setSession(null); setEntries([]); setStudy(null); setDirty(false); setReceipt(null); actionKeys.current.clear(); setAiTopic(null); setAiDraft(null);
   }, []);
   const failure = useCallback((error: unknown) => {
     const code = errorCode(error);
@@ -108,7 +112,7 @@ export function StudyApp({ prefillEmail }: Readonly<{ prefillEmail?: string }>) 
   }
   async function open(root: string) {
     if (dirty && !globalThis.confirm("Leave unsaved edits? Only saved work can be reopened.")) return;
-    await act(async current => { const value = await api<Study>(`studies/${root}`); if (!current()) return; setStudy(value); setDirty(false); setReceipt(null); actionKeys.current.clear(); moveFocus(); });
+    await act(async current => { const value = await api<Study>(`studies/${root}`); if (!current()) return; setStudy(value); setDirty(false); setReceipt(null); actionKeys.current.clear(); setAiTopic(null); setAiDraft(null); moveFocus(); });
   }
   async function upload(files: File[]) {
     const intent = `inputs:${study?.rootId ?? "new"}:${files.map(file => `${file.name}:${file.size}:${file.lastModified}`).join("|")}`;
@@ -152,8 +156,9 @@ export function StudyApp({ prefillEmail }: Readonly<{ prefillEmail?: string }>) 
           {study && <>
             <div className="section-heading"><h2>Your materials</h2><button className="quiet" onClick={() => { if (!dirty || globalThis.confirm("Leave unsaved edits?")) { setStudy(null); setDirty(false); } }}>Back to library</button></div>
             <Materials key={`${session.user.id}:${study.rootId}`} study={study} busy={busy} onWork={act} onUpload={upload} onSaved={value => { if (viewGeneration === generation.current) { setStudy(value); void load(); } }} />
-            <GoalStage key={session.user.id} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onDirty={value => { if (viewGeneration === generation.current) setDirty(value); }} />
-            {study.extractionId && <PlanEditor key={`${session.user.id}:${study.rootId}:${study.slots.filter(slot => slot.state === "removed").map(slot => slot.slotId).join(":")}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onDirty={value => { if (viewGeneration === generation.current) setDirty(value); }} onSaved={value => { if (viewGeneration === generation.current) { setStudy(value); void load(); } }} />}
+            <GoalStage key={session.user.id} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onDirty={value => { if (viewGeneration === generation.current) setDirty(value); }} appliedTopic={aiTopic} />
+            {study.extractionId && <PlanEditor key={`${session.user.id}:${study.rootId}:${study.slots.filter(slot => slot.state === "removed").map(slot => slot.slotId).join(":")}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onDirty={value => { if (viewGeneration === generation.current) setDirty(value); }} onSaved={value => { if (viewGeneration === generation.current) { setStudy(value); void load(); } }} draft={aiDraft} />}
+            <AiAssist key={`${session.user.id}:${study.rootId}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onTopic={setAiTopic} onDraft={setAiDraft} />
             {study.confirmed && <CheckStage key={`${session.user.id}:${study.rootId}:${study.revision}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} />}
             <DangerZone study={study} busy={busy} onWork={act} onDeleted={message => { setStudy(null); setDirty(false); setReceipt(message); void load().then(() => moveFocus()); }} />
           </>}

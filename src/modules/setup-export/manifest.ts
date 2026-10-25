@@ -131,6 +131,19 @@ export async function captureManifest(
   await captureReceiptTable(client, ownerId, 'processing_decision', 'processing-decisions', 'processing/processing-decisions.json', { entries, payloads, skipped });
   await captureReceiptTable(client, ownerId, 'dispatch_admission', 'dispatch-admissions', 'processing/dispatch-admissions.json', { entries, payloads, skipped });
   await captureDiagnostics(client, ownerId, { entries, payloads, skipped });
+  // S6: advisory AI draft requests are deliberately excluded from the artifact
+  // (the simpler honest option per the S6 plan): they are suggestions the
+  // learner edits, not canonical owner content, and no source excerpt or
+  // provider reply belongs in an export. The skip line records the exclusion.
+  if (await tableColumns(client, 'ai_draft_request')) {
+    skipped.push({
+      category: 'ai-drafts',
+      reason:
+        'Deliberately excluded: advisory AI draft requests (topics/plan suggestions the learner edits before any save) and their provider replies are not exported; the accepted plan the learner actually confirmed is exported under plans',
+    });
+  } else {
+    skipped.push({ category: 'ai-drafts', reason: 'Table app.ai_draft_request is not present in this deployment' });
+  }
 
   return {
     capturedAt,

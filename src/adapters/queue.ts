@@ -2,6 +2,7 @@ import { PgBoss, type Db } from 'pg-boss';
 import type { PoolClient } from 'pg';
 import { config } from '../platform/config';
 import type { ExtractionJob } from '../contracts/setup';
+import { AI_DRAFT_QUEUE, type AiDraftJob } from '../contracts/ai-setup';
 
 export const EXTRACTION_QUEUE = 'extract-txt-v1';
 let instance: PgBoss | undefined;
@@ -36,6 +37,18 @@ export async function enqueue(client: PoolClient, job: ExtractionJob) {
     retryLimit: 3,
     retryDelay: 2,
     retryBackoff: true,
+    expireInSeconds: 120,
+    retentionSeconds: 86400,
+  });
+}
+// S6 AI draft jobs: ONE attempt (retryLimit 0 — the worker itself never
+// retries a provider call), bounded by the same 120-second honest pending cap
+// the UI shows.
+export async function enqueueAiDraft(client: PoolClient, job: AiDraftJob) {
+  return transactionQueue(client).send(AI_DRAFT_QUEUE, job, {
+    db: transactionDb(client),
+    id: job.requestId,
+    retryLimit: 0,
     expireInSeconds: 120,
     retentionSeconds: 86400,
   });

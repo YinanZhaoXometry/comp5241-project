@@ -3,6 +3,7 @@ import { closeDatabase, database } from "../adapters/postgres/database";
 import { extractionJobSchema } from "../contracts/setup";
 import { runExtraction } from "../modules/materials-setup/extraction";
 import { workExports } from "../modules/setup-export/worker";
+import { workAiDrafts } from "../modules/ai-setup/worker";
 import { reconcileCopies } from "../modules/lifecycle-platform/service";
 import { reconcileRetention } from "../modules/lifecycle-platform/retention";
 import { extractorExists } from "../adapters/private-files";
@@ -31,6 +32,7 @@ await boss.work(EXTRACTION_QUEUE, { batchSize: 1, pollingIntervalSeconds: 1 }, a
   }
 });
 await workExports(boss);
+await workAiDrafts(boss);
 let maintaining = false;
 const maintenance = setInterval(() => {
   if (maintaining) return;

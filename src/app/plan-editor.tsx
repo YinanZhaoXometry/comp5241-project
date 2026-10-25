@@ -1,13 +1,13 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { goals, planSchema, type Plan, type Receipt } from "../contracts/setup";
 import type { Study } from "../modules/materials-setup/service";
 import { api, command, json } from "./client";
 
-type Props = { study: Study; busy: boolean; onBusy: (value: boolean) => void; onFailure: (error: unknown) => void; onDirty: (value: boolean) => void; onSaved: (value: Study) => void };
+type Props = { study: Study; busy: boolean; onBusy: (value: boolean) => void; onFailure: (error: unknown) => void; onDirty: (value: boolean) => void; onSaved: (value: Study) => void; draft?: { plan: Plan; stamp: number } | null };
 const initial: Plan = { topic: "", goal: "Understand a topic", clarification: "", outcomes: [], miniCourse: { title: "", lessons: [], practice: "", estimatedMinutes: 20 }, missingExplanations: "Coverage not assessed. No supplementary sources fetched." };
-export function PlanEditor({ study, busy, onBusy, onFailure, onDirty, onSaved }: Props) {
+export function PlanEditor({ study, busy, onBusy, onFailure, onDirty, onSaved, draft }: Props) {
   const [plan, setPlan] = useState<Plan>(study.draft?.plan ?? initial);
   const [dirty, setDirty] = useState(!study.draft);
   // A draft that differs from the confirmation is an explicit "new changes need
@@ -22,6 +22,17 @@ export function PlanEditor({ study, busy, onBusy, onFailure, onDirty, onSaved }:
   const confirmIntent = useRef<ReturnType<typeof command> | null>(null);
   const form = useRef<HTMLFormElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  // AI assist (S6) loads an advisory draft as EDITABLE unsaved fields. The
+  // stamp deduplicates repeated loads; saving and confirming stay Manual and
+  // the AI never auto-confirms.
+  const draftRef = useRef(draft);
+  useEffect(() => {
+    if (!draft || draftRef.current?.stamp === draft.stamp) return;
+    draftRef.current = draft;
+    setPlan(draft.plan);
+    setDirty(true); onDirty(true); setEditing(true);
+    setStatus("AI draft loaded as editable suggestions — review and change anything. Nothing is saved or confirmed until you save and confirm; the AI never confirms.");
+  }, [draft, onDirty]);
   function change(value: Plan) { setPlan(value); setDirty(true); onDirty(true); setStatus("Unsaved changes — confirmation requires a saved revision."); }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,7 +72,7 @@ export function PlanEditor({ study, busy, onBusy, onFailure, onDirty, onSaved }:
       setStatus(`Latest saved revision ${latest.revision} loaded. Your unsaved edits are retained; review and save to reapply them.`);
     } catch (error) { onFailure(error); } finally { onBusy(false); }
   }
-  return <section className="panel"><p className="eyebrow">MANUAL · NO AI PROCESSING</p><h2 ref={heading} tabIndex={-1}>{editing ? "02–03 · Shape your plan" : "Plan confirmed — course not generated"}</h2><output>{status}</output>
+  return <section className="panel"><p className="eyebrow">MANUAL PLAN · AI SUGGESTIONS NEVER AUTO-CONFIRM</p><h2 ref={heading} tabIndex={-1}>{editing ? "02–03 · Shape your plan" : "Plan confirmed — course not generated"}</h2><output>{status}</output>
     {!study.selection && <output>Sources changed or are not acknowledged. This plan needs updated sources and new confirmation before it can be saved or handed off. Inspect previews and acknowledge the current source selection; retained edits are not saved.</output>}
     {editing ? <form ref={form} onSubmit={event => { void save(event); }}><fieldset disabled={busy || !study.selection} className="plan-fields"><legend className="fine">Review and save your Manual revision before confirmation</legend>
       <label htmlFor="topic">Topic</label><input id="topic" name="topic" required maxLength={160} value={plan.topic} onChange={event => change({ ...plan, topic: event.target.value })} />

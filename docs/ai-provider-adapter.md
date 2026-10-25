@@ -62,10 +62,14 @@ cannot inject credentials, tenant context or impersonated tool identity.
 - **Output:** JSON Content-Type, fatal UTF-8 decoding and at most **128KiB** raw
   response bytes, even without a Content-Length header. Exactly one index-zero
   assistant message, normal `stop`, nonblank text at most **32KiB UTF-8**, bounded
-  model provenance and valid integral usage are required. Tool/function fields,
-  unknown message fields, truncation, malformed/empty/multimodal output and
-  inconsistent/excessive usage do not produce a completion. Refusal/content-filter
-  signals produce safe refusal errors. Outer provider metadata is discarded.
+  model provenance and valid integral usage are required. The separate
+  `reasoning_content` channel some OpenAI-compatible providers (Kimi k3,
+  DeepSeek-R) emit beside `content` is tolerated and bounded but never
+  projected — only `content` completes. Tool/function fields, unknown message
+  fields, truncation, malformed/empty/multimodal output and
+  inconsistent/excessive usage do not produce a completion.
+  Refusal/content-filter signals produce safe refusal errors. Outer provider
+  metadata is discarded.
 - **Projection:** only `ok`, `text`, `{ requestedModel, returnedModel }` provenance
   and `{ inputTokens, outputTokens, totalTokens }` usage on success. Provider token
   counts must be nonnegative, each at most 1000000, output no greater than the
@@ -104,6 +108,35 @@ credential or provider error text escapes. No adapter/SDK logging is enabled.
 that provider execution/cost was rolled back. Even rejection classifications are
 not billing evidence. Durable attempt accounting and reconciliation belong to a
 future authorized layer, not this foundation.
+
+## Activation — 2026-10-24, owner-admitted (S6)
+
+The dormant foundation is now wired to a live endpoint under the owner's
+explicit decision recorded in the epic memlog (entries 25–26): the user
+supplied a key for the OpenAI-compatible endpoint `https://api.kimi.com/coding/v1`
+(model `k3`) and directed that terms verification is waived — "the endpoint is
+working that says everything… not blockers at all." What this activation is,
+honestly:
+
+- **Owner-admitted, terms unverified.** Provider eligibility rests on the
+  owner's decision, not on verified no-training/retention/deletion/location
+  terms. No D5-compliance or F3-passed claim is made anywhere; the seeded
+  processor configuration (migration 012, version 3) states this in the
+  disclosure learners see before consenting.
+- **Scope:** synthetic non-personal fixtures only (S6 draft pipeline + S7
+  take-path), local machines, honest product User-Agent retained — no coding-
+  tool impersonation. Real personal data and hosted use remain out of scope.
+- **Wiring:** `src/adapters/ai-live.ts` reads the git-ignored
+  `.local/ai-provider.json` (never logged/serialized), wraps this adapter with
+  a destination-enforcing transport (exact chat-completions URL only), and the
+  S6 pipeline (`src/modules/ai-setup/`) dispatches exclusively through the S3
+  admission/settlement machinery with a content-free token ledger
+  (`app.ai_dispatch_ledger`, untrusted provider claims) bounded by
+  `AI_BUDGET` (2,000,000 ledger tokens ≈ the USD 15 owner cap, 1,200 output
+  tokens per request, 20 admissions/day).
+- **Evidence:** `npm run ai:smoke` (manual, one real call) records
+  `.local/ai-smoke-latest.json`; automated gates stay fully offline — every
+  test uses injected fake ports.
 
 ## Activation prerequisites — deliberately not implemented
 
