@@ -36,7 +36,10 @@ export const courseRecallSchema = z.strictObject({
   answer: z.string().trim().min(1).max(800),
   rationale: z.string().trim().min(1).max(800),
 });
-export const courseContentSchema = z.strictObject({
+// Legacy single-lesson content (pre-2.3 stored rows). Kept verbatim so those
+// rows keep serving unchanged; the v2 union below wraps them at read time —
+// no regeneration-on-read, no silent rewrite.
+export const courseContentV1Schema = z.strictObject({
   // The lesson title is taken from the confirmed plan's own lesson list by the
   // strict parser — the processor never supplies or renames it.
   lessonTitle: z.string().trim().min(1).max(200),
@@ -44,10 +47,152 @@ export const courseContentSchema = z.strictObject({
   objectives: z.array(courseObjectiveSchema).min(1).max(8),
   recall: courseRecallSchema,
 });
-export type CourseContent = z.infer<typeof courseContentSchema>;
+export type CourseContentV1 = z.infer<typeof courseContentV1Schema>;
+
+// ---------------------------------------------------------------------------
+// Epic-2 S3: content v2 — the confirmed plan's FULL lesson set with per-lesson
+// sections and explicit tracker items. Required items are the lessons' own
+// readings; optional enrichment is generated, labeled and never blocks. There
+// are deliberately no score, credit, completion, dwell or scroll fields: done
+// is ONLY an explicit learner action recorded in the owner-scoped tracker
+// table (migration 017), never inferred from anything here.
+// ---------------------------------------------------------------------------
+
+export const courseItemKinds = ["reading", "enrichment"] as const;
+export type CourseItemKind = (typeof courseItemKinds)[number];
+// Stable tracker identity per (course version, lesson, item kind) — plain
+// string ids so no new uuid surface enters URLs.
+export const courseItemIdPattern = /^(lesson:[1-8]:reading|enrichment:[1-8])$/u;
+
+export const courseItemSchema = z.strictObject({
+  id: z.string().regex(courseItemIdPattern),
+  kind: z.enum(courseItemKinds),
+  required: z.boolean(),
+  title: z.string().trim().min(1).max(200),
+});
+export type CourseItem = z.infer<typeof courseItemSchema>;
+
+export const courseLessonSchema = z.strictObject({
+  // From the confirmed plan's own lesson list — the strict parser substitutes
+  // titles in plan order; the processor never supplies or renames them.
+  title: z.string().trim().min(1).max(200),
+  sections: z.array(courseSectionSchema).min(1).max(8),
+  items: z.array(courseItemSchema).min(1).max(4),
+});
+
+// Optional enrichment: exactly one overall, labeled optional, never blocking.
+export const courseEnrichmentSchema = z.strictObject({
+  id: z.literal("enrichment:1"),
+  kind: z.literal("enrichment"),
+  required: z.literal(false),
+  title: z.string().trim().min(1).max(200),
+  text: z.string().trim().min(1).max(2000),
+  sourceRef: sourceRefSchema,
+});
+export type CourseEnrichment = z.infer<typeof courseEnrichmentSchema>;
+
+export const courseContentV2Schema = z
+  .strictObject({
+    contentVersion: z.literal(2),
+    lessons: z.array(courseLessonSchema).min(1).max(8),
+    objectives: z.array(courseObjectiveSchema).min(1).max(8),
+    recall: courseRecallSchema,
+    enrichment: courseEnrichmentSchema.optional(),
+  })
+  .superRefine((content, context) => {
+    // Each lesson carries EXACTLY its own required reading item, identified by
+    // its 1-based position in the numbered sequence.
+    content.lessons.forEach((lesson, index) => {
+      const expected = `lesson:${index + 1}:reading`;
+      const ok = lesson.items.length === 1
+        && lesson.items[0].id === expected
+        && lesson.items[0].kind === "reading"
+        && lesson.items[0].required === true;
+      if (!ok)
+        context.addIssue({
+          code: "custom",
+          path: ["lessons", index, "items"],
+          message: `lesson ${index + 1} must carry exactly its required reading item ${expected}`,
+        });
+    });
+  });
+export type CourseContentV2 = z.infer<typeof courseContentV2Schema>;
+
+// The stored-content union: v2 rows parse natively; pre-2.3 v1 rows keep their
+// exact stored shape.
+export const courseContentSchema = z.union([courseContentV2Schema, courseContentV1Schema]);
+export type CourseContent = CourseContentV2 | CourseContentV1;
+export type CourseSection = z.infer<typeof courseSectionSchema>;
 export type CourseSourceRef = z.infer<typeof sourceRefSchema>;
 
-// The processor's DRAFT shape: index/position links only. Everything that
+// The single required reading item a lesson (or a wrapped legacy lesson)
+// carries. Pure and shared by the parser and the legacy wrap below.
+export function readingItemFor(lessonIndex: number, title: string): CourseItem {
+  return {
+    id: `lesson:${lessonIndex + 1}:reading`,
+    kind: "reading",
+    required: true,
+    title: `Read lesson ${lessonIndex + 1}: ${title}`.slice(0, 200),
+  };
+}
+
+// One serving path, no forked UI: a stored v1 row wraps into the v2 shape as
+// its own single-lesson degenerate case (derived tracker item, no enrichment —
+// v1 content never gains content it did not store).
+export function wrapLegacyCourseContent(v1: CourseContentV1): CourseContentV2 {
+  return {
+    contentVersion: 2,
+    lessons: [{
+      title: v1.lessonTitle,
+      sections: v1.sections,
+      items: [readingItemFor(0, v1.lessonTitle)],
+    }],
+    objectives: v1.objectives,
+    recall: v1.recall,
+  };
+}
+
+// Parse any stored content row into the serving shape; null when the stored
+// document matches neither version (the honest RETRYABLE_FAILURE path).
+export function storedCourseContent(raw: unknown): CourseContentV2 | null {
+  const v2 = courseContentV2Schema.safeParse(raw);
+  if (v2.success) return v2.data;
+  const v1 = courseContentV1Schema.safeParse(raw);
+  if (v1.success) return wrapLegacyCourseContent(v1.data);
+  return null;
+}
+
+// Flat tracker-item derivation from content (pure): required reading per
+// lesson plus the optional overall enrichment, in sequence order.
+export type CourseItemServing = {
+  id: string;
+  kind: CourseItemKind;
+  required: boolean;
+  title: string;
+  lessonNumber: number | null;
+  text: string | null;
+  source: { filename: string; locator: string } | null;
+};
+export function courseTrackerItems(content: CourseContentV2): CourseItemServing[] {
+  const items: CourseItemServing[] = [];
+  content.lessons.forEach((lesson, index) => {
+    for (const item of lesson.items)
+      items.push({ id: item.id, kind: item.kind, required: item.required, title: item.title, lessonNumber: index + 1, text: null, source: null });
+  });
+  if (content.enrichment)
+    items.push({
+      id: content.enrichment.id,
+      kind: "enrichment",
+      required: false,
+      title: content.enrichment.title,
+      lessonNumber: null,
+      text: content.enrichment.text,
+      source: { filename: content.enrichment.sourceRef.filename, locator: content.enrichment.sourceRef.locator },
+    });
+  return items;
+}
+
+// The processor's DRAFT shapes: index/position links only. Everything that
 // identifies a source or objective is resolved against the confirmed plan and
 // the handoff's source list by the strict parser — never trusted from output.
 export const courseDraftSectionSchema = z.strictObject({
@@ -63,12 +208,34 @@ export const courseDraftRecallSchema = z.strictObject({
   answer: z.string().trim().min(1).max(800),
   rationale: z.string().trim().min(1).max(800),
 });
-export const courseDraftSchema = z.strictObject({
+
+// Epic-2 S3 v2 draft: one lessons entry per CONFIRMED PLAN lesson, in listed
+// order (the parser enforces count/order and substitutes every title), plus an
+// optional overall enrichment passage. Lesson count and titles are plan-owned.
+export const courseDraftLessonSchema = z.strictObject({
+  sections: z.array(courseDraftSectionSchema).min(1).max(8),
+});
+export const courseDraftEnrichmentSchema = z.strictObject({
+  sourcePosition: z.number().int().min(0).max(9),
+  locator: z.string().trim().min(1).max(120),
+  text: z.string().trim().min(1).max(2000),
+});
+export const courseDraftV2Schema = z.strictObject({
+  lessons: z.array(courseDraftLessonSchema).min(1).max(8),
+  objectiveIndexes: z.array(z.number().int().min(0).max(7)).min(1).max(8),
+  recall: courseDraftRecallSchema,
+  enrichment: courseDraftEnrichmentSchema.optional(),
+});
+export type CourseDraftV2 = z.infer<typeof courseDraftV2Schema>;
+
+// The legacy single-lesson draft shape (pre-2.3 processors); kept so the
+// contract record stays complete. Generation now emits and accepts v2 only.
+export const courseDraftV1Schema = z.strictObject({
   sections: z.array(courseDraftSectionSchema).min(1).max(8),
   objectiveIndexes: z.array(z.number().int().min(0).max(7)).min(1).max(8),
   recall: courseDraftRecallSchema,
 });
-export type CourseDraft = z.infer<typeof courseDraftSchema>;
+export type CourseDraftV1 = z.infer<typeof courseDraftV1Schema>;
 
 // Restart-safe job envelope: id = request id, one attempt (retryLimit 0), the
 // recorded owner identity re-authorizes every fence at consume time.
@@ -90,6 +257,16 @@ export const submitRecallSchema = commandSchema.extend({
 });
 export type SubmitRecall = z.infer<typeof submitRecallSchema>;
 
+// Epic-2 S3 explicit content-item mark-done: the plain command envelope plus
+// the exact ready course version and the stable item id being marked. Only
+// required items are markable — optional enrichment is labeled and never
+// tracked. Replay rides the existing command_receipt machinery.
+export const markItemDoneSchema = commandSchema.extend({
+  courseId: uuid,
+  itemId: z.string().trim().min(3).max(40),
+});
+export type MarkItemDone = z.infer<typeof markItemDoneSchema>;
+
 export type CourseUsage = { inputTokens: number; outputTokens: number; totalTokens: number };
 
 // Owner-scoped study state. `none` is the honest empty state of a confirmed
@@ -101,6 +278,21 @@ export type CourseState =
   | { state: "failed"; rootId: string; revision: number; requestId: string; failureCode: string | null }
   | { state: "ready"; rootId: string; revision: number; course: CourseView };
 
+export type CourseLessonView = {
+  // 1-based: the numbered sequence of the player shell.
+  number: number;
+  title: string;
+  sections: Array<{ text: string; source: { filename: string; locator: string } }>;
+};
+
+// One tracker row with its server-persisted done state. `done` is ONLY the
+// explicit mark-done outcome — there is no dwell, scroll or visibility
+// inference anywhere, and optional rows are served labeled, never blocking.
+export type CourseItemView = CourseItemServing & {
+  done: boolean;
+  doneAt: string | null;
+};
+
 export type CourseView = {
   courseId: string;
   requestId: string;
@@ -109,16 +301,21 @@ export type CourseView = {
   version: number;
   // A newer ready course version exists for this root (re-confirm → regenerate).
   superseded: boolean;
+  // The newest ready per-root version number when superseded (what an explicit
+  // switch moves to); null otherwise.
+  supersededBy: number | null;
   // The course belongs to a previous confirmed plan revision.
   historical: boolean;
   model: string;
   usage: CourseUsage | null;
   createdAt: string;
   settledAt: string;
-  lesson: {
-    title: string;
-    sections: Array<{ text: string; source: { filename: string; locator: string } }>;
-  };
+  // The full numbered lesson sequence (a stored v1 course serves as its own
+  // single-lesson degenerate case through the same shape).
+  lessons: CourseLessonView[];
+  // Flat tracker items (required readings per lesson + optional enrichment)
+  // with this owner's done state for THIS course version.
+  items: CourseItemView[];
   objectives: Array<{ index: number; text: string }>;
   recall: {
     prompt: string;

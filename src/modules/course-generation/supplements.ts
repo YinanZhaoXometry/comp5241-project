@@ -1,8 +1,9 @@
 import {
   SYNTHETIC_PROPOSAL_MODEL,
   supplementProposalDraftSchema,
-  type CourseContent,
+  type CourseContentV2,
   type CourseGap,
+  type CourseSection,
   type SupplementOutcome,
 } from "../../contracts/courses";
 import type { Plan } from "../../contracts/setup";
@@ -141,7 +142,10 @@ export function declaredGapCount(plan: Plan): number {
     .length;
 }
 
-export function deriveGaps(plan: Plan, content: CourseContent): CourseGap[] {
+// Accepts the serving shape (epic-2 S3 storedCourseContent — v2 native or the
+// wrapped legacy single lesson); only the course-level objectives feed the
+// outcome roll.
+export function deriveGaps(plan: Plan, content: CourseContentV2): CourseGap[] {
   return plan.missingExplanations
     .split(/(?<=[.!?])\s+/u)
     .map(sentence => sentence.trim())
@@ -168,7 +172,9 @@ export type ProposalInput = {
   lessonTitle: string;
   gaps: CourseGap[];
   outcomes: string[];
-  sections: CourseContent["sections"];
+  // The course's upload sections in sequence order (epic-2 S3 flattens the
+  // lessons' sections — a wrapped legacy course contributes its single list).
+  sections: CourseSection[];
   allowlist: readonly string[];
 };
 
@@ -216,7 +222,7 @@ export type ResolvedCandidate = {
 export type ProposalBounds = {
   gaps: CourseGap[];
   outcomes: string[];
-  sections: CourseContent["sections"];
+  sections: CourseSection[];
   allowlist: readonly string[];
 };
 

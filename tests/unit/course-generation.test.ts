@@ -20,13 +20,29 @@ import {
   verifySupplement,
   type ResolvedCandidate,
 } from '../../src/modules/course-generation/supplements';
-import { courseContentSchema, courseDraftSchema, submitRecallSchema, SYNTHETIC_COURSE_MODEL, supplementJobSchema, requestSupplementsSchema, SUPPLEMENT_QUEUE } from '../../src/contracts/courses';
+import {
+  courseContentV1Schema,
+  courseContentV2Schema,
+  courseDraftV1Schema,
+  courseDraftV2Schema,
+  courseTrackerItems,
+  markItemDoneSchema,
+  storedCourseContent,
+  submitRecallSchema,
+  SYNTHETIC_COURSE_MODEL,
+  supplementJobSchema,
+  requestSupplementsSchema,
+  SUPPLEMENT_QUEUE,
+  type CourseContentV2,
+} from '../../src/contracts/courses';
 import { textCompletionRequestSchema } from '../../src/contracts/ai-provider';
 import { AI_BUDGET } from '../../src/adapters/ai-live';
 import type { Plan } from '../../src/contracts/setup';
 
-// Local synthetic coverage of the epic-2 S1 course tracer's PURE halves:
-// bounded prompt building, strict plan-bounds-checked output validation, the
+// Local synthetic coverage of the epic-2 course tracer's PURE halves: bounded
+// prompt building, strict plan-bounds-checked output validation (epic-2 S3
+// content v2: the FULL plan lesson set with per-lesson sections, tracker items
+// and one labeled optional enrichment), the legacy v1 union wrap, the
 // deterministic local synthetic processor and the recall judge. No transport,
 // no network, no provider — everything here is deterministic.
 
@@ -48,11 +64,12 @@ const excerpts = [
 ];
 const bounds = { plan, sources };
 const input = { goal: 'Exam preparation', topic: 'unit testing', plan, excerpts };
+const flatSections = (content: CourseContentV2) => content.lessons.flatMap(lesson => lesson.sections);
 
 const validDraft = (extra: Record<string, unknown> = {}) => JSON.stringify({
-  sections: [
-    { text: 'A unit test isolates one behavior and asserts its outcome.', sourcePosition: 0, locator: 'opening lines' },
-    { text: 'A test double stands in for a real dependency during the test.', sourcePosition: 1, locator: 'opening lines' },
+  lessons: [
+    { sections: [{ text: 'A unit test isolates one behavior and asserts its outcome.', sourcePosition: 0, locator: 'opening lines' }] },
+    { sections: [{ text: 'A test double stands in for a real dependency during the test.', sourcePosition: 1, locator: 'opening lines' }] },
   ],
   objectiveIndexes: [0, 1, 2],
   recall: { objectiveIndex: 0, sourcePosition: 0, locator: 'opening lines', prompt: 'State the three parts of the unit test structure.', answer: 'Arrange inputs, act, assert outcomes.', rationale: 'The opening of notes.txt states this directly.' },
@@ -65,9 +82,10 @@ describe('bounded course prompt building', () => {
     const parsed = textCompletionRequestSchema.safeParse({ messages, maxOutputTokens: AI_BUDGET.maxOutputTokens });
     expect(parsed.success).toBe(true);
     expect(messages[0].role).toBe('system');
-    expect(messages[1].content).toContain('0: Explain arrange-act-assert');
+    expect(messages[1].content).toContain('lesson 0: What a unit test is');
+    expect(messages[1].content).toContain('lesson 1: A second lesson for context');
+    expect(messages[1].content).toContain('outcome 0: Explain arrange-act-assert');
     expect(messages[1].content).toContain('--- source 0: notes.txt ---');
-    expect(messages[1].content).toContain('Lesson title (taken from the plan, not returned): What a unit test is');
   });
   it('truncates over-long excerpts fairly, keeps every source present and states the cut', () => {
     const many = Array.from({ length: 12 }, (_, index) => ({ name: `s${index}.txt`, text: 'x'.repeat(64 * 1024) }));
@@ -79,42 +97,118 @@ describe('bounded course prompt building', () => {
   });
 });
 
-describe('strict course output validation against the confirmed plan', () => {
-  it('accepts a resolvable draft and substitutes the lesson title from the plan', () => {
+describe('strict course output validation against the confirmed plan (content v2)', () => {
+  it('accepts a resolvable multi-lesson draft and substitutes every title from the plan in order', () => {
     const parsed = parseCourseOutput(validDraft(), bounds);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.content.lessonTitle).toBe('What a unit test is'); // from the plan, never the reply
-    expect(parsed.content.sections).toHaveLength(2);
-    expect(parsed.content.sections[0].sourceRef).toMatchObject({ extractionId: sources[0].extractionId, filename: 'notes.txt' });
+    expect(parsed.content.lessons.map(lesson => lesson.title)).toEqual(plan.miniCourse.lessons); // from the plan, never the reply
+    expect(parsed.content.lessons[0].sections[0].sourceRef).toMatchObject({ extractionId: sources[0].extractionId, filename: 'notes.txt' });
+    expect(parsed.content.lessons[1].sections[0].sourceRef.filename).toBe('doubles.txt');
+    // Required tracker items: exactly one reading item per numbered lesson.
+    expect(parsed.content.lessons[0].items).toEqual([{ id: 'lesson:1:reading', kind: 'reading', required: true, title: 'Read lesson 1: What a unit test is' }]);
+    expect(parsed.content.lessons[1].items[0].id).toBe('lesson:2:reading');
+    expect(parsed.content.enrichment).toBeUndefined();
     expect(parsed.content.objectives.map(objective => objective.text)).toEqual(plan.outcomes);
     expect(parsed.content.recall.sourceRef.filename).toBe('notes.txt');
-    expect(courseContentSchema.safeParse(parsed.content).success).toBe(true);
+    expect(courseContentV2Schema.safeParse(parsed.content).success).toBe(true);
+  });
+  it('resolves the optional enrichment link and labels it optional and untracked', () => {
+    const parsed = parseCourseOutput(validDraft({ enrichment: { sourcePosition: 1, locator: 'second paragraph', text: 'Doubles keep tests fast and deterministic.' } }), bounds);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.content.enrichment).toMatchObject({
+      id: 'enrichment:1',
+      kind: 'enrichment',
+      required: false,
+      text: 'Doubles keep tests fast and deterministic.',
+      sourceRef: { filename: 'doubles.txt', locator: 'second paragraph' },
+    });
+    const items = courseTrackerItems(parsed.content);
+    expect(items.filter(item => !item.required)).toHaveLength(1);
+    expect(items.find(item => !item.required)?.id).toBe('enrichment:1');
   });
   it('accepts a single fenced json block and recovers balanced objects from trailing noise', () => {
     expect(parseCourseOutput(`\`\`\`json\n${validDraft()}\n\`\`\``, bounds).ok).toBe(true);
     expect(parseCourseOutput(`${validDraft()}}}`, bounds).ok).toBe(true);
     expect(parseCourseOutput(`${validDraft()}\nNote: good luck!`, bounds).ok).toBe(true);
   });
-  it('rejects prose, malformed JSON, extra keys, unresolved links and duplicate objectives', () => {
+  it('rejects prose, malformed JSON, extra keys, wrong lesson counts, legacy v1 drafts and unresolved links', () => {
     expect(parseCourseOutput('Here is your lesson: ...', bounds).ok).toBe(false);
     expect(parseCourseOutput('{not json', bounds).ok).toBe(false);
     expect(parseCourseOutput(validDraft({ extra: 1 }), bounds).ok).toBe(false);
-    // Objective index beyond the plan's outcomes.
+    // Fewer/more lessons than the confirmed plan declares.
+    expect(parseCourseOutput(validDraft({ lessons: [{ sections: [{ text: 'x', sourcePosition: 0, locator: 'l' }] }] }), bounds).ok).toBe(false);
+    expect(parseCourseOutput(validDraft({ lessons: [...JSON.parse(validDraft()).lessons, { sections: [{ text: 'x', sourcePosition: 0, locator: 'l' }] }] }), bounds).ok).toBe(false);
+    // The legacy single-lesson draft shape no longer validates.
+    expect(parseCourseOutput(JSON.stringify({ sections: [{ text: 'x', sourcePosition: 0, locator: 'l' }], objectiveIndexes: [0], recall: { objectiveIndex: 0, sourcePosition: 0, locator: 'l', prompt: 'p', answer: 'a', rationale: 'r' } }), bounds).ok).toBe(false);
+    // Objective index beyond the plan's outcomes; duplicates.
     expect(parseCourseOutput(validDraft({ objectiveIndexes: [0, 1, 3] }), bounds).ok).toBe(false);
-    // Source position beyond the selected sources.
-    expect(parseCourseOutput(validDraft({ sections: [{ text: 'x', sourcePosition: 5, locator: 'l' }] }), bounds).ok).toBe(false);
-    expect(parseCourseOutput(validDraft({ recall: { objectiveIndex: 9, sourcePosition: 0, locator: 'l', prompt: 'p', answer: 'a', rationale: 'r' } }), bounds).ok).toBe(false);
-    expect(parseCourseOutput(validDraft({ recall: { objectiveIndex: 0, sourcePosition: 2, locator: 'l', prompt: 'p', answer: 'a', rationale: 'r' } }), bounds).ok).toBe(false);
     expect(parseCourseOutput(validDraft({ objectiveIndexes: [0, 0, 1] }), bounds).ok).toBe(false);
+    // Source position beyond the selected sources (lesson section and recall).
+    expect(parseCourseOutput(validDraft({ lessons: [{ sections: [{ text: 'x', sourcePosition: 5, locator: 'l' }] }, { sections: [{ text: 'y', sourcePosition: 1, locator: 'l' }] }] }), bounds).ok).toBe(false);
+    expect(parseCourseOutput(validDraft({ recall: { objectiveIndex: 0, sourcePosition: 2, locator: 'l', prompt: 'p', answer: 'a', rationale: 'r' } }), bounds).ok).toBe(false);
+    // Enrichment with an unresolved source link.
+    expect(parseCourseOutput(validDraft({ enrichment: { sourcePosition: 7, locator: 'l', text: 't' } }), bounds).ok).toBe(false);
     expect(parseCourseOutput('', bounds).ok).toBe(false);
     // The draft schema itself bounds the shapes the parser trusts.
-    expect(courseDraftSchema.safeParse({ sections: [], objectiveIndexes: [0], recall: {} }).success).toBe(false);
+    expect(courseDraftV2Schema.safeParse({ lessons: [], objectiveIndexes: [0], recall: {} }).success).toBe(false);
+    expect(courseDraftV1Schema.safeParse({ sections: [], objectiveIndexes: [0], recall: {} }).success).toBe(false);
+  });
+  it('rejects stored lesson items that do not match their numbered position (tracker identity is positional)', () => {
+    const parsed = parseCourseOutput(validDraft(), bounds);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const tampered = structuredClone(parsed.content);
+    tampered.lessons[1].items[0].id = 'lesson:1:reading';
+    expect(courseContentV2Schema.safeParse(tampered).success).toBe(false);
   });
 });
 
-describe('deterministic local synthetic processor', () => {
-  it('returns a strict-parseable, zero-token, deterministic draft over its own messages', async () => {
+describe('legacy v1 stored content serves through the v2 wrap (one serving path)', () => {
+  const legacy = {
+    lessonTitle: 'What a unit test is',
+    sections: [{ text: 'A unit test isolates one behavior.', sourceRef: { extractionId: sources[0].extractionId, filename: 'notes.txt', locator: 'opening lines' } }],
+    objectives: [{ index: 0, text: 'Explain arrange-act-assert' }],
+    recall: { objectiveIndex: 0, sourceRef: { extractionId: sources[0].extractionId, filename: 'notes.txt', locator: 'opening lines' }, prompt: 'p', answer: 'a', rationale: 'r' },
+  };
+  it('keeps accepting the exact pre-2.3 stored shape unchanged', () => {
+    expect(courseContentV1Schema.safeParse(legacy).success).toBe(true);
+  });
+  it('wraps a v1 row as its own single-lesson degenerate case with a derived reading item and no enrichment', () => {
+    const wrapped = storedCourseContent(legacy);
+    expect(wrapped).not.toBeNull();
+    if (!wrapped) return;
+    expect(wrapped.contentVersion).toBe(2);
+    expect(wrapped.lessons).toHaveLength(1);
+    expect(wrapped.lessons[0].title).toBe('What a unit test is');
+    expect(wrapped.lessons[0].sections).toHaveLength(1);
+    expect(wrapped.lessons[0].items).toEqual([{ id: 'lesson:1:reading', kind: 'reading', required: true, title: 'Read lesson 1: What a unit test is' }]);
+    expect(wrapped.enrichment).toBeUndefined();
+    expect(wrapped.recall.answer).toBe('a'); // the stored v1 row itself still carries it server-side
+  });
+  it('passes v2 content through unchanged and rejects documents matching neither version', () => {
+    const parsed = parseCourseOutput(validDraft(), bounds);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(storedCourseContent(parsed.content)).toEqual(parsed.content);
+    expect(storedCourseContent({ nope: true })).toBeNull();
+    expect(storedCourseContent(null)).toBeNull();
+  });
+  it('courseTrackerItems lists required readings in sequence order, then the optional enrichment last', () => {
+    const parsed = parseCourseOutput(validDraft({ enrichment: { sourcePosition: 1, locator: 'l', text: 't' } }), bounds);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const items = courseTrackerItems(parsed.content);
+    expect(items.map(item => item.id)).toEqual(['lesson:1:reading', 'lesson:2:reading', 'enrichment:1']);
+    expect(items.map(item => item.required)).toEqual([true, true, false]);
+    expect(items.map(item => item.lessonNumber)).toEqual([1, 2, null]);
+    expect(items[2]).toMatchObject({ text: 't', source: { filename: 'doubles.txt', locator: 'l' } });
+  });
+});
+
+describe('deterministic local synthetic processor (content v2)', () => {
+  it('returns a strict-parseable, zero-token, deterministic draft covering every plan lesson in order', async () => {
     const port = createSyntheticCourseCompletion();
     const messages = buildCourseMessages(input);
     const request = textCompletionRequestSchema.parse({ messages, maxOutputTokens: AI_BUDGET.maxOutputTokens });
@@ -128,11 +222,16 @@ describe('deterministic local synthetic processor', () => {
     const parsed = parseCourseOutput(first.text, bounds);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.content.lessonTitle).toBe('What a unit test is');
-    expect(parsed.content.sections.length).toBeGreaterThanOrEqual(1);
-    expect(parsed.content.sections[0].sourceRef.filename).toBe('notes.txt');
+    expect(parsed.content.lessons.map(lesson => lesson.title)).toEqual(plan.miniCourse.lessons);
+    for (const lesson of parsed.content.lessons) expect(lesson.sections.length).toBeGreaterThanOrEqual(1);
+    // Fair distribution: source 0 teaches lesson 1, source 1 teaches lesson 2.
+    expect(parsed.content.lessons[0].sections[0].sourceRef.filename).toBe('notes.txt');
+    expect(parsed.content.lessons[1].sections[0].sourceRef.filename).toBe('doubles.txt');
     expect(parsed.content.objectives.length).toBe(plan.outcomes.length);
     expect(parsed.content.recall.answer.length).toBeGreaterThanOrEqual(1);
+    // One labeled optional enrichment overall, from the last usable source.
+    expect(parsed.content.enrichment?.sourceRef.filename).toBe('doubles.txt');
+    expect(parsed.content.enrichment?.required).toBe(false);
   });
   it('rejects non-message input honestly without dispatching', async () => {
     const outcome = await createSyntheticCourseCompletion().complete({ messages: 'nope' });
@@ -142,33 +241,73 @@ describe('deterministic local synthetic processor', () => {
     expect(outcome.error.outcome).toBe('not-dispatched');
   });
   it('syntheticCourseDraft is stable for identical input and bounded in section length', () => {
-    const messages = buildCourseMessages({ ...input, excerpts: [{ name: 'big.txt', text: 'z'.repeat(64 * 1024) }] });
+    const oneLessonPlan = { ...plan, miniCourse: { ...plan.miniCourse, lessons: ['What a unit test is'] } };
+    const messages = buildCourseMessages({ ...input, plan: oneLessonPlan, excerpts: [{ name: 'big.txt', text: 'z'.repeat(64 * 1024) }] });
     const a = syntheticCourseDraft(messages);
     const b = syntheticCourseDraft(messages);
     expect(a).toBe(b);
-    const parsed = parseCourseOutput(a, { plan, sources: [sources[0]] });
+    const parsed = parseCourseOutput(a, { plan: oneLessonPlan, sources: [sources[0]] });
     expect(parsed.ok).toBe(true);
-    if (parsed.ok) for (const section of parsed.content.sections) expect(section.text.length).toBeLessThanOrEqual(480);
+    if (!parsed.ok) return;
+    for (const lesson of parsed.content.lessons) for (const section of lesson.sections) expect(section.text.length).toBeLessThanOrEqual(480);
   });
-  it('round-trips a legal 10-source selection: at most 8 sections, links resolve, no section quotes the recall answer', async () => {
-    // The draft schema caps sections at 8 while a batch may select 10 — the
-    // fixture must slice, never fail generation on a legal selection.
+  it('round-trips a legal 10-source selection across two lessons: links resolve, no text quotes the recall answer', () => {
     const ten = Array.from({ length: 10 }, (_, index) => ({ name: `t${index}.txt`, text: `Source ${index} opens here. Source ${index} remainder continues the lesson body.` }));
     const tenSources = ten.map(excerpt => ({ extractionId: crypto.randomUUID(), filename: excerpt.name }));
     const messages = buildCourseMessages({ ...input, excerpts: ten });
-    const request = textCompletionRequestSchema.parse({ messages, maxOutputTokens: AI_BUDGET.maxOutputTokens });
-    const outcome = await createSyntheticCourseCompletion().complete(request);
-    expect(outcome.ok).toBe(true);
-    if (!outcome.ok) return;
-    const parsed = parseCourseOutput(outcome.text, { plan, sources: tenSources });
+    const draft = syntheticCourseDraft(messages);
+    const parsed = parseCourseOutput(draft, { plan, sources: tenSources });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.content.sections).toHaveLength(8);
-    expect(new Set(parsed.content.sections.map(section => section.sourceRef.extractionId)).size).toBe(8);
+    // Fair round-robin: even positions to lesson 1, odd to lesson 2 — every
+    // source used exactly once, no lesson over the 8-section cap.
+    expect(parsed.content.lessons).toHaveLength(2);
+    expect(parsed.content.lessons[0].sections).toHaveLength(5);
+    expect(parsed.content.lessons[1].sections).toHaveLength(5);
+    const used = flatSections(parsed.content).map(section => section.sourceRef.extractionId);
+    expect(new Set(used).size).toBe(10);
     // Withholding at the source: the recall's canonical answer (source 0's
-    // opening sentence) appears in no served section text.
-    for (const section of parsed.content.sections) expect(section.text).not.toContain(parsed.content.recall.answer);
-    expect(parsed.content.sections[0].text).toContain('remainder continues the lesson body');
+    // opening sentence) appears in no served section OR enrichment text.
+    for (const section of flatSections(parsed.content)) expect(section.text).not.toContain(parsed.content.recall.answer);
+    expect(parsed.content.enrichment?.text ?? '').not.toContain(parsed.content.recall.answer);
+    expect(parsed.content.lessons[0].sections[0].text).toContain('remainder continues the lesson body');
+    // The enrichment is the last usable source's teaching text.
+    expect(parsed.content.enrichment?.sourceRef.filename).toBe('t9.txt');
+  });
+  it('keeps every plan lesson present when there are fewer sources than lessons (honest fallback)', () => {
+    const single = [{ name: 'only.txt', text: 'Only source opens here. Its remainder teaches the whole course honestly.' }];
+    const messages = buildCourseMessages({ ...input, excerpts: single });
+    const parsed = parseCourseOutput(syntheticCourseDraft(messages), { plan, sources: [sources[0]] });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.content.lessons).toHaveLength(2);
+    expect(parsed.content.lessons[1].sections[0].sourceRef.locator).toContain('no dedicated source reached this lesson');
+  });
+  it('caps a single-lesson course at 8 sections when a 10-source selection round-robins into one lesson', () => {
+    const ten = Array.from({ length: 10 }, (_, index) => ({ name: `t${index}.txt`, text: `Source ${index} opens here. Source ${index} remainder continues the body.` }));
+    const tenSources = ten.map(excerpt => ({ extractionId: crypto.randomUUID(), filename: excerpt.name }));
+    const oneLessonPlan = { ...plan, miniCourse: { ...plan.miniCourse, lessons: ['What a unit test is'] } };
+    const messages = buildCourseMessages({ ...input, plan: oneLessonPlan, excerpts: ten });
+    const parsed = parseCourseOutput(syntheticCourseDraft(messages), { plan: oneLessonPlan, sources: tenSources });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.content.lessons[0].sections).toHaveLength(8);
+  });
+  it('ignores lesson- and outcome-looking lines inside source excerpts (counting is header-bounded)', () => {
+    // Notes containing lines like "lesson 1: intro" at a line start must not
+    // inflate the lesson/outcome counts and fail generation with a false
+    // invalid-output — only the structured header counts.
+    const sneaky = [
+      { name: 'notes.txt', text: 'Real body line.\nlesson 1: intro appears in the notes.\nlesson 9: another stray heading.\noutcome 2: fake line also appears.' },
+      { name: 'doubles.txt', text: 'A test double stands in for a dependency.\nlesson 0: stray heading in the second source.' },
+    ];
+    const messages = buildCourseMessages({ ...input, excerpts: sneaky });
+    const draft = syntheticCourseDraft(messages);
+    const parsed = parseCourseOutput(draft, bounds);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.content.lessons).toHaveLength(plan.miniCourse.lessons.length);
+    expect(parsed.content.objectives.map(objective => objective.index)).toEqual([0, 1, 2]);
   });
 });
 
@@ -190,11 +329,15 @@ describe('recall judgement and feedback', () => {
     expect(feedback.rationale).toContain('notes.txt');
     expect(feedback.source).toMatchObject({ filename: 'notes.txt', locator: 'opening lines' });
   });
-  it('the recall command envelope requires attempted text and rejects control-shaped bodies', () => {
+  it('the recall and tracker command envelopes stay strict', () => {
     expect(submitRecallSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0, attempted: 'an answer' }).success).toBe(true);
     expect(submitRecallSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0 }).success).toBe(false);
     expect(submitRecallSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0, attempted: '' }).success).toBe(false);
     expect(submitRecallSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0, attempted: 'x', extra: true }).success).toBe(false);
+    expect(markItemDoneSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, courseId: crypto.randomUUID(), itemId: 'lesson:1:reading' }).success).toBe(true);
+    expect(markItemDoneSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, courseId: crypto.randomUUID() }).success).toBe(false);
+    expect(markItemDoneSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, itemId: 'lesson:1:reading' }).success).toBe(false);
+    expect(markItemDoneSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, courseId: crypto.randomUUID(), itemId: 'lesson:1:reading', extra: 1 }).success).toBe(false);
   });
 });
 
@@ -252,9 +395,9 @@ describe('bounded supplement proposal prompt and strict parser', () => {
   const parsed = sectionsOf(validDraft());
   if (!parsed.ok) throw new Error('fixture setup failed');
   const gaps = deriveGaps(gapsPlan, parsed.content);
-  const proposalBounds = { gaps, outcomes: plan.outcomes, sections: parsed.content.sections, allowlist: fixtureAllowlist };
+  const proposalBounds = { gaps, outcomes: plan.outcomes, sections: flatSections(parsed.content), allowlist: fixtureAllowlist };
   it('builds an adapter-valid prompt that lists allowlist, gaps, outcomes and upload sections', () => {
-    const messages = buildProposalMessages({ lessonTitle: parsed.content.lessonTitle, gaps, outcomes: plan.outcomes, sections: parsed.content.sections, allowlist: fixtureAllowlist });
+    const messages = buildProposalMessages({ lessonTitle: parsed.content.lessons[0].title, gaps, outcomes: plan.outcomes, sections: flatSections(parsed.content), allowlist: fixtureAllowlist });
     const request = textCompletionRequestSchema.safeParse({ messages, maxOutputTokens: AI_BUDGET.maxOutputTokens });
     expect(request.success).toBe(true);
     expect(messages[1].content).toContain('docs.example.org');
@@ -273,7 +416,7 @@ describe('bounded supplement proposal prompt and strict parser', () => {
         claim: gap.description,
         expectedPassage: `Passage ${index} about ${gap.description}`,
         outcomeIndex: index,
-        sectionIndex: index % parsed.content.sections.length,
+        sectionIndex: index % flatSections(parsed.content).length,
       })),
     });
     const outcome = parseProposalOutput(proposal, proposalBounds);
@@ -366,8 +509,8 @@ describe('deterministic local synthetic proposal fixture', () => {
   const parsed = sectionsOf(validDraft());
   if (!parsed.ok) throw new Error('fixture setup failed');
   const gaps = deriveGaps(gapsPlan, parsed.content);
-  const proposalBounds = { gaps, outcomes: plan.outcomes, sections: parsed.content.sections, allowlist: fixtureAllowlist };
-  const messages = buildProposalMessages({ lessonTitle: parsed.content.lessonTitle, gaps, outcomes: plan.outcomes, sections: parsed.content.sections, allowlist: fixtureAllowlist });
+  const proposalBounds = { gaps, outcomes: plan.outcomes, sections: flatSections(parsed.content), allowlist: fixtureAllowlist };
+  const messages = buildProposalMessages({ lessonTitle: parsed.content.lessons[0].title, gaps, outcomes: plan.outcomes, sections: flatSections(parsed.content), allowlist: fixtureAllowlist });
   it('returns a strict-parseable, zero-token, deterministic proposal over its own messages', async () => {
     const port = createSyntheticProposalCompletion();
     const request = textCompletionRequestSchema.parse({ messages, maxOutputTokens: AI_BUDGET.maxOutputTokens });

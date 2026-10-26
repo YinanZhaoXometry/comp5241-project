@@ -11,7 +11,7 @@ import { getPreferences, savePreferences } from "../../../../modules/setup-prefe
 import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finishCheck, flagUnclear } from "../../../../modules/setup-diagnostic/service";
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
-import { requestCourseGeneration, getCourse, submitRecall, requestSupplements, getSupplements } from "../../../../modules/course-generation/service";
+import { requestCourseGeneration, getCourse, submitRecall, markItemDone, requestSupplements, getSupplements } from "../../../../modules/course-generation/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -78,6 +78,12 @@ async function handle(request: Request, context: Context) {
     }
     if (path[0] === "studies" && path[2] === "course" && path[3] === "recall" && path.length === 4 && request.method === "POST") {
       return Response.json(await submitRecall(identity, path[1], await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-2 S3 content-item tracker: explicit mark-done of ONE required item
+    // of one ready course version (owner- and version-scoped, idempotent by
+    // command envelope).
+    if (path[0] === "studies" && path[2] === "course" && path[3] === "track" && path.length === 4 && request.method === "POST") {
+      return Response.json(await markItemDone(identity, path[1], await jsonBody(request)), { headers: privateHeaders });
     }
     if (path[0] === "studies" && path[2] === "check" && path.length >= 3 && path.length <= 5) {
       const rootId = path[1];

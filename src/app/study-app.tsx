@@ -18,7 +18,7 @@ import type { Study } from "../modules/materials-setup/service";
 import type { Receipt } from "../contracts/setup";
 
 type Session = { user: { id: string; name: string }; needsRefresh: boolean };
-type Entry = { rootId: string; filename: string; revision: number; state: string; confirmed: boolean; cleanupState: string };
+type Entry = { rootId: string; filename: string; revision: number; state: string; confirmed: boolean; cleanupState: string; courseGenerated: boolean };
 
 export function StudyApp({ prefillEmail }: Readonly<{ prefillEmail?: string }>) {
   const [session, setSession] = useState<Session | null>(null);
@@ -141,7 +141,7 @@ export function StudyApp({ prefillEmail }: Readonly<{ prefillEmail?: string }>) 
     <a className="skip-link" href="#main">Skip to study workspace</a>
     <header className="topbar"><Link href="/" className="brand" prefetch={false}>Fieldnotes<span>PRIVATE STUDY</span></Link><span className="tag">Local · synthetic only</span>{session && <button className="quiet" onClick={() => { void signOut(); }}>Sign out</button>}</header>
     <main id="main" className="workspace">
-      <aside className="sidebar"><p className="eyebrow">YOUR WORKSPACE</p><h2>Make room<br />for understanding.</h2><p>Read a source. Choose a direction. Shape a small, deliberate plan.</p><ol className="steps"><li>01 · Materials</li><li>02 · Topic & goal</li><li>03 · Manual plan</li></ol><p className="fine">No external AI calls. No generated courses. No completion credit.</p></aside>
+      <aside className="sidebar"><p className="eyebrow">YOUR WORKSPACE</p><h2>Make room<br />for understanding.</h2><p>Read a source. Choose a direction. Shape a small, deliberate plan.</p><ol className="steps"><li>01 · Materials</li><li>02 · Topic & goal</li><li>03 · Manual plan</li></ol><p className="fine">AI runs locally and stays labeled. Generated courses are AI-generated · Unreviewed. No completion credit.</p></aside>
       <div className="content">
         <p className="eyebrow">COMP5241 / PRIVATE STUDY SETUP</p>
         <h1 ref={heading} tabIndex={-1}>{session ? study ? "From source to study plan" : "My study library" : "A private place to begin"}</h1>
@@ -161,10 +161,10 @@ export function StudyApp({ prefillEmail }: Readonly<{ prefillEmail?: string }>) 
             {study.extractionId && <PlanEditor key={`${session.user.id}:${study.rootId}:${study.slots.filter(slot => slot.state === "removed").map(slot => slot.slotId).join(":")}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onDirty={value => { if (viewGeneration === generation.current) setDirty(value); }} onSaved={value => { if (viewGeneration === generation.current) { setStudy(value); void load(); } }} draft={aiDraft} />}
             <AiAssist key={`${session.user.id}:${study.rootId}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onTopic={setAiTopic} onDraft={setAiDraft} />
             {study.confirmed && <CheckStage key={`${session.user.id}:${study.rootId}:${study.revision}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} />}
-            {study.confirmed && <CourseStage key={`course:${session.user.id}:${study.rootId}:${study.revision}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} />}
+            {study.confirmed && <CourseStage key={`course:${session.user.id}:${study.rootId}:${study.revision}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onCourseReady={() => { if (viewGeneration === generation.current) void api<Study>(`studies/${study.rootId}`).then(value => { if (viewGeneration === generation.current) setStudy(value); }).catch(() => { /* the stage's own state stays authoritative */ }); }} />}
             <DangerZone study={study} busy={busy} onWork={act} onDeleted={message => { setStudy(null); setDirty(false); setReceipt(message); void load().then(() => moveFocus()); }} />
           </>}
-          <section className="library"><h2>Saved studies</h2>{entries.length === 0 ? <p>No saved studies yet.</p> : <ul>{entries.map(entry => <li key={entry.rootId}><div><strong>{entry.filename}</strong><p className="fine">{entry.state === "deleted" ? `Access revoked · cleanup ${entry.cleanupState}` : entry.confirmed ? "Plan confirmed — course not generated" : `Manual draft · ${entry.state} · revision ${entry.revision}`}</p></div>{entry.state !== "deleted" && <button className="quiet" disabled={busy} onClick={() => { void open(entry.rootId); }}>{entry.confirmed ? "View plan" : "Resume"}</button>}</li>)}</ul>}</section>
+          <section className="library"><h2>Saved studies</h2>{entries.length === 0 ? <p>No saved studies yet.</p> : <ul>{entries.map(entry => <li key={entry.rootId}><div><strong>{entry.filename}</strong><p className="fine">{entry.state === "deleted" ? `Access revoked · cleanup ${entry.cleanupState}` : entry.confirmed ? (entry.courseGenerated ? "Plan confirmed · mini-course generated" : "Plan confirmed — course not generated") : `Manual draft · ${entry.state} · revision ${entry.revision}`}</p></div>{entry.state !== "deleted" && <button className="quiet" disabled={busy} onClick={() => { void open(entry.rootId); }}>{entry.confirmed ? "View plan" : "Resume"}</button>}</li>)}</ul>}</section>
           <ExportPanel busy={busy} onWork={act} />
           <PrivacyPanel />
         </>}

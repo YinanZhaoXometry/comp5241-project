@@ -246,6 +246,10 @@ registerLifecyclePort(aiSetupPort);
 // the course rows removes them in both root and personal scopes, and the
 // preview counts them for the deletion preview. The 'supplement' lifecycle
 // objects are removed with the root's object deletion like every kind.
+// Epic-2 S3 adds the content-item tracker rows (app.course_item_state):
+// owner-scoped explicit mark-done state that cascades from its course version,
+// so purge rides the course deletion in both scopes and the preview counts
+// the rows as their own honest category.
 const courseGenerationPort: LifecyclePort = {
   name: 'course-generation',
   label: 'Generated mini-courses',
@@ -264,6 +268,13 @@ const courseGenerationPort: LifecyclePort = {
         );
         categories.push({ key: 'supplements', label: 'Verified source supplements', count: supplements.rows[0].count });
       }
+      if (await tableReady(client, 'app.course_item_state', ['course_id'])) {
+        const tracker = await client.query<{ count: number }>(
+          'SELECT count(*)::int AS count FROM app.course_item_state WHERE owner_id=$1',
+          [scope.ownerId],
+        );
+        categories.push({ key: 'tracker-state', label: 'Study tracker state', count: tracker.rows[0].count });
+      }
       return categories;
     }
     if (!scope.rootIds.length) return [];
@@ -280,6 +291,13 @@ const courseGenerationPort: LifecyclePort = {
       );
       categories.push({ key: 'supplements', label: 'Verified source supplements', count: supplements.rows[0].count });
     }
+    if (await tableReady(client, 'app.course_item_state', ['course_id'])) {
+      const tracker = await client.query<{ count: number }>(
+        'SELECT count(*)::int AS count FROM app.course_item_state WHERE course_id IN (SELECT id FROM app.generated_course WHERE root_id=ANY($1::uuid[]))',
+        [scope.rootIds],
+      );
+      categories.push({ key: 'tracker-state', label: 'Study tracker state', count: tracker.rows[0].count });
+    }
     return categories;
   },
   async deny() {
@@ -294,7 +312,8 @@ const courseGenerationPort: LifecyclePort = {
     if (!scope.rootIds.length) return;
     if (await tableReady(client, 'app.generated_course', ['root_id']))
       await client.query('DELETE FROM app.generated_course WHERE root_id=ANY($1::uuid[])', [scope.rootIds]);
-    // supplement_request/course_supplement ride the course ON DELETE CASCADE.
+    // supplement_request/course_supplement and course_item_state ride the
+    // course ON DELETE CASCADE.
   },
 };
 

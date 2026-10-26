@@ -1,5 +1,5 @@
 import type { PgBoss } from "pg-boss";
-import { COURSE_QUEUE, SUPPLEMENT_QUEUE, courseJobSchema, courseContentSchema, supplementJobSchema, type CourseContent, type CourseGap, type CourseJob, type SupplementJob } from "../../contracts/courses";
+import { COURSE_QUEUE, SUPPLEMENT_QUEUE, courseJobSchema, courseContentV2Schema, storedCourseContent, supplementJobSchema, type CourseContentV2, type CourseGap, type CourseJob, type SupplementJob } from "../../contracts/courses";
 import { textCompletionRequestSchema, type TextCompletionPort } from "../../contracts/ai-provider";
 import type { BoundedFetchPort } from "../../adapters/source-fetch";
 import type { Plan } from "../../contracts/setup";
@@ -106,7 +106,7 @@ export async function runCourseGeneration(job: CourseJob, completion?: () => Tex
   // honestly without consuming the admission — retryable via a new command.
   const parsed = parseCourseOutput(outcome.text, { plan: claim.plan, sources: claim.sources });
   if (!parsed.ok) { await failRequest("invalid-output"); return; }
-  const content = courseContentSchema.parse(parsed.content);
+  const content = courseContentV2Schema.parse(parsed.content);
   // Phase 3 — settlement before persistence: the existing machinery re-checks
   // everything; only an ACCEPTED settle may store any effect. The single
   // transaction CLAIMS the pending→ready transition FIRST: a row that already
@@ -132,10 +132,15 @@ export async function runCourseGeneration(job: CourseJob, completion?: () => Tex
         seen.add(source.extractionId);
         sources.push({ position, extractionId: source.extractionId, filename: source.filename });
       }
-      for (const section of content.sections) {
-        if (seen.has(section.sourceRef.extractionId)) continue;
-        seen.add(section.sourceRef.extractionId);
-        sources.push({ position: sources.length, extractionId: section.sourceRef.extractionId, filename: section.sourceRef.filename });
+      for (const lesson of content.lessons) {
+        for (const section of lesson.sections) {
+          if (seen.has(section.sourceRef.extractionId)) continue;
+          seen.add(section.sourceRef.extractionId);
+          sources.push({ position: sources.length, extractionId: section.sourceRef.extractionId, filename: section.sourceRef.filename });
+        }
+      }
+      if (content.enrichment && !seen.has(content.enrichment.sourceRef.extractionId)) {
+        sources.push({ position: sources.length, extractionId: content.enrichment.sourceRef.extractionId, filename: content.enrichment.sourceRef.filename });
       }
       await repository.insertSources(client, job.requestId, sources);
       await repository.insertLedgerRow(client, job.ownerId, outcome.usage);
@@ -180,7 +185,7 @@ type SupplementClaim = {
   lessonTitle: string;
   gaps: CourseGap[];
   outcomes: string[];
-  sections: CourseContent["sections"];
+  sections: CourseContentV2["lessons"][number]["sections"];
 };
 
 export async function runSupplementFetch(
@@ -207,18 +212,21 @@ export async function runSupplementFetch(
       if (!(await lifecycle.objectsActive(client, identity.userId, objectIds))) return "fenced" as const;
       const course = await repository.readyCourseById(client, identity.userId, job.rootId, job.courseId);
       if (!course || !course.content || !course.object_id) return "fenced" as const;
-      const settledContent = courseContentSchema.safeParse(course.content);
-      if (!settledContent.success) return "fenced" as const;
+      const settledContent = storedCourseContent(course.content);
+      if (!settledContent) return "fenced" as const;
       const confirmed = await planRevision(client, course.plan_revision_id);
       if (!confirmed) return "fenced" as const;
       return {
         admissionId: request.admission_id,
         courseId: course.id,
         courseObjectId: course.object_id,
-        lessonTitle: settledContent.data.lessonTitle,
-        gaps: deriveGaps(confirmed.plan, settledContent.data),
+        // The supplement pass explains the course's lessons: the primary
+        // lesson title heads the prompt and the sections flatten in sequence
+        // order (a wrapped legacy course contributes its single list).
+        lessonTitle: settledContent.lessons[0].title,
+        gaps: deriveGaps(confirmed.plan, settledContent),
         outcomes: confirmed.plan.outcomes,
-        sections: settledContent.data.sections,
+        sections: settledContent.lessons.flatMap(lesson => lesson.sections),
       };
     });
   } catch (error) {

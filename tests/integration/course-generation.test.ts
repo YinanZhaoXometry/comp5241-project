@@ -4,11 +4,13 @@ import { provisionSynthetic } from '../../src/modules/identity-access/provision'
 import { getDisclosure, decide, withdraw } from '../../src/modules/processing-consent/service';
 import { createBatch, uploadSlot, acknowledge, getBatch } from '../../src/modules/materials-setup/batches';
 import { runExtraction } from '../../src/modules/materials-setup/extraction';
-import { savePlan, confirmPlan } from '../../src/modules/materials-setup/service';
+import { savePlan, confirmPlan, listStudies, getStudy } from '../../src/modules/materials-setup/service';
 import { removeRoot, personalRemoval } from '../../src/modules/lifecycle-platform/service';
-import { requestCourseGeneration, getCourse, submitRecall, requestSupplements, getSupplements } from '../../src/modules/course-generation/service';
+import { previewDerivatives } from '../../src/modules/lifecycle-platform/derivatives';
+import { requestCourseGeneration, getCourse, submitRecall, markItemDone, requestSupplements, getSupplements } from '../../src/modules/course-generation/service';
 import { runCourseGeneration, runSupplementFetch } from '../../src/modules/course-generation/worker';
 import { createFixtureFetchPort } from '../../src/modules/course-generation/supplements';
+import { courseContentV1Schema } from '../../src/contracts/courses';
 import type { BoundedFetchPort, FetchDenyReason } from '../../src/adapters/source-fetch';
 import { listExports } from '../../src/modules/setup-export/service';
 import { captureManifest } from '../../src/modules/setup-export/manifest';
@@ -18,10 +20,13 @@ import type { Command, Identity, Plan } from '../../src/contracts/setup';
 import type { CourseJob, SupplementJob } from '../../src/contracts/courses';
 import type { TextCompletionPort, TextCompletionResult } from '../../src/contracts/ai-provider';
 
-// LOCAL SYNTHETIC coverage of the epic-2 S1 tracer: confirmed plan → generated
-// course through the SAME admission/settle machinery, one restart-safe job,
-// versioned lineage, server-side answer withholding and epic-1 lifecycle
-// purge. The default processor is the local synthetic fixture — zero network.
+// LOCAL SYNTHETIC coverage of the epic-2 course tracer: confirmed plan →
+// generated course through the SAME admission/settle machinery, one
+// restart-safe job, versioned lineage, server-side answer withholding and
+// epic-1 lifecycle purge. Epic-2 S3 extends the coverage to the full-lesson
+// content v2, the legacy v1 serving wrap, explicit content-item tracking and
+// the content-free library/heading generated signal. The default processor is
+// the local synthetic fixture — zero network.
 
 const command = (revision = 0): Command => ({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: revision });
 
@@ -30,6 +35,12 @@ const plan: Plan = {
   outcomes: ['Explain arrange-act-assert', 'Explain test doubles', 'Judge coverage reports'],
   miniCourse: { title: 'Unit testing basics', lessons: ['What a unit test is'], practice: 'Write one test for a pure function', estimatedMinutes: 30 },
   missingExplanations: 'Sources do not cover mock frameworks.',
+};
+// Epic-2 S3: a full multi-lesson confirmed plan — the v2 generation must cover
+// every plan lesson in order.
+const multiPlan: Plan = {
+  ...plan,
+  miniCourse: { ...plan.miniCourse, lessons: ['What a unit test is', 'Test doubles in depth', 'Reading coverage honestly'] },
 };
 const textA = 'Unit testing checks a single unit of behavior. Arrange inputs, act, assert outcomes.';
 const textB = 'A test double stands in for a dependency. Coverage reports executed lines, not assertion quality.';
@@ -136,13 +147,21 @@ describe('epic-2 S1: confirmed-plan-to-generated-course tracer', () => {
     const course = state.course;
     expect(course.version).toBe(1);
     expect(course.superseded).toBe(false);
-    expect(course.lesson.title).toBe('What a unit test is'); // from the confirmed plan
-    expect(course.lesson.sections.length).toBeGreaterThanOrEqual(1);
-    expect(course.lesson.sections[0].source.filename).toBe('notes.txt');
-    expect(course.lesson.sections[0].source.locator.length).toBeGreaterThanOrEqual(1);
+    expect(course.supersededBy).toBeNull();
+    expect(course.lessons).toHaveLength(1);
+    expect(course.lessons[0].number).toBe(1);
+    expect(course.lessons[0].title).toBe('What a unit test is'); // from the confirmed plan
+    expect(course.lessons[0].sections.length).toBeGreaterThanOrEqual(1);
+    expect(course.lessons[0].sections[0].source.filename).toBe('notes.txt');
+    expect(course.lessons[0].sections[0].source.locator.length).toBeGreaterThanOrEqual(1);
     expect(course.objectives.map(objective => objective.text)).toEqual(plan.outcomes);
     expect(course.model).toContain('local-synthetic');
     expect(course.usage).toEqual(usage);
+    // Tracker items: the required lesson reading plus one labeled optional
+    // enrichment, none done yet.
+    expect(course.items.map(item => item.id)).toEqual(['lesson:1:reading', 'enrichment:1']);
+    expect(course.items.map(item => item.required)).toEqual([true, false]);
+    expect(course.items.every(item => !item.done && item.doneAt === null)).toBe(true);
     // Answer-withholding: no GET payload carries the recall answer — the
     // synthetic fixture teaches the recall's source from the remainder AFTER
     // its opening sentence (the canonical answer), so the answer string, the
@@ -153,7 +172,7 @@ describe('epic-2 S1: confirmed-plan-to-generated-course tracer', () => {
     expect(serialized).not.toContain('"answer"');
     expect(serialized).not.toContain('"rationale"');
     expect(Object.keys(course.recall).sort()).toEqual(['objective', 'prompt', 'source']);
-    for (const section of course.lesson.sections) {
+    for (const section of course.lessons[0].sections) {
       expect(Object.keys(section).sort()).toEqual(['source', 'text']);
       expect(section.text).not.toContain(canonicalAnswer);
     }
@@ -299,7 +318,8 @@ describe('epic-2 S1: confirmed-plan-to-generated-course tracer', () => {
     if (byId.state === 'ready') {
       expect(byId.course.version).toBe(1);
       expect(byId.course.superseded).toBe(true);
-      expect(byId.course.lesson.title).toBe('What a unit test is');
+      expect(byId.course.supersededBy).toBe(2);
+      expect(byId.course.lessons[0].title).toBe('What a unit test is');
     }
     const byVersion = await getCourse(a, study.rootId, '1');
     expect(byVersion.state === 'ready' && byVersion.course.courseId).toBe(rows.rows[0].id);
@@ -374,13 +394,13 @@ describe('epic-2 S1: confirmed-plan-to-generated-course tracer', () => {
     const study = await confirmedStudy(a);
     await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
     const job = await jobOf(a, study.rootId);
-    // A valid draft whose completion marks the row failed 'timeout' DURING the
-    // dispatch — after the worker's phase-1 pending check, before persist.
+    // A valid v2 draft whose completion marks the row failed 'timeout' DURING
+    // the dispatch — after the worker's phase-1 pending check, before persist.
     const validDraftJson = JSON.stringify({
-      sections: [
+      lessons: [{ sections: [
         { text: 'A unit test isolates one behavior and asserts its outcome.', sourcePosition: 0, locator: 'opening lines' },
         { text: 'A test double stands in for a real dependency during the test.', sourcePosition: 1, locator: 'opening lines' },
-      ],
+      ] }],
       objectiveIndexes: [0, 1, 2],
       recall: { objectiveIndex: 0, sourcePosition: 0, locator: 'opening lines', prompt: 'State the three parts of a unit test.', answer: 'Arrange, act, assert.', rationale: 'Stated in the opening of notes.txt.' },
     });
@@ -418,6 +438,207 @@ describe('epic-2 S1: confirmed-plan-to-generated-course tracer', () => {
     expect(skip?.reason).toContain('Deliberately excluded');
     expect(skip?.reason).toContain('recall');
     expect(manifest.entries.every(entry => entry.category !== 'generated-courses')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Epic-2 S3: the full-lesson player shell and content-item tracking —
+// multi-lesson content v2, explicit mark-done persistence (idempotent,
+// owner/course-version scoped, per-version state), legacy v1 serving through
+// the wrap, honest denials and the content-free library generated signal.
+// ---------------------------------------------------------------------------
+
+describe('epic-2 S3: player shell content v2 and content-item tracking', () => {
+  it('generates the confirmed plan\'s full lesson set in order with tracker items and one optional enrichment', async () => {
+    const a = await actor('course-multi-lesson');
+    await grant(a);
+    const study = await confirmedStudy(a, multiPlan);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const state = await getCourse(a, study.rootId);
+    expect(state.state).toBe('ready');
+    if (state.state !== 'ready') return;
+    const course = state.course;
+    expect(course.lessons.map(lesson => lesson.number)).toEqual([1, 2, 3]);
+    expect(course.lessons.map(lesson => lesson.title)).toEqual(multiPlan.miniCourse.lessons);
+    for (const lesson of course.lessons) expect(lesson.sections.length).toBeGreaterThanOrEqual(1);
+    expect(course.items.map(item => item.id)).toEqual(['lesson:1:reading', 'lesson:2:reading', 'lesson:3:reading', 'enrichment:1']);
+    expect(course.items.filter(item => item.required).map(item => item.lessonNumber)).toEqual([1, 2, 3]);
+    const optional = course.items.find(item => !item.required)!;
+    expect(optional.title).toBe('Optional enrichment reading');
+    expect(optional.text === null || optional.text.length > 0).toBe(true);
+    // No dwell/scroll/completion semantics ride the payload anywhere.
+    for (const banned of ['"dwell"', '"scroll"', '"visibility"', '"completion"', '"score"', '"credit"']) expect(JSON.stringify(state)).not.toContain(banned);
+    // The stored content is v2 with the recall answer only server-side.
+    const stored = await database().query<{ content: { contentVersion?: number } }>("SELECT content FROM app.generated_course WHERE root_id=$1 AND status='ready'", [study.rootId]);
+    expect(stored.rows[0].content.contentVersion).toBe(2);
+  });
+
+  it('persists explicit mark-done idempotently, joins it per version and denies honestly', async () => {
+    const a = await actor('tracker-happy');
+    await grant(a);
+    const study = await confirmedStudy(a, multiPlan);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const course = await courseRowOf(a, study.rootId);
+    const envelope = { ...command(study.revision), courseId: course.id, itemId: 'lesson:1:reading' };
+    const first = await markItemDone(a, study.rootId, envelope);
+    expect(first).toMatchObject({ rootId: study.rootId, operationId: course.id, itemId: 'lesson:1:reading', state: 'done' });
+    // Command replay: the identical envelope returns the identical receipt.
+    expect(await markItemDone(a, study.rootId, envelope)).toEqual(first);
+    // Exactly one row (UNIQUE(owner, course, item)).
+    const rows = await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.course_item_state WHERE course_id=$1', [course.id]);
+    expect(rows.rows[0].count).toBe(1);
+    // A second item joins beside the first.
+    await markItemDone(a, study.rootId, { ...command(study.revision), courseId: course.id, itemId: 'lesson:3:reading' });
+    const after = await getCourse(a, study.rootId);
+    expect(after.state).toBe('ready');
+    if (after.state === 'ready') {
+      const done = new Map(after.course.items.map(item => [item.id, item.done]));
+      expect(done.get('lesson:1:reading')).toBe(true);
+      expect(done.get('lesson:2:reading')).toBe(false);
+      expect(done.get('lesson:3:reading')).toBe(true);
+      expect(done.get('enrichment:1')).toBe(false); // optional: never tracked
+    }
+    // An unknown item id in this version is a stale-view conflict, not a write.
+    await expect(markItemDone(a, study.rootId, { ...command(study.revision), courseId: course.id, itemId: 'lesson:9:reading' })).rejects.toMatchObject({ code: 'CONFLICT' });
+    // The optional enrichment item is never markable.
+    await expect(markItemDone(a, study.rootId, { ...command(study.revision), courseId: course.id, itemId: 'enrichment:1' })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    // A foreign/unknown course id under the owner's own root conflicts.
+    await expect(markItemDone(a, study.rootId, { ...command(study.revision), courseId: crypto.randomUUID(), itemId: 'lesson:1:reading' })).rejects.toMatchObject({ code: 'CONFLICT' });
+    // A stale expectedRevision conflicts honestly.
+    await expect(markItemDone(a, study.rootId, { ...command(study.revision + 5), courseId: course.id, itemId: 'lesson:2:reading' })).rejects.toMatchObject({ code: 'CONFLICT' });
+    // Cross-owner: B on A's root is the standard no-leak denial.
+    const b = await actor('tracker-cross-owner');
+    await grant(b);
+    await expect(markItemDone(b, study.rootId, { ...command(study.revision), courseId: course.id, itemId: 'lesson:1:reading' })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    // Nothing but the two explicit rows exist.
+    const final = await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.course_item_state WHERE course_id=$1', [course.id]);
+    expect(final.rows[0].count).toBe(2);
+  });
+
+  it('keeps per-version tracker state: regeneration does not inherit marks and the studied version keeps its own', async () => {
+    const a = await actor('tracker-versions');
+    await grant(a);
+    const study = await confirmedStudy(a, multiPlan);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const v1 = await courseRowOf(a, study.rootId);
+    await markItemDone(a, study.rootId, { ...command(study.revision), courseId: v1.id, itemId: 'lesson:1:reading' });
+    // Re-confirm a changed plan and regenerate as version 2.
+    const saved = await savePlan(a, study.rootId, { ...command(study.revision), plan: { ...multiPlan, topic: 'Unit testing, deeper' }, selectionId: study.selection!.id, extractionId: study.extractionIds[0] });
+    const confirmed = await confirmPlan(a, study.rootId, { ...command(saved.revision), planRevisionId: saved.planRevisionId! });
+    await requestCourseGeneration(a, study.rootId, { ...command(confirmed.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const current = await getCourse(a, study.rootId);
+    expect(current.state).toBe('ready');
+    if (current.state === 'ready') {
+      expect(current.course.version).toBe(2);
+      expect(current.course.superseded).toBe(false);
+      expect(current.course.items.every(item => !item.done)).toBe(true); // fresh version, fresh tracker
+    }
+    // The prior version stays readable with its OWN tracker state.
+    const prior = await getCourse(a, study.rootId, v1.id);
+    expect(prior.state).toBe('ready');
+    if (prior.state === 'ready') {
+      expect(prior.course.version).toBe(1);
+      expect(prior.course.superseded).toBe(true);
+      expect(prior.course.supersededBy).toBe(2);
+      expect(prior.course.items.find(item => item.id === 'lesson:1:reading')?.done).toBe(true);
+    }
+    // And marking on the prior version never bleeds into the current one.
+    await markItemDone(a, study.rootId, { ...command(confirmed.revision), courseId: v1.id, itemId: 'lesson:2:reading' });
+    const again = await getCourse(a, study.rootId);
+    expect(again.state === 'ready' && again.course.items.every(item => !item.done)).toBe(true);
+    const priorAgain = await getCourse(a, study.rootId, v1.id);
+    expect(priorAgain.state === 'ready' && priorAgain.course.items.find(item => item.id === 'lesson:2:reading')?.done).toBe(true);
+  });
+
+  it('serves a stored pre-2.3 v1 course unchanged through the legacy wrap, without rewriting the row', async () => {
+    const a = await actor('course-legacy-v1');
+    await grant(a);
+    const study = await confirmedStudy(a);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const generated = await courseRowOf(a, study.rootId);
+    // Simulate a pre-2.3 stored row: replace the settled content with the
+    // legacy single-lesson document (exactly the v1 contract shape).
+    const legacyContent = {
+      lessonTitle: 'What a unit test is',
+      sections: [{ text: 'A unit test isolates one behavior and asserts its outcome.', sourceRef: { extractionId: study.extractionIds[0], filename: 'notes.txt', locator: 'opening lines' } }],
+      objectives: [{ index: 0, text: 'Explain arrange-act-assert' }],
+      recall: { objectiveIndex: 0, sourceRef: { extractionId: study.extractionIds[0], filename: 'notes.txt', locator: 'opening lines' }, prompt: 'State the three parts of a unit test.', answer: 'Arrange, act, assert.', rationale: 'Stated in the opening of notes.txt.' },
+    };
+    expect(courseContentV1Schema.safeParse(legacyContent).success).toBe(true);
+    await database().query('UPDATE app.generated_course SET content=$2 WHERE id=$1', [generated.id, legacyContent]);
+    const state = await getCourse(a, study.rootId);
+    expect(state.state).toBe('ready');
+    if (state.state === 'ready') {
+      expect(state.course.lessons).toHaveLength(1);
+      expect(state.course.lessons[0]).toMatchObject({ number: 1, title: 'What a unit test is' });
+      expect(state.course.lessons[0].sections[0].source.filename).toBe('notes.txt');
+      expect(state.course.items.map(item => item.id)).toEqual(['lesson:1:reading']); // no enrichment invented
+      expect(state.course.objectives).toEqual([{ index: 0, text: 'Explain arrange-act-assert' }]);
+    }
+    // The wrapped row is still markable through the same tracker machinery.
+    await markItemDone(a, study.rootId, { ...command(study.revision), courseId: generated.id, itemId: 'lesson:1:reading' });
+    const marked = await getCourse(a, study.rootId);
+    expect(marked.state === 'ready' && marked.course.items[0].done).toBe(true);
+    // No regeneration-on-read, no silent rewrite: the stored document keeps
+    // its exact legacy shape after serving.
+    const stored = await database().query<{ content: { lessonTitle?: string; contentVersion?: number } }>('SELECT content FROM app.generated_course WHERE id=$1', [generated.id]);
+    expect(stored.rows[0].content.lessonTitle).toBe('What a unit test is');
+    expect(stored.rows[0].content.contentVersion).toBeUndefined();
+  });
+
+  it('exposes the content-free course-generated signal for the library line and confirmed heading', async () => {
+    const a = await actor('course-generated-signal');
+    await grant(a);
+    const study = await confirmedStudy(a, multiPlan);
+    const before = await listStudies(a);
+    expect(before.find(entry => entry.rootId === study.rootId)?.courseGenerated).toBe(false);
+    expect((await getStudy(a, study.rootId)).courseGenerated).toBe(false);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const after = await listStudies(a);
+    expect(after.find(entry => entry.rootId === study.rootId)?.courseGenerated).toBe(true);
+    expect((await getStudy(a, study.rootId)).courseGenerated).toBe(true);
+    // A failed generation keeps the honest not-generated signal.
+    const failing = await actor('course-generated-signal-failed');
+    await grant(failing);
+    const failingStudy = await confirmedStudy(failing);
+    await requestCourseGeneration(failing, failingStudy.rootId, { ...command(failingStudy.revision) });
+    await runCourseGeneration(await jobOf(failing, failingStudy.rootId), garbagePort);
+    const failedList = await listStudies(failing);
+    expect(failedList.find(entry => entry.rootId === failingStudy.rootId)?.courseGenerated).toBe(false);
+  });
+
+  it('root deletion purges tracker rows with the course lineage; personal removal purges them with the owner', async () => {
+    const a = await actor('tracker-purge-root');
+    await grant(a);
+    const study = await confirmedStudy(a, multiPlan);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const course = await courseRowOf(a, study.rootId);
+    await markItemDone(a, study.rootId, { ...command(study.revision), courseId: course.id, itemId: 'lesson:1:reading' });
+    await markItemDone(a, study.rootId, { ...command(study.revision), courseId: course.id, itemId: 'lesson:2:reading' });
+    // The deletion preview counts the tracker rows as their own category.
+    const preview = await transaction(client => previewDerivatives(client, { ownerId: a.userId, rootIds: [study.rootId], objectIds: [], personal: false }));
+    expect(preview.find(category => category.key === 'tracker-state')).toMatchObject({ label: 'Study tracker state', count: 2 });
+    await removeRoot(a, study.rootId, { ...command(study.revision) });
+    const rows = await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.course_item_state WHERE course_id=$1', [course.id]);
+    expect(rows.rows[0].count).toBe(0);
+    // Personal removal purges tracker rows with the owner.
+    const b = await actor('tracker-purge-personal');
+    await grant(b);
+    const other = await confirmedStudy(b, multiPlan);
+    await requestCourseGeneration(b, other.rootId, { ...command(other.revision) });
+    await runCourseGeneration(await jobOf(b, other.rootId));
+    const otherCourse = await courseRowOf(b, other.rootId);
+    await markItemDone(b, other.rootId, { ...command(other.revision), courseId: otherCourse.id, itemId: 'lesson:1:reading' });
+    await personalRemoval(b, { ...command() });
+    const remaining = await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.course_item_state WHERE owner_id=$1', [b.userId]);
+    expect(remaining.rows[0].count).toBe(0);
   });
 });
 

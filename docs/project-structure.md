@@ -18,7 +18,10 @@ project-new/
 │   │   ├── page.tsx · study-app.tsx · plan-editor.tsx · materials.tsx    private tracer UI
 │   │   ├── privacy-panel.tsx · goal-stage.tsx · check-stage.tsx ·        S3/S4/S7 stage panels
 │   │   │   export-panel.tsx · danger-zone.tsx                            S8/S9 panels
-│   │   │   course-stage.tsx                                              epic-2 S1 generated-course stage
+│   │   │   course-stage.tsx                                              epic-2 S1–S3 player shell: numbered
+│   │   │                                                                 lesson sequence, sticky sidebar (<850px
+│   │   │                                                                 top nav), content-item tracker with explicit
+│   │   │                                                                 per-version mark-done + optional enrichment
 │   │   ├── shell/          product + instructor page shells (sidebar/topnav, honesty label)
 │   │   ├── screens/        static styled screen content (library, course, practice, …)
 │   │   └── library·course·practice·progress·recovery·roadmap·review·why·       static product pages
@@ -29,9 +32,11 @@ project-new/
 │   │   ├── batches.ts      batch admission/selection contracts
 │   │   ├── consent.ts · preferences.ts · diagnostic.ts · export.ts   S3/S4/S7/S8 contracts
 │   │   ├── ai-provider.ts  provider-neutral text-completion port (dormant)
-│   │   └── courses.ts      epic-2 S1/S2 generated-course + supplement contracts
-│   │                         (content/job/serving shapes; recall answer exists only
-│   │                         server-side + feedback; verified supplement records)
+│   │   └── courses.ts      epic-2 S1/S2/S3 generated-course + supplement +
+│   │                         player contracts (content v2 full-lesson set with
+│   │                         tracker items, legacy v1 union wrap, mark-done
+│   │                         command; recall answer exists only server-side +
+│   │                         feedback; verified supplement records)
 │   ├── modules/            shared web/worker services; never import app/worker/next
 │   │   ├── identity-access/    auth, sessions, role fences, synthetic provisioning
 │   │   ├── materials-setup/    uploads, extraction, batches, plans, handoff (queries/repository/service)
@@ -39,10 +44,14 @@ project-new/
 │   │   ├── setup-preferences/  resumable goal/topic/preferences with pinned revision (S4)
 │   │   ├── setup-diagnostic/   synthetic check bundles, evidence, skip path (S7 infrastructure)
 │   │   ├── setup-export/       consistent manifest snapshot + tar.gz artifacts (S8)
-│   │   ├── course-generation/  epic-2 S1 tracer: confirmed-plan → generated course
-│   │   │                       (handoff-consuming service, restart-safe worker running
-│   │   │                       the local synthetic fixture behind TextCompletionPort,
-│   │   │                       versioned course/objective/source lineage, recall feedback);
+│   │   ├── course-generation/  epic-2 S1–S3 tracer: confirmed-plan → generated
+│   │   │                       course (handoff-consuming service, restart-safe worker
+│   │   │                       running the local synthetic fixture behind
+│   │   │                       TextCompletionPort, versioned course/objective/source
+│   │   │                       lineage, recall feedback); S3 player shell serving —
+│   │   │                       content v2 full-lesson set, legacy v1 wrap, explicit
+│   │   │                       per-version content-item mark-done (017 tracker table),
+│   │   │                       content-free generated signal for library/plan copy;
 │   │   │                       S2 supplements.ts — plan-gap derivation, strict proposal
 │   │   │                       parsing, deterministic passage verification/conflict and
 │   │   │                       the zero-egress fixture fetch port (see

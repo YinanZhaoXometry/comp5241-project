@@ -72,7 +72,7 @@ export function PlanEditor({ study, busy, onBusy, onFailure, onDirty, onSaved, d
       setStatus(`Latest saved revision ${latest.revision} loaded. Your unsaved edits are retained; review and save to reapply them.`);
     } catch (error) { onFailure(error); } finally { onBusy(false); }
   }
-  return <section className="panel"><p className="eyebrow">MANUAL PLAN · AI SUGGESTIONS NEVER AUTO-CONFIRM</p><h2 ref={heading} tabIndex={-1}>{editing ? "02–03 · Shape your plan" : "Plan confirmed — course not generated"}</h2><output>{status}</output>
+  return <section className="panel"><p className="eyebrow">MANUAL PLAN · AI SUGGESTIONS NEVER AUTO-CONFIRM</p><h2 ref={heading} tabIndex={-1}>{editing ? "02–03 · Shape your plan" : study.courseGenerated ? "Plan confirmed — mini-course generated" : "Plan confirmed — course not generated"}</h2><output>{status}</output>
     {!study.selection && <output>Sources changed or are not acknowledged. This plan needs updated sources and new confirmation before it can be saved or handed off. Inspect previews and acknowledge the current source selection; retained edits are not saved.</output>}
     {editing ? <form ref={form} onSubmit={event => { void save(event); }}><fieldset disabled={busy || !study.selection} className="plan-fields"><legend className="fine">Review and save your Manual revision before confirmation</legend>
       <label htmlFor="topic">Topic</label><input id="topic" name="topic" required maxLength={160} value={plan.topic} onChange={event => change({ ...plan, topic: event.target.value })} />

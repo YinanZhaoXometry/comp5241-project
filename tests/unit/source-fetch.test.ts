@@ -198,7 +198,9 @@ describe("zero-egress fixture fetch port (the default of this build)", () => {
     const first = await port.fetch(url);
     const second = await port.fetch(url);
     expect(first).toMatchObject({ ok: true, origin: "docs.example.org", status: 200 });
-    expect(second).toEqual(first); // pure function of the URL
+    // Pure function of the URL — retrievedAt is a per-fetch timestamp, so the
+    // two results must agree on everything except it.
+    expect(second).toEqual({ ...first, retrievedAt: second.retrievedAt });
     if (!first.ok) return;
     const claimed = fixtureClaimedPassageFor(new URL(url));
     expect(fixtureFetchedContentFor(new URL(url))).toContain(claimed);

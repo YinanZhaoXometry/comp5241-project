@@ -1,7 +1,9 @@
 import { commandSchema, uuid, type Identity, type Receipt } from "../../contracts/setup";
 import {
-  courseContentSchema,
+  courseTrackerItems,
+  markItemDoneSchema,
   requestSupplementsSchema,
+  storedCourseContent,
   submitRecallSchema,
   type CourseState,
   type GapResolution,
@@ -107,12 +109,15 @@ export async function requestCourseGeneration(identity: Identity, rawId: string,
 }
 
 // Owner-scoped study state. The recall answer is never part of any state: the
-// ready view carries the lesson, per-section source locations, objectives and
-// the recall PROMPT only. objectIds carries the fences the route re-checks
-// per chunk of the protected response. An optional `requested` selector (a
-// course id uuid or a per-root version number) resolves that specific READY
-// version — the explicit read path that keeps prior versions readable after a
-// regeneration supersedes them; lineage fencing rides the same objectIds.
+// ready view carries the numbered lesson sequence, per-section source
+// locations, tracker items (required readings with this owner's explicit done
+// state for THIS course version; optional enrichment labeled) and objectives.
+// objectIds carries the fences the route re-checks per chunk of the protected
+// response. An optional `requested` selector (a course id uuid or a per-root
+// version number) resolves that specific READY version — the explicit read
+// path that keeps prior versions readable after a regeneration supersedes
+// them; lineage fencing rides the same objectIds. Stored pre-2.3 v1 courses
+// serve unchanged through the legacy wrap (one serving path, no fork).
 export async function getCourse(identity: Identity, rawId: string, requested?: string): Promise<CourseState & { objectIds: string[] }> {
   const rootId = parse(uuid, rawId);
   if (requested !== undefined && !uuid.safeParse(requested).success && !/^[1-9]\d*$/u.test(requested)) fail("INVALID_INPUT");
@@ -147,10 +152,18 @@ export async function getCourse(identity: Identity, rawId: string, requested?: s
     if (row.status === "pending") return { state: "pending" as const, rootId, revision, requestId: row.id, objectIds: objectIdsOf(row) };
     if (row.status === "failed") return { state: "failed" as const, rootId, revision, requestId: row.id, failureCode: row.failure_code, objectIds: objectIdsOf(row) };
     if (!row.content || !row.settled_at) fail("RETRYABLE_FAILURE");
-    const settledContent = courseContentSchema.safeParse(row.content);
-    if (!settledContent.success) fail("RETRYABLE_FAILURE");
-    const content = settledContent.data;
+    const content = storedCourseContent(row.content);
+    if (!content) fail("RETRYABLE_FAILURE");
     const recallObjective = content.objectives.find(objective => objective.index === content.recall.objectiveIndex)?.text ?? "";
+    // Tracker join: this owner's explicit done rows for THIS course version —
+    // prior versions keep their own state, superseded learners stay put.
+    const superseded = await repository.newerReadyExists(client, rootId, row.id);
+    const done = new Map((await repository.itemStates(client, identity.userId, row.id)).map(state => [state.item_id, state.done_at]));
+    const items = courseTrackerItems(content).map(serving => ({
+      ...serving,
+      done: done.has(serving.id),
+      doneAt: done.get(serving.id)?.toISOString() ?? null,
+    }));
     return {
       state: "ready" as const,
       rootId,
@@ -162,16 +175,19 @@ export async function getCourse(identity: Identity, rawId: string, requested?: s
         planRevisionId: row.plan_revision_id,
         selectionId: row.selection_id,
         version: row.version ?? 1,
-        superseded: await repository.newerReadyExists(client, rootId, row.id),
+        superseded,
+        supersededBy: superseded ? await repository.latestReadyVersion(client, rootId) : null,
         historical,
         model: row.model ?? "",
         usage: row.usage,
         createdAt: row.created_at.toISOString(),
         settledAt: row.settled_at.toISOString(),
-        lesson: {
-          title: content.lessonTitle,
-          sections: content.sections.map(section => ({ text: section.text, source: { filename: section.sourceRef.filename, locator: section.sourceRef.locator } })),
-        },
+        lessons: content.lessons.map((lesson, index) => ({
+          number: index + 1,
+          title: lesson.title,
+          sections: lesson.sections.map(section => ({ text: section.text, source: { filename: section.sourceRef.filename, locator: section.sourceRef.locator } })),
+        })),
+        items,
         objectives: content.objectives,
         recall: {
           prompt: content.recall.prompt,
@@ -180,6 +196,48 @@ export async function getCourse(identity: Identity, rawId: string, requested?: s
         },
       },
     };
+  });
+}
+
+// Epic-2 S3 explicit content-item mark-done: the sole tracker write. Owner-
+// scoped and course-version-scoped with the standard command envelope (a
+// replayed command returns the same receipt; the UNIQUE row makes a duplicate
+// delivery a no-op). Only REQUIRED items are markable — optional enrichment is
+// labeled and never tracked — and there is deliberately no un-mark verb and no
+// completion, score or credit effect anywhere: done is an explicit learner
+// action, nothing more.
+export async function markItemDone(identity: Identity, rawId: string, raw: unknown): Promise<Receipt & { itemId: string }> {
+  const rootId = parse(uuid, rawId);
+  const command = parse(markItemDoneSchema, raw);
+  return transaction(async client => {
+    await authorize(client, identity);
+    await lifecycle.scopedRoot(client, identity.userId, rootId);
+    const hash = requestHash({ rootId, command });
+    const repeated = await lifecycle.replay(client, identity.userId, command, "mark-item-done", hash);
+    if (repeated) return repeated as Receipt & { itemId: string };
+    const item = await batchRow(client, rootId);
+    if (item.revision !== command.expectedRevision) fail("CONFLICT");
+    // Any READY course version of this owner and root resolves — prior
+    // versions keep their own tracker state; a foreign/unknown id is the same
+    // actionable state as the recall path (nothing studyable there).
+    const course = await repository.readyCourseById(client, identity.userId, rootId, command.courseId);
+    if (!course?.content) fail("CONFLICT");
+    await lifecycle.assertObjects(client, identity.userId, [course.object_id, ...(course.object_ids ?? [])].filter((id): id is string => !!id));
+    const content = storedCourseContent(course.content);
+    if (!content) fail("RETRYABLE_FAILURE");
+    const target = courseTrackerItems(content).find(candidate => candidate.id === command.itemId);
+    if (!target) fail("CONFLICT"); // the item is not part of this course version — re-read the course
+    if (!target.required) fail("INVALID_INPUT"); // optional enrichment is labeled, never tracked
+    await repository.insertItemState(client, { ownerId: identity.userId, courseId: course.id, itemId: command.itemId });
+    const recorded: Receipt & { itemId: string } = {
+      rootId,
+      operationId: course.id,
+      revision: item.revision,
+      itemId: command.itemId,
+      state: "done",
+    };
+    await lifecycle.receipt(client, identity, command, "mark-item-done", hash, recorded);
+    return recorded;
   });
 }
 
@@ -205,17 +263,16 @@ export async function submitRecall(identity: Identity, rawId: string, raw: unkno
       const prior = repeated as { operationId?: string };
       const course = prior.operationId ? await repository.readyCourseById(client, identity.userId, rootId, prior.operationId) : null;
       if (course?.content) {
-        const settled = courseContentSchema.safeParse(course.content);
-        if (settled.success) return buildRecallFeedback({ rootId, revision: item.revision, courseId: course.id, content: settled.data, attempted: command.attempted });
+        const settled = storedCourseContent(course.content);
+        if (settled) return buildRecallFeedback({ rootId, revision: item.revision, courseId: course.id, content: settled, attempted: command.attempted });
       }
       return repeated as unknown as RecallFeedback; // course no longer readable: reduced shape only
     }
     const course = await repository.latestReadyCourse(client, identity.userId, rootId);
     if (!course?.content) fail("CONFLICT"); // nothing studyable yet — confirm and generate first
     await lifecycle.assertObjects(client, identity.userId, [course.object_id, ...(course.object_ids ?? [])].filter((id): id is string => !!id));
-    const settledContent = courseContentSchema.safeParse(course.content);
-    if (!settledContent.success) fail("RETRYABLE_FAILURE");
-    const content = settledContent.data;
+    const content = storedCourseContent(course.content);
+    if (!content) fail("RETRYABLE_FAILURE");
     const feedback = buildRecallFeedback({ rootId, revision: item.revision, courseId: course.id, content, attempted: command.attempted });
     const recorded: Receipt & { outcome: RecallFeedback["outcome"] } = { rootId, operationId: course.id, revision: item.revision, outcome: feedback.outcome };
     await lifecycle.receipt(client, identity, command, "submit-recall", hash, recorded);
@@ -333,12 +390,12 @@ export async function getSupplements(identity: Identity, rawId: string, requeste
       row = current ?? await repository.latestReadyCourse(client, identity.userId, rootId);
     }
     if (!row || !row.content) fail("CONFLICT"); // nothing studyable yet — confirm and generate first
-    const settledContent = courseContentSchema.safeParse(row.content);
-    if (!settledContent.success) fail("RETRYABLE_FAILURE");
+    const settledContent = storedCourseContent(row.content);
+    if (!settledContent) fail("RETRYABLE_FAILURE");
     const confirmed = await planRevision(client, row.plan_revision_id);
     if (!confirmed) fail("CONFLICT");
     const declaredCount = declaredGapCount(confirmed.plan);
-    const gaps = deriveGaps(confirmed.plan, settledContent.data);
+    const gaps = deriveGaps(confirmed.plan, settledContent);
     const request = await repository.latestSupplementRequest(client, identity.userId, row.id);
     const objectIds = [
       ...(request?.object_id ? [request.object_id] : []),

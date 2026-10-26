@@ -2,7 +2,7 @@ import type { PoolClient } from "pg";
 import type { AdmissionOutcome } from "../../contracts/consent";
 import type { CourseContent, CourseUsage, SupplementOutcome } from "../../contracts/courses";
 
-// Module-owned rows for the epic-2 S1 course tracer. Write ownership: only
+// Module-owned rows for the epic-2 course tracer. Write ownership: only
 // this module writes app.generated_course, app.course_objective and
 // app.course_source. The content-free accounting ledger app.ai_dispatch_ledger
 // is deliberately SHARED budget infrastructure (012 created it for all AI
@@ -12,6 +12,11 @@ import type { CourseContent, CourseUsage, SupplementOutcome } from "../../contra
 // Epic-2 S2 adds app.supplement_request and app.course_supplement under the
 // same ownership: one tracked supplement pass per command and its verified
 // (or honestly unsupported) rows, cascading from the course they explain.
+// Epic-2 S3 adds app.course_item_state: owner-scoped, course-version-scoped
+// explicit mark-done rows (migration 017). Done is ONLY an explicit learner
+// action — the table records no dwell, scroll, visibility or score columns,
+// and the ON DELETE CASCADE from generated_course keeps root purge and
+// whole-personal removal deleting tracker rows with the course lineage.
 
 export type GeneratedCourseRow = {
   id: string;
@@ -91,6 +96,53 @@ export async function newerReadyExists(client: PoolClient, rootId: string, cours
     [rootId, courseId],
   );
   return result.rows[0].found;
+}
+// Newest ready per-root version number — what an explicit switch moves to.
+export async function latestReadyVersion(client: PoolClient, rootId: string): Promise<number | null> {
+  const result = await client.query<{ version: number }>(
+    "SELECT version FROM app.generated_course WHERE root_id=$1 AND status='ready' ORDER BY created_at DESC, id DESC LIMIT 1",
+    [rootId],
+  );
+  return result.rows[0]?.version ?? null;
+}
+// Content-free generated signal for the library/plan surfaces: does this root
+// own any READY course version? Boolean only — no course data crosses.
+export async function hasReadyCourse(client: PoolClient, rootId: string): Promise<boolean> {
+  const result = await client.query<{ found: boolean }>(
+    "SELECT EXISTS(SELECT 1 FROM app.generated_course WHERE root_id=$1 AND status='ready') AS found",
+    [rootId],
+  );
+  return result.rows[0].found;
+}
+// Batch form of the same content-free signal for list views: the subset of the
+// given roots that own at least one READY course version.
+export async function hasReadyCourses(client: PoolClient, rootIds: string[]): Promise<Set<string>> {
+  if (!rootIds.length) return new Set();
+  const result = await client.query<{ root_id: string }>(
+    "SELECT DISTINCT root_id FROM app.generated_course WHERE root_id=ANY($1::uuid[]) AND status='ready'",
+    [rootIds],
+  );
+  return new Set(result.rows.map(row => row.root_id));
+}
+// ---------------------------------------------------------------------------
+// Epic-2 S3 tracker rows. One row per (owner, course version, item id); the
+// UNIQUE constraint makes a replayed/duplicate delivery a structural no-op.
+// ---------------------------------------------------------------------------
+export async function insertItemState(
+  client: PoolClient,
+  row: { ownerId: string; courseId: string; itemId: string },
+) {
+  await client.query(
+    "INSERT INTO app.course_item_state(id,owner_id,course_id,item_id) VALUES($1,$2,$3,$4) ON CONFLICT (owner_id,course_id,item_id) DO NOTHING",
+    [crypto.randomUUID(), row.ownerId, row.courseId, row.itemId],
+  );
+}
+export async function itemStates(client: PoolClient, ownerId: string, courseId: string): Promise<Array<{ item_id: string; done_at: Date }>> {
+  const result = await client.query<{ item_id: string; done_at: Date }>(
+    'SELECT item_id,done_at FROM app.course_item_state WHERE owner_id=$1 AND course_id=$2',
+    [ownerId, courseId],
+  );
+  return result.rows;
 }
 // Terminal, single-direction transitions from pending; a settled row never
 // changes again. claimReady runs FIRST inside the persist transaction and
