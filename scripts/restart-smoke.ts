@@ -32,6 +32,11 @@ async function start() {
   await launch(["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1"], /Ready in/u);
   await launch(["node_modules/tsx/dist/cli.mjs", "src/worker/main.ts"], /worker-ready/u);
 }
+// Web only: the course beat queues its generation job with NO worker running,
+// so the restart genuinely recovers a persisted pending job.
+async function startWeb() {
+  await launch(["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1"], /Ready in/u);
+}
 async function stop() {
   const running = processes; processes = [];
   await Promise.all(running.map(child => new Promise<void>(resolve => {
@@ -42,6 +47,7 @@ async function stop() {
 }
 function command(expectedRevision = 0) { return { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision }; }
 const plan: Plan = { topic: "Restart persistence", goal: "Apply a skill", clarification: "", outcomes: ["Retain a confirmed plan"], miniCourse: { title: "Persistent tests", lessons: ["Restart safely"], practice: "Check exact persisted data", estimatedMinutes: 10 }, missingExplanations: "Coverage is unchecked; no AI generation." };
+const coursePlan: Plan = { topic: "Restart course", goal: "Understand a topic", clarification: "", outcomes: ["Recall the restart source"], miniCourse: { title: "Restart course", lessons: ["One restart lesson"], practice: "Submit the recall item", estimatedMinutes: 10 }, missingExplanations: "Coverage is unchecked." };
 try {
   await start();
   for (const [context, account] of [[client, owner], [denied, other]] as const) {
@@ -90,6 +96,53 @@ try {
   assert.deepEqual(await (await client.get(`/api/v1/studies/${pending.slots[0].rootId}/material`)).body(), bytes);
   const recovered = await (await client.get(`/api/v1/studies/${batch.rootId}`)).json();
   assert.equal((await client.post(`/api/v1/studies/${batch.rootId}/removal`, { headers: { Origin: origin }, data: command(recovered.revision) })).status(), 200);
-  for (const secret of [text, owner.email, owner.password, other.email, other.password]) assert.ok(!output.join("").includes(secret), "Private data reached process output");
-  console.log("Restart smoke passed: exact plan/session persisted, B denied, queued PDF recovered with the same original and one extraction, duplicate receipt replayed, roots removed; process output content-free.");
+  // Epic-2 S1 beat: confirm a fresh study, grant processing consent, then
+  // queue the course generation while NO worker runs. A full web+worker
+  // restart must complete the persisted job exactly once, replay the identical
+  // command receipt and leave exactly one ready course.
+  const courseText = "Synthetic course restart source. The first sentence is the recall answer.";
+  const courseUploaded = await client.post("/api/v1/studies", { headers: { Origin: origin, "Content-Type": "text/plain", "x-filename": "restart-course.txt", "x-schema-version": "1", "x-expected-revision": "0", "idempotency-key": crypto.randomUUID() }, data: courseText });
+  assert.equal(courseUploaded.status(), 202);
+  const courseReceipt = await courseUploaded.json() as Receipt;
+  const coursePath = `/api/v1/studies/${courseReceipt.rootId}`;
+  await expect.poll(async () => (await (await client.get(coursePath)).json()).operation.state, { timeout: 20000 }).toBe("preview");
+  const coursePreview = await (await client.get(coursePath)).json();
+  const courseAck = await client.post(`/api/v1/batches/${courseReceipt.rootId}/selection`, { headers: { Origin: origin }, data: { ...command(coursePreview.revision), selected: [{ slotId: coursePreview.slots[0].slotId, extractionId: coursePreview.extractionId, acknowledged: true }], excluded: [] } });
+  assert.equal(courseAck.status(), 200);
+  const courseSelection = await courseAck.json() as Receipt;
+  const courseSaved = await client.post(`${coursePath}/plan`, { headers: { Origin: origin }, data: { ...command(courseSelection.revision), selectionId: courseSelection.selectionId, extractionId: coursePreview.extractionId, plan: coursePlan } });
+  assert.equal(courseSaved.status(), 200);
+  const courseDraft = await courseSaved.json() as Receipt;
+  const courseConfirmed = await client.post(`${coursePath}/confirmation`, { headers: { Origin: origin }, data: { ...command(courseDraft.revision), planRevisionId: courseDraft.planRevisionId } });
+  assert.equal(courseConfirmed.status(), 200);
+  const confirmedRevision = (await courseConfirmed.json() as Receipt).revision;
+  const disclosure = await (await client.get("/api/v1/processing")).json() as { configuration: { version: number } };
+  assert.equal((await client.post("/api/v1/processing/decision", { headers: { Origin: origin }, data: { ...command(), configurationVersion: disclosure.configuration.version, decision: "granted", acknowledgedTerms: true } })).status(), 200);
+  await stop();
+  await startWeb();
+  const courseCommand = command(confirmedRevision);
+  const generated = await client.post(`${coursePath}/course`, { headers: { Origin: origin }, data: courseCommand });
+  assert.equal(generated.status(), 202);
+  const generation = await generated.json() as Receipt;
+  assert.equal(generation.state, "pending");
+  const beforeRestart = await (await client.get(`${coursePath}/course`)).json() as { state: string };
+  assert.equal(beforeRestart.state, "pending");
+  await stop(); await start();
+  await expect.poll(async () => (await (await client.get(`${coursePath}/course`)).json() as { state: string }).state, { timeout: 120000 }).toBe("ready");
+  const replayed = await (await client.post(`${coursePath}/course`, { headers: { Origin: origin }, data: courseCommand })).json();
+  assert.deepEqual(replayed, generation); // identical receipt, no second effect
+  const readyCourses = (await database().query("SELECT id,version,status FROM app.generated_course WHERE root_id=$1 AND status='ready'", [courseReceipt.rootId])).rows;
+  assert.equal(readyCourses.length, 1);
+  assert.equal(readyCourses[0].version, 1);
+  assert.equal((await database().query("SELECT count(*)::int AS count FROM app.lifecycle_object WHERE root_id=$1 AND kind='course'", [courseReceipt.rootId])).rows[0].count, 1);
+  const ledgerRow = (await database().query("SELECT input_tokens,output_tokens,total_tokens FROM app.ai_dispatch_ledger WHERE owner_id=$1", [owner.userId])).rows;
+  assert.equal(ledgerRow.length, 1);
+  assert.deepEqual(ledgerRow[0], { input_tokens: 0, output_tokens: 0, total_tokens: 0 });
+  const recall = await client.post(`${coursePath}/course/recall`, { headers: { Origin: origin }, data: { ...command(confirmedRevision), attempted: "Synthetic course restart source." } });
+  assert.equal(recall.status(), 200);
+  assert.equal(((await recall.json()) as { outcome: string }).outcome, "correct");
+  const courseStudy = await (await client.get(coursePath)).json();
+  assert.equal((await client.post(`${coursePath}/removal`, { headers: { Origin: origin }, data: command(courseStudy.revision) })).status(), 200);
+  for (const secret of [text, courseText, owner.email, owner.password, other.email, other.password]) assert.ok(!output.join("").includes(secret), "Private data reached process output");
+  console.log("Restart smoke passed: exact plan/session persisted, B denied, queued PDF recovered with the same original and one extraction, duplicate receipt replayed, course generation queued without a worker completed exactly once across restart with an identical replayed receipt and one ready course, recall answer released only on submission, roots removed; process output content-free.");
 } finally { await stop(); await client.dispose(); await denied.dispose(); await closeDatabase(); }

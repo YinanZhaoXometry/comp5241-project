@@ -54,9 +54,11 @@ export async function listExports(identity: { userId: string; sessionId: string 
               ? 'diagnostic_evidence'
               : category === 'ai-drafts'
                 ? 'ai_draft_request'
-                : null;
+                : category === 'generated-courses'
+                  ? 'generated_course'
+                  : null;
       const present = table ? await tablePresent(client, table) : false;
-      if (category === 'ai-drafts') {
+      if (category === 'ai-drafts' || category === 'generated-courses') {
         categories.push(
           present
             ? { category, label, count: null, available: true, note: 'Present; deliberately excluded from the artifact — see the manifest skip note' }

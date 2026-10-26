@@ -144,6 +144,20 @@ export async function captureManifest(
   } else {
     skipped.push({ category: 'ai-drafts', reason: 'Table app.ai_draft_request is not present in this deployment' });
   }
+  // Epic-2 S1: generated mini-courses are deliberately excluded from the
+  // artifact in this entry — the served course carries a withheld recall
+  // answer that must never ride along in an export, and whether generated
+  // course content itself is included is entry 8's scope decision. The skip
+  // line records the exclusion honestly.
+  if (await tableColumns(client, 'generated_course')) {
+    skipped.push({
+      category: 'generated-courses',
+      reason:
+        'Deliberately excluded: generated mini-courses carry a server-side withheld recall answer that must not be exported, and include-vs-exclude of generated course content is deferred to the lifecycle story (entry 8)',
+    });
+  } else {
+    skipped.push({ category: 'generated-courses', reason: 'Table app.generated_course is not present in this deployment' });
+  }
 
   return {
     capturedAt,

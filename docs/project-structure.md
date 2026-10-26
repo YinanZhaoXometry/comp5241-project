@@ -18,6 +18,7 @@ project-new/
 │   │   ├── page.tsx · study-app.tsx · plan-editor.tsx · materials.tsx    private tracer UI
 │   │   ├── privacy-panel.tsx · goal-stage.tsx · check-stage.tsx ·        S3/S4/S7 stage panels
 │   │   │   export-panel.tsx · danger-zone.tsx                            S8/S9 panels
+│   │   │   course-stage.tsx                                              epic-2 S1 generated-course stage
 │   │   ├── shell/          product + instructor page shells (sidebar/topnav, honesty label)
 │   │   ├── screens/        static styled screen content (library, course, practice, …)
 │   │   └── library·course·practice·progress·recovery·roadmap·review·why·       static product pages
@@ -27,7 +28,9 @@ project-new/
 │   │   ├── documents.ts    bounded document/extraction contracts
 │   │   ├── batches.ts      batch admission/selection contracts
 │   │   ├── consent.ts · preferences.ts · diagnostic.ts · export.ts   S3/S4/S7/S8 contracts
-│   │   └── ai-provider.ts  provider-neutral text-completion port (dormant)
+│   │   ├── ai-provider.ts  provider-neutral text-completion port (dormant)
+│   │   └── courses.ts      epic-2 S1 generated-course contracts (content/job/serving
+│   │                         shapes; recall answer exists only server-side + feedback)
 │   ├── modules/            shared web/worker services; never import app/worker/next
 │   │   ├── identity-access/    auth, sessions, role fences, synthetic provisioning
 │   │   ├── materials-setup/    uploads, extraction, batches, plans, handoff (queries/repository/service)
@@ -35,6 +38,10 @@ project-new/
 │   │   ├── setup-preferences/  resumable goal/topic/preferences with pinned revision (S4)
 │   │   ├── setup-diagnostic/   synthetic check bundles, evidence, skip path (S7 infrastructure)
 │   │   ├── setup-export/       consistent manifest snapshot + tar.gz artifacts (S8)
+│   │   ├── course-generation/  epic-2 S1 tracer: confirmed-plan → generated course
+│   │   │                       (handoff-consuming service, restart-safe worker running
+│   │   │                       the local synthetic fixture behind TextCompletionPort,
+│   │   │                       versioned course/objective/source lineage, recall feedback)
 │   │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
 │   │                           derivative ports, dependencies preview (S9),
 │   │                           retention registry/scheduler + archive contract (S10)
@@ -71,10 +78,10 @@ project-new/
 │   ├── unit/               contracts, documents, adapter transport (vitest)
 │   ├── integration/        real PostgreSQL: tracer, batches, documents, migrations,
 │   │                       parser stack, consent, preferences, handoff, diagnostic,
-│   │                       export, lifecycle, retention, restore
+│   │                       export, lifecycle, retention, restore, course-generation
 │   ├── browser/            Playwright: tracer, pages (static product pages), batches,
-│   │                       consent, preferences, handoff, check, export, lifecycle —
-│   │                       production build
+│   │                       consent, preferences, handoff, check, export, lifecycle,
+│   │                       course — production build
 │   └── fixtures/           original synthetic documents only
 ├── docs/                   guides: ai-provider-adapter, bounded-document-extraction,
 │                           backup-restore, lint-coverage, project-structure (this file)

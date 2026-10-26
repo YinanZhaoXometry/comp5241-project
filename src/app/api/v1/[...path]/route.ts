@@ -11,6 +11,7 @@ import { getPreferences, savePreferences } from "../../../../modules/setup-prefe
 import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finishCheck, flagUnclear } from "../../../../modules/setup-diagnostic/service";
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
+import { requestCourseGeneration, getCourse, submitRecall } from "../../../../modules/course-generation/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -75,6 +76,9 @@ async function handle(request: Request, context: Context) {
       const result = await getOperation(identity, path[1]);
       return protectedResponse(identity, result.rootId, result, request.signal);
     }
+    if (path[0] === "studies" && path[2] === "course" && path[3] === "recall" && path.length === 4 && request.method === "POST") {
+      return Response.json(await submitRecall(identity, path[1], await jsonBody(request)), { headers: privateHeaders });
+    }
     if (path[0] === "studies" && path[2] === "check" && path.length >= 3 && path.length <= 5) {
       const rootId = path[1];
       if (path.length === 3 && request.method === "GET") return protectedResponse(identity, rootId, await getCheckState(identity, rootId), request.signal);
@@ -116,6 +120,13 @@ async function handle(request: Request, context: Context) {
           const check = await getAiDraft(identity, rootId, "check");
           return protectedResponse(identity, rootId, check, request.signal, false, check.objectIds);
         }
+        if (action === "course") {
+          // Optional ?course=<uuid|version> resolves one specific ready
+          // version (the prior-version read path); absent, the current view.
+          const requested = new URL(request.url).searchParams.get("course") ?? undefined;
+          const course = await getCourse(identity, rootId, requested);
+          return protectedResponse(identity, rootId, course, request.signal, false, course.objectIds);
+        }
       }
       if (request.method === "POST") {
         const body = await jsonBody(request);
@@ -123,8 +134,9 @@ async function handle(request: Request, context: Context) {
           : action === "confirmation" ? await confirmPlan(identity, rootId, body as Confirm)
           : action === "removal" ? await removeRoot(identity, rootId, body as Command)
           : action === "ai-draft" ? await requestAiDraft(identity, rootId, body)
-          : action === "ai-check" ? await requestAiCheck(identity, rootId, body) : null;
-        if (result) return Response.json(result, { status: action === "ai-draft" || action === "ai-check" ? 202 : 200, headers: privateHeaders });
+          : action === "ai-check" ? await requestAiCheck(identity, rootId, body)
+          : action === "course" ? await requestCourseGeneration(identity, rootId, body) : null;
+        if (result) return Response.json(result, { status: action === "ai-draft" || action === "ai-check" || action === "course" ? 202 : 200, headers: privateHeaders });
       }
     }
     if (path[0] === "preferences" && path.length === 1) {

@@ -7,6 +7,7 @@ import { createAuth } from '../src/modules/identity-access/auth';
 import { EXTRACTION_QUEUE } from '../src/adapters/queue';
 import { EXPORT_QUEUE } from '../src/contracts/export';
 import { AI_DRAFT_QUEUE } from '../src/contracts/ai-setup';
+import { COURSE_QUEUE } from '../src/contracts/courses';
 import { resolve } from 'node:path';
 
 export async function migrate(databaseUrl: string, through?: string) {
@@ -71,6 +72,9 @@ export async function migrate(databaseUrl: string, through?: string) {
     });
     await boss.createQueue(EXPORT_QUEUE);
     await boss.createQueue(AI_DRAFT_QUEUE, { retryLimit: 0, expireInSeconds: 120, retentionSeconds: 86400 });
+    // Course generation mirrors the AI draft policy: one attempt, 120-second
+    // honest pending cap, 24h retention — the worker boot policy must match.
+    await boss.createQueue(COURSE_QUEUE, { retryLimit: 0, expireInSeconds: 120, retentionSeconds: 86400 });
     await boss.stop();
     await lock.query(
       'GRANT USAGE ON SCHEMA auth,app,queue TO tracer_runtime; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA auth,app,queue TO tracer_runtime; GRANT USAGE,SELECT ON ALL SEQUENCES IN SCHEMA auth,app,queue TO tracer_runtime; GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA app,queue TO tracer_runtime',

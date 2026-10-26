@@ -231,3 +231,48 @@ const aiSetupPort: LifecyclePort = {
 registerLifecyclePort(exportPort);
 registerLifecyclePort(diagnosticPort);
 registerLifecyclePort(aiSetupPort);
+
+// Epic-2 S1: app.generated_course rows (with their cascading course_objective
+// and course_source lineage) are root-scoped derivatives of the exact
+// confirmed plan revision the generation admission pinned. Deny rides the
+// existing fences — the worker re-checks lineage before any dispatch and
+// settleDispatch re-checks before any result is accepted — so no blind state
+// write is needed here. Purge removes the course lineage with the root; the
+// ON DELETE CASCADE from plan/selection revisions keeps root purge correct
+// regardless of port ordering inside purgeRoot.
+const courseGenerationPort: LifecyclePort = {
+  name: 'course-generation',
+  label: 'Generated mini-courses',
+  async preview(client, scope) {
+    if (scope.personal) {
+      if (!(await tableReady(client, 'app.generated_course', ['owner_id']))) return [];
+      const rows = await client.query<{ count: number }>(
+        'SELECT count(*)::int AS count FROM app.generated_course WHERE owner_id=$1',
+        [scope.ownerId],
+      );
+      return [{ key: 'courses', label: this.label, count: rows.rows[0].count }];
+    }
+    if (!scope.rootIds.length) return [];
+    if (!(await tableReady(client, 'app.generated_course', ['root_id']))) return [];
+    const rows = await client.query<{ count: number }>(
+      'SELECT count(*)::int AS count FROM app.generated_course WHERE root_id=ANY($1::uuid[])',
+      [scope.rootIds],
+    );
+    return [{ key: 'courses', label: this.label, count: rows.rows[0].count }];
+  },
+  async deny() {
+    // Fenced by lineage invalidation + worker/settlement re-checks; see above.
+  },
+  async purge(client, scope) {
+    if (scope.personal) {
+      if (await tableReady(client, 'app.generated_course', ['owner_id']))
+        await client.query('DELETE FROM app.generated_course WHERE owner_id=$1', [scope.ownerId]);
+      return;
+    }
+    if (!scope.rootIds.length) return;
+    if (await tableReady(client, 'app.generated_course', ['root_id']))
+      await client.query('DELETE FROM app.generated_course WHERE root_id=ANY($1::uuid[])', [scope.rootIds]);
+  },
+};
+
+registerLifecyclePort(courseGenerationPort);
