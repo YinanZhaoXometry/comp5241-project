@@ -3,7 +3,7 @@ import {
   buildCourseMessages,
   parseCourseOutput,
   judgeRecall,
-  buildRecallFeedback,
+  buildPracticeFeedback,
   createSyntheticCourseCompletion,
   syntheticCourseDraft,
 } from '../../src/modules/course-generation/generation';
@@ -28,12 +28,15 @@ import {
 } from '../../src/modules/course-generation/supplements';
 import {
   courseContentV1Schema,
-  courseContentV3Schema,
+  courseContentV4Schema,
   courseDraftV1Schema,
-  courseDraftV3Schema,
+  courseDraftV4Schema,
   courseTrackerItems,
   markItemDoneSchema,
+  practiceCardsOf,
+  recallOf,
   storedCourseContent,
+  submitPracticeSchema,
   submitRecallSchema,
   SYNTHETIC_COURSE_MODEL,
   supplementJobSchema,
@@ -46,14 +49,14 @@ import { AI_BUDGET } from '../../src/adapters/ai-live';
 import type { Plan } from '../../src/contracts/setup';
 
 // Local synthetic coverage of the epic-2 course tracer's PURE halves: bounded
-// prompt building, strict plan-bounds-checked output validation (epic-2 S3
-// content v2 shapes served through the epic-2 S4 content v3 union: the FULL
-// plan lesson set with per-lesson sections, tracker items and one labeled
-// optional enrichment, plus the per-track TREATMENT framing and the
-// code-derived adaptation record), the legacy v1 union wrap, the deterministic
-// local synthetic processor, the recall judge and the cross-track fact-identity
-// validator. No transport, no network, no provider — everything here is
-// deterministic.
+// prompt building, strict plan-bounds-checked output validation (epic-2 S5
+// content v4: the FULL plan lesson set with per-lesson treatment framing, the
+// code-derived adaptation record and the PRACTICE SET — one recall card per
+// plan objective with per-card source-bound withheld answers), the legacy
+// v1/v2/v3 serving shapes (the single recall becomes the one-card set view),
+// the deterministic local synthetic processor, the per-card recall judge and
+// the cross-track fact-identity validator. No transport, no network, no
+// provider — everything here is deterministic.
 
 const plan: Plan = {
   topic: 'Unit testing fundamentals',
@@ -71,10 +74,14 @@ const excerpts = [
   { name: 'notes.txt', text: 'Unit testing checks a single unit of behavior. Arrange inputs, act, assert outcomes. A unit test isolates the behavior under test.' },
   { name: 'doubles.txt', text: 'A test double stands in for a dependency. Coverage reports executed lines, not assertion quality. Doubles keep tests fast.' },
 ];
+// The synthetic fixture's per-card canonical answers are the opening
+// sentences of the sources the cards draw from (round-robin over outcomes).
+const canonicalAnswers = ['Unit testing checks a single unit of behavior.', 'A test double stands in for a dependency.', 'Unit testing checks a single unit of behavior.'];
 // No stated background by default: every pre-existing case generates neutrally.
 const bounds = { plan, sources, background: '' };
 const input = { goal: 'Exam preparation', topic: 'unit testing', background: '', plan, excerpts };
 const flatSections = (content: CourseContentServing) => content.lessons.flatMap(lesson => lesson.sections);
+const cardAnswersOf = (content: CourseContentServing) => practiceCardsOf(content).map(card => card.answer);
 
 const validDraft = (extra: Record<string, unknown> = {}) => JSON.stringify({
   lessons: [
@@ -82,7 +89,11 @@ const validDraft = (extra: Record<string, unknown> = {}) => JSON.stringify({
     { framing: 'Application focus for the second lesson.', sections: [{ text: 'A test double stands in for a real dependency during the test.', sourcePosition: 1, locator: 'opening lines' }] },
   ],
   objectiveIndexes: [0, 1, 2],
-  recall: { objectiveIndex: 0, sourcePosition: 0, locator: 'opening lines', prompt: 'State the three parts of the unit test structure.', answer: 'Arrange inputs, act, assert outcomes.', rationale: 'The opening of notes.txt states this directly.' },
+  cards: [
+    { objectiveIndex: 0, sourcePosition: 0, locator: 'opening lines', prompt: 'State the three parts of the unit test structure.', answer: 'Arrange inputs, act, assert outcomes.', rationale: 'The opening of notes.txt states this directly.' },
+    { objectiveIndex: 1, sourcePosition: 1, locator: 'opening lines', prompt: 'Name what stands in for a dependency.', answer: 'A test double.', rationale: 'The opening of doubles.txt states this directly.' },
+    { objectiveIndex: 2, sourcePosition: 0, locator: 'second sentence', prompt: 'State what coverage reports measure.', answer: 'Executed lines, not assertion quality.', rationale: 'The second sentence of notes.txt states this directly.' },
+  ],
   ...extra,
 });
 
@@ -150,12 +161,12 @@ describe('epic-2 S4 deterministic track classification (documented keyword famil
   });
 });
 
-describe('strict course output validation against the confirmed plan (content v3)', () => {
+describe('strict course output validation against the confirmed plan (content v4)', () => {
   it('accepts a resolvable multi-lesson draft and substitutes every title from the plan in order', () => {
     const parsed = parseCourseOutput(validDraft(), bounds);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.content.contentVersion).toBe(3);
+    expect(parsed.content.contentVersion).toBe(4);
     expect(parsed.content.lessons.map(lesson => lesson.title)).toEqual(plan.miniCourse.lessons); // from the plan, never the reply
     // The treatment framing from the draft is stored per lesson, kept OUT of
     // the factual sections.
@@ -167,8 +178,23 @@ describe('strict course output validation against the confirmed plan (content v3
     expect(parsed.content.lessons[1].items[0].id).toBe('lesson:2:reading');
     expect(parsed.content.enrichment).toBeUndefined();
     expect(parsed.content.objectives.map(objective => objective.text)).toEqual(plan.outcomes);
-    expect(parsed.content.recall.sourceRef.filename).toBe('notes.txt');
-    expect(courseContentV3Schema.safeParse(parsed.content).success).toBe(true);
+    expect(courseContentV4Schema.safeParse(parsed.content).success).toBe(true);
+  });
+  it('builds the practice set: one card per objective, ids derived from objective indexes, sources resolved, recall derived from card 0', () => {
+    const parsed = parseCourseOutput(validDraft(), bounds);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const cards = practiceCardsOf(parsed.content);
+    expect(cards.map(card => card.id)).toEqual(['practice:0', 'practice:1', 'practice:2']);
+    expect(cards.map(card => card.objectiveIndex)).toEqual([0, 1, 2]);
+    expect(cards[0].sourceRef).toMatchObject({ extractionId: sources[0].extractionId, filename: 'notes.txt' });
+    expect(cards[1].sourceRef.filename).toBe('doubles.txt');
+    expect(cards[2].sourceRef).toMatchObject({ filename: 'notes.txt', locator: 'second sentence' });
+    expect(cards.map(card => card.answer)).toEqual(['Arrange inputs, act, assert outcomes.', 'A test double.', 'Executed lines, not assertion quality.']);
+    // The 2.1 single-recall view derives from card 0 (one judge, two verbs).
+    const recall = recallOf(parsed.content);
+    expect(recall).toMatchObject({ objectiveIndex: 0, prompt: 'State the three parts of the unit test structure.', answer: 'Arrange inputs, act, assert outcomes.' });
+    expect(recall.sourceRef.filename).toBe('notes.txt');
   });
   it('derives the adaptation record from the stated background in code, never from the reply', () => {
     const beginner = parseCourseOutput(validDraft(), { ...bounds, background: 'non-CS, new to programming' });
@@ -211,6 +237,9 @@ describe('strict course output validation against the confirmed plan (content v3
     expect(parseCourseOutput(validDraft({ lessons: [...JSON.parse(validDraft()).lessons, { framing: 'f', sections: [{ text: 'x', sourcePosition: 0, locator: 'l' }] }] }), bounds).ok).toBe(false);
     // The legacy single-lesson draft shape no longer validates.
     expect(parseCourseOutput(JSON.stringify({ sections: [{ text: 'x', sourcePosition: 0, locator: 'l' }], objectiveIndexes: [0], recall: { objectiveIndex: 0, sourcePosition: 0, locator: 'l', prompt: 'p', answer: 'a', rationale: 'r' } }), bounds).ok).toBe(false);
+    // The pre-2.5 single-recall multi-lesson draft shape (framing present,
+    // 'recall' instead of 'cards') no longer validates.
+    expect(parseCourseOutput(validDraft({ recall: { objectiveIndex: 0, sourcePosition: 0, locator: 'l', prompt: 'p', answer: 'a', rationale: 'r' } }), bounds).ok).toBe(false);
     // The pre-2.4 multi-lesson draft shape (no per-lesson framing) no longer
     // validates, and framing missing on ONE lesson is still an invalid draft.
     const noFraming = JSON.parse(validDraft());
@@ -225,23 +254,44 @@ describe('strict course output validation against the confirmed plan (content v3
     // Objective index beyond the plan's outcomes; duplicates.
     expect(parseCourseOutput(validDraft({ objectiveIndexes: [0, 1, 3] }), bounds).ok).toBe(false);
     expect(parseCourseOutput(validDraft({ objectiveIndexes: [0, 0, 1] }), bounds).ok).toBe(false);
-    // Source position beyond the selected sources (lesson section and recall).
+    // Subset coverage: two of three plan outcomes — the practice set must
+    // cover EVERY confirmed-plan objective.
+    expect(parseCourseOutput(validDraft({ objectiveIndexes: [0, 1], cards: [JSON.parse(validDraft()).cards[0], JSON.parse(validDraft()).cards[1]] }), bounds).ok).toBe(false);
+    // Cards: missing a card, a duplicate objective, a foreign objective and an
+    // unresolved source link are all invalid.
+    const withCards = JSON.parse(validDraft());
+    expect(parseCourseOutput(JSON.stringify({ ...withCards, cards: withCards.cards.slice(0, 2) }), bounds).ok).toBe(false);
+    const duplicateCard = JSON.parse(validDraft());
+    duplicateCard.cards[1] = { ...duplicateCard.cards[0] };
+    expect(parseCourseOutput(JSON.stringify(duplicateCard), bounds).ok).toBe(false);
+    const foreignCard = JSON.parse(validDraft());
+    foreignCard.cards[2].objectiveIndex = 7;
+    expect(parseCourseOutput(JSON.stringify(foreignCard), bounds).ok).toBe(false);
+    expect(parseCourseOutput(validDraft({ cards: [JSON.parse(validDraft()).cards[0], { objectiveIndex: 1, sourcePosition: 9, locator: 'l', prompt: 'p', answer: 'a', rationale: 'r' }, JSON.parse(validDraft()).cards[2]] }), bounds).ok).toBe(false);
+    // Source position beyond the selected sources (lesson section).
     expect(parseCourseOutput(validDraft({ lessons: [{ framing: 'f', sections: [{ text: 'x', sourcePosition: 5, locator: 'l' }] }, { framing: 'f', sections: [{ text: 'y', sourcePosition: 1, locator: 'l' }] }] }), bounds).ok).toBe(false);
-    expect(parseCourseOutput(validDraft({ recall: { objectiveIndex: 0, sourcePosition: 2, locator: 'l', prompt: 'p', answer: 'a', rationale: 'r' } }), bounds).ok).toBe(false);
     // Enrichment with an unresolved source link.
     expect(parseCourseOutput(validDraft({ enrichment: { sourcePosition: 7, locator: 'l', text: 't' } }), bounds).ok).toBe(false);
     expect(parseCourseOutput('', bounds).ok).toBe(false);
     // The draft schema itself bounds the shapes the parser trusts.
-    expect(courseDraftV3Schema.safeParse({ lessons: [], objectiveIndexes: [0], recall: {} }).success).toBe(false);
+    expect(courseDraftV4Schema.safeParse({ lessons: [], objectiveIndexes: [0], cards: [{}] }).success).toBe(false);
     expect(courseDraftV1Schema.safeParse({ sections: [], objectiveIndexes: [0], recall: {} }).success).toBe(false);
   });
-  it('rejects stored lesson items that do not match their numbered position (tracker identity is positional)', () => {
+  it('rejects stored lesson items or practice cards that break their structural identity', () => {
     const parsed = parseCourseOutput(validDraft(), bounds);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    const tampered = structuredClone(parsed.content);
-    tampered.lessons[1].items[0].id = 'lesson:1:reading';
-    expect(courseContentV3Schema.safeParse(tampered).success).toBe(false);
+    const tamperedItems = structuredClone(parsed.content);
+    tamperedItems.lessons[1].items[0].id = 'lesson:1:reading';
+    expect(courseContentV4Schema.safeParse(tamperedItems).success).toBe(false);
+    // A stored card whose id does not match its objective index is invalid.
+    const tamperedCard = structuredClone(parsed.content);
+    tamperedCard.practice.cards[1].id = 'practice:0';
+    expect(courseContentV4Schema.safeParse(tamperedCard).success).toBe(false);
+    // A stored set missing one objective's card is invalid (one per objective).
+    const dropped = structuredClone(parsed.content);
+    dropped.practice.cards = dropped.practice.cards.slice(0, 2);
+    expect(courseContentV4Schema.safeParse(dropped).success).toBe(false);
   });
 });
 
@@ -265,9 +315,21 @@ describe('legacy v1 stored content serves through the v2 wrap (one serving path)
     expect(wrapped.lessons[0].sections).toHaveLength(1);
     expect(wrapped.lessons[0].items).toEqual([{ id: 'lesson:1:reading', kind: 'reading', required: true, title: 'Read lesson 1: What a unit test is' }]);
     expect(wrapped.enrichment).toBeUndefined();
-    expect(wrapped.recall.answer).toBe('a'); // the stored v1 row itself still carries it server-side
+    expect(recallOf(wrapped).answer).toBe('a'); // the stored v1 row itself still carries it server-side
   });
-  it('passes v2 content through unchanged and rejects documents matching neither version', () => {
+  it('serves the legacy single recall as its own one-card set view, without rewriting the row', () => {
+    const wrapped = storedCourseContent(legacy);
+    if (!wrapped) return;
+    const cards = practiceCardsOf(wrapped);
+    expect(cards).toHaveLength(1);
+    expect(cards[0]).toMatchObject({ id: 'practice:0', objectiveIndex: 0, prompt: 'p', answer: 'a', rationale: 'r' });
+    expect(cards[0].sourceRef.filename).toBe('notes.txt');
+    // A v2 row whose recall binds a later objective derives that card id too.
+    const v2Late = { contentVersion: 2, lessons: wrapped.lessons, objectives: [{ index: 2, text: 'Judge coverage reports' }, { index: 0, text: 'Explain arrange-act-assert' }], recall: { ...legacy.recall, objectiveIndex: 2 } };
+    const served = storedCourseContent(v2Late);
+    expect(served && practiceCardsOf(served).map(card => card.id)).toEqual(['practice:2']);
+  });
+  it('passes v4 content through unchanged and rejects documents matching neither version', () => {
     const parsed = parseCourseOutput(validDraft(), bounds);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
@@ -287,7 +349,7 @@ describe('legacy v1 stored content serves through the v2 wrap (one serving path)
   });
 });
 
-describe('deterministic local synthetic processor (content v3)', () => {
+describe('deterministic local synthetic processor (content v4)', () => {
   it('returns a strict-parseable, zero-token, deterministic draft covering every plan lesson in order', async () => {
     const port = createSyntheticCourseCompletion();
     const messages = buildCourseMessages(input);
@@ -302,7 +364,7 @@ describe('deterministic local synthetic processor (content v3)', () => {
     const parsed = parseCourseOutput(first.text, bounds);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    expect(parsed.content.contentVersion).toBe(3);
+    expect(parsed.content.contentVersion).toBe(4);
     expect(parsed.content.lessons.map(lesson => lesson.title)).toEqual(plan.miniCourse.lessons);
     for (const lesson of parsed.content.lessons) expect(lesson.sections.length).toBeGreaterThanOrEqual(1);
     // The unstated background generates neutrally with honest neutral framing.
@@ -312,7 +374,12 @@ describe('deterministic local synthetic processor (content v3)', () => {
     expect(parsed.content.lessons[0].sections[0].sourceRef.filename).toBe('notes.txt');
     expect(parsed.content.lessons[1].sections[0].sourceRef.filename).toBe('doubles.txt');
     expect(parsed.content.objectives.length).toBe(plan.outcomes.length);
-    expect(parsed.content.recall.answer.length).toBeGreaterThanOrEqual(1);
+    // The practice set: one card per plan objective, each answer from its own
+    // source's opening sentence (round-robin over the outcomes).
+    const cards = practiceCardsOf(parsed.content);
+    expect(cards.map(card => card.id)).toEqual(['practice:0', 'practice:1', 'practice:2']);
+    expect(cardAnswersOf(parsed.content)).toEqual(canonicalAnswers);
+    expect(cards.every(card => card.answer.length >= 1)).toBe(true);
     // One labeled optional enrichment overall, from the last usable source.
     expect(parsed.content.enrichment?.sourceRef.filename).toBe('doubles.txt');
     expect(parsed.content.enrichment?.required).toBe(false);
@@ -335,7 +402,7 @@ describe('deterministic local synthetic processor (content v3)', () => {
     if (!parsed.ok) return;
     for (const lesson of parsed.content.lessons) for (const section of lesson.sections) expect(section.text.length).toBeLessThanOrEqual(480);
   });
-  it('round-trips a legal 10-source selection across two lessons: links resolve, no text quotes the recall answer', () => {
+  it('round-trips a legal 10-source selection across two lessons: links resolve, no text quotes any card answer', () => {
     const ten = Array.from({ length: 10 }, (_, index) => ({ name: `t${index}.txt`, text: `Source ${index} opens here. Source ${index} remainder continues the lesson body.` }));
     const tenSources = ten.map(excerpt => ({ extractionId: crypto.randomUUID(), filename: excerpt.name }));
     const messages = buildCourseMessages({ ...input, excerpts: ten });
@@ -350,13 +417,20 @@ describe('deterministic local synthetic processor (content v3)', () => {
     expect(parsed.content.lessons[1].sections).toHaveLength(5);
     const used = flatSections(parsed.content).map(section => section.sourceRef.extractionId);
     expect(new Set(used).size).toBe(10);
-    // Withholding at the source: the recall's canonical answer (source 0's
-    // opening sentence) appears in no served section OR enrichment text.
-    for (const section of flatSections(parsed.content)) expect(section.text).not.toContain(parsed.content.recall.answer);
-    expect(parsed.content.enrichment?.text ?? '').not.toContain(parsed.content.recall.answer);
+    // Withholding at the source: every card's canonical answer (the opening
+    // sentence of its own source — cards 0/1/2 draw from sources 0/1/2)
+    // appears in NO served section OR enrichment text.
+    const answers = cardAnswersOf(parsed.content);
+    expect(answers).toEqual(['Source 0 opens here.', 'Source 1 opens here.', 'Source 2 opens here.']);
+    for (const section of flatSections(parsed.content)) for (const answer of answers) expect(section.text).not.toContain(answer);
+    for (const answer of answers) expect(parsed.content.enrichment?.text ?? '').not.toContain(answer);
+    // The card sources teach from their remainders; the untouched sources
+    // (no card draws from them) teach their openings.
     expect(parsed.content.lessons[0].sections[0].text).toContain('remainder continues the lesson body');
-    // The enrichment is the last usable source's teaching text.
+    // The enrichment is the last usable source's teaching text (source 9 is
+    // not a card source, so its opening teaches it).
     expect(parsed.content.enrichment?.sourceRef.filename).toBe('t9.txt');
+    expect(parsed.content.enrichment?.text).toContain('Source 9 opens here.');
   });
   it('keeps every plan lesson present when there are fewer sources than lessons (honest fallback)', () => {
     const single = [{ name: 'only.txt', text: 'Only source opens here. Its remainder teaches the whole course honestly.' }];
@@ -366,6 +440,10 @@ describe('deterministic local synthetic processor (content v3)', () => {
     if (!parsed.ok) return;
     expect(parsed.content.lessons).toHaveLength(2);
     expect(parsed.content.lessons[1].sections[0].sourceRef.locator).toContain('no dedicated source reached this lesson');
+    // Every card still draws from the one usable source; its opening stays
+    // withheld from all served text.
+    expect(cardAnswersOf(parsed.content)).toEqual(['Only source opens here.', 'Only source opens here.', 'Only source opens here.']);
+    for (const section of flatSections(parsed.content)) expect(section.text).not.toContain('Only source opens here.');
   });
   it('caps a single-lesson course at 8 sections when a 10-source selection round-robins into one lesson', () => {
     const ten = Array.from({ length: 10 }, (_, index) => ({ name: `t${index}.txt`, text: `Source ${index} opens here. Source ${index} remainder continues the body.` }));
@@ -398,12 +476,18 @@ describe('deterministic local synthetic processor (content v3)', () => {
 describe('epic-2 S4 side-by-side: per-track treatment over identical facts', () => {
   const courseUnder = (background: string) =>
     parseCourseOutput(syntheticCourseDraft(buildCourseMessages({ ...input, background })), { ...bounds, background });
+  const digestCore = (content: Extract<ReturnType<typeof parseCourseOutput>, { ok: true }>['content']) => ({
+    lessons: content.lessons,
+    objectives: content.objectives,
+    cards: practiceCardsOf(content),
+    ...(content.enrichment ? { enrichment: content.enrichment } : {}),
+  });
   it('the fixture draft itself carries no track — the stored record is code-derived', () => {
     const draft = JSON.parse(syntheticCourseDraft(buildCourseMessages({ ...input, background: 'non-CS, new to programming' })));
     expect(draft).not.toHaveProperty('track');
     expect(draft).not.toHaveProperty('adaptation');
   });
-  it('beginner and advanced treatments differ while every factual section, source ref, objective, recall answer and enrichment is identical', () => {
+  it('beginner and advanced treatments differ while every factual section, source ref, objective, practice card and enrichment is identical', () => {
     const beginner = courseUnder('non-CS, new to programming');
     const advanced = courseUnder('CS graduate, interview prep');
     expect(beginner.ok && advanced.ok).toBe(true);
@@ -432,13 +516,16 @@ describe('epic-2 S4 side-by-side: per-track treatment over identical facts', () 
     expect(beginner.content.factsDigest).toBe(advanced.content.factsDigest);
     const driftedFacts = structuredClone(advanced.content);
     driftedFacts.lessons[0].sections[0].text += ' A drifted fact.';
-    expect(computeFactsDigest(driftedFacts)).not.toBe(advanced.content.factsDigest);
+    expect(computeFactsDigest(digestCore(driftedFacts))).not.toBe(advanced.content.factsDigest);
+    const driftedCard = structuredClone(advanced.content);
+    driftedCard.practice.cards[1].answer += ' Drifted.';
+    expect(computeFactsDigest(digestCore(driftedCard))).not.toBe(advanced.content.factsDigest);
     // Treatment-only change keeps the digest: recompute over the drifted
     // content's unchanged factual core reproduces the stored digest.
-    expect(beginner.content.factsDigest).toBe(computeFactsDigest(beginner.content));
+    expect(beginner.content.factsDigest).toBe(computeFactsDigest(digestCore(beginner.content)));
     expect(beginner.content.lessons.map(lesson => lesson.sections)).toEqual(advanced.content.lessons.map(lesson => lesson.sections));
     expect(beginner.content.lessons.map(lesson => lesson.title)).toEqual(advanced.content.lessons.map(lesson => lesson.title));
-    expect(beginner.content.recall).toEqual(advanced.content.recall);
+    expect(beginner.content.practice).toEqual(advanced.content.practice);
     expect(beginner.content.enrichment).toEqual(advanced.content.enrichment);
     expect(beginner.content.objectives).toEqual(advanced.content.objectives);
   });
@@ -466,6 +553,12 @@ describe('epic-2 S4 side-by-side: per-track treatment over identical facts', () 
     const relinked = structuredClone(advanced.content);
     relinked.lessons[0].sections[0].sourceRef.locator = 'somewhere else entirely';
     expect(factsIdenticalAcrossTracks(beginner.content, relinked).identical).toBe(false);
+    // A drifted card answer (a withheld canonical answer) is factual drift.
+    const cardDrift = structuredClone(advanced.content);
+    cardDrift.practice.cards[2].answer = 'A completely different canonical answer.';
+    const cardDriftReport = factsIdenticalAcrossTracks(beginner.content, cardDrift);
+    expect(cardDriftReport.identical).toBe(false);
+    expect(cardDriftReport.differences).toContain('practice.cards[2]');
     // Treatment-only differences (framing, adaptation record) are NOT factual drift.
     const reframed = structuredClone(advanced.content);
     reframed.lessons[0].framing = 'A completely different framing paragraph.';
@@ -479,7 +572,7 @@ describe('epic-2 S4 side-by-side: per-track treatment over identical facts', () 
   });
 });
 
-describe('recall judgement and feedback', () => {
+describe('per-card recall judgement and typed feedback', () => {
   it('judges normalized equality and substantial containment as correct, everything else as incorrect', () => {
     expect(judgeRecall('Arrange inputs, act, assert outcomes.', 'Arrange inputs, act, assert outcomes.')).toBe('correct');
     expect(judgeRecall('  arrange   INPUTS, act, assert outcomes.  ', 'Arrange inputs, act, assert outcomes.')).toBe('correct');
@@ -487,21 +580,34 @@ describe('recall judgement and feedback', () => {
     expect(judgeRecall('Assert nothing and hope.', 'Arrange inputs, act, assert outcomes.')).toBe('incorrect');
     expect(judgeRecall('', 'Arrange inputs, act, assert outcomes.')).toBe('incorrect');
   });
-  it('feedback releases the canonical answer and source exactly once per submission', () => {
+  it('releases each card answer exactly once per submission with the declared evidence kind', () => {
     const parsed = parseCourseOutput(validDraft(), bounds);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
-    const feedback = buildRecallFeedback({ rootId: crypto.randomUUID(), revision: 3, courseId: crypto.randomUUID(), content: parsed.content, attempted: 'Arrange inputs, act, assert outcomes.' });
-    expect(feedback.outcome).toBe('correct');
-    expect(feedback.answer).toBe('Arrange inputs, act, assert outcomes.');
-    expect(feedback.rationale).toContain('notes.txt');
-    expect(feedback.source).toMatchObject({ filename: 'notes.txt', locator: 'opening lines' });
+    const cards = practiceCardsOf(parsed.content);
+    const unaided = buildPracticeFeedback({ rootId: crypto.randomUUID(), revision: 3, courseId: crypto.randomUUID(), card: cards[0], attempted: 'Arrange inputs, act, assert outcomes.', evidenceKind: 'unaided' });
+    expect(unaided).toMatchObject({ cardId: 'practice:0', outcome: 'correct', evidenceKind: 'unaided' });
+    expect(unaided.answer).toBe('Arrange inputs, act, assert outcomes.');
+    expect(unaided.rationale).toContain('notes.txt');
+    expect(unaided.source).toMatchObject({ filename: 'notes.txt', locator: 'opening lines' });
+    // Per-card judging: the same attempt text is judged against EACH card's own
+    // canonical answer; assisted feedback is labeled assisted, never merged.
+    const assisted = buildPracticeFeedback({ rootId: unaided.rootId, revision: 3, courseId: unaided.courseId, card: cards[1], attempted: 'Honestly no idea, I peeked.', evidenceKind: 'assisted' });
+    expect(assisted).toMatchObject({ cardId: 'practice:1', outcome: 'incorrect', evidenceKind: 'assisted', answer: 'A test double.' });
+    expect(buildPracticeFeedback({ rootId: unaided.rootId, revision: 3, courseId: unaided.courseId, card: cards[2], attempted: 'Executed lines, not assertion quality.', evidenceKind: 'unaided' }).outcome).toBe('correct');
   });
-  it('the recall and tracker command envelopes stay strict', () => {
+  it('the practice, recall and tracker command envelopes stay strict', () => {
     expect(submitRecallSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0, attempted: 'an answer' }).success).toBe(true);
     expect(submitRecallSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0 }).success).toBe(false);
     expect(submitRecallSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0, attempted: '' }).success).toBe(false);
     expect(submitRecallSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0, attempted: 'x', extra: true }).success).toBe(false);
+    expect(submitPracticeSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, courseId: crypto.randomUUID(), cardId: 'practice:0', attempted: 'an answer', assisted: false }).success).toBe(true);
+    expect(submitPracticeSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, courseId: crypto.randomUUID(), cardId: 'practice:0', attempted: 'an answer' }).success).toBe(false); // assisted is learner-declared, never defaulted
+    expect(submitPracticeSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, courseId: crypto.randomUUID(), cardId: 'not-a-card', attempted: 'an answer', assisted: true }).success).toBe(false);
+    expect(submitPracticeSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, cardId: 'practice:0', attempted: 'an answer', assisted: true }).success).toBe(false);
+    expect(submitPracticeSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, courseId: crypto.randomUUID(), cardId: 'practice:0', attempted: ' ', assisted: true }).success).toBe(false);
+    expect(submitPracticeSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, courseId: crypto.randomUUID(), cardId: 'practice:0', attempted: 'an answer', assisted: 'yes' }).success).toBe(false);
+    expect(submitPracticeSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, courseId: crypto.randomUUID(), cardId: 'practice:0', attempted: 'an answer', assisted: true, extra: 1 }).success).toBe(false);
     expect(markItemDoneSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, courseId: crypto.randomUUID(), itemId: 'lesson:1:reading' }).success).toBe(true);
     expect(markItemDoneSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, courseId: crypto.randomUUID() }).success).toBe(false);
     expect(markItemDoneSchema.safeParse({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 2, itemId: 'lesson:1:reading' }).success).toBe(false);

@@ -8,11 +8,11 @@ import { runExtraction } from '../../src/modules/materials-setup/extraction';
 import { savePlan, confirmPlan, listStudies, getStudy } from '../../src/modules/materials-setup/service';
 import { removeRoot, personalRemoval } from '../../src/modules/lifecycle-platform/service';
 import { previewDerivatives } from '../../src/modules/lifecycle-platform/derivatives';
-import { requestCourseGeneration, getCourse, submitRecall, markItemDone, requestSupplements, getSupplements } from '../../src/modules/course-generation/service';
+import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements } from '../../src/modules/course-generation/service';
 import { runCourseGeneration, runSupplementFetch } from '../../src/modules/course-generation/worker';
 import { createFixtureFetchPort } from '../../src/modules/course-generation/supplements';
-import { factsIdenticalAcrossTracks } from '../../src/modules/course-generation/adaptation';
-import { contentAdaptation, contentFactsDigest, courseContentV1Schema, lessonFraming, storedCourseContent } from '../../src/contracts/courses';
+import { factsIdenticalAcrossTracks, computeFactsDigest } from '../../src/modules/course-generation/adaptation';
+import { contentAdaptation, contentFactsDigest, courseContentV1Schema, courseContentV3Schema, lessonFraming, practiceCardsOf, recallOf, storedCourseContent } from '../../src/contracts/courses';
 import type { BoundedFetchPort, FetchDenyReason } from '../../src/adapters/source-fetch';
 import { listExports } from '../../src/modules/setup-export/service';
 import { captureManifest } from '../../src/modules/setup-export/manifest';
@@ -46,9 +46,11 @@ const multiPlan: Plan = {
 };
 const textA = 'Unit testing checks a single unit of behavior. Arrange inputs, act, assert outcomes.';
 const textB = 'A test double stands in for a dependency. Coverage reports executed lines, not assertion quality.';
-// The synthetic fixture's canonical recall answer is the first sentence of
-// source 0 — deterministic, so withholding can be asserted against it.
+// The synthetic fixture's per-card canonical answers are the opening sentences
+// of the sources the cards draw from (round-robin over the plan's outcomes) —
+// deterministic, so withholding can be asserted against every card.
 const canonicalAnswer = 'Unit testing checks a single unit of behavior.';
+const canonicalAnswerB = 'A test double stands in for a dependency.';
 const usage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
 const portOf = (result: TextCompletionResult): () => TextCompletionPort => {
@@ -164,31 +166,50 @@ describe('epic-2 S1: confirmed-plan-to-generated-course tracer', () => {
     expect(course.items.map(item => item.id)).toEqual(['lesson:1:reading', 'enrichment:1']);
     expect(course.items.map(item => item.required)).toEqual([true, false]);
     expect(course.items.every(item => !item.done && item.doneAt === null)).toBe(true);
-    // Answer-withholding: no GET payload carries the recall answer — the
-    // synthetic fixture teaches the recall's source from the remainder AFTER
-    // its opening sentence (the canonical answer), so the answer string, the
-    // rationale string and the field keys are all absent.
+    // Answer-withholding: no GET payload carries any card's answer — the
+    // synthetic fixture teaches every card's source from the remainder AFTER
+    // its opening sentence (that card's canonical answer), so the answer
+    // strings, the rationale strings and the field keys are all absent.
     const serialized = JSON.stringify(state);
     expect(serialized).not.toContain(canonicalAnswer);
+    expect(serialized).not.toContain(canonicalAnswerB);
     expect(serialized).not.toContain('The opening of notes.txt');
     expect(serialized).not.toContain('"answer"');
     expect(serialized).not.toContain('"rationale"');
     expect(Object.keys(course.recall).sort()).toEqual(['objective', 'prompt', 'source']);
+    // The epic-2 S5 practice set serves one card per objective with prompts
+    // and source locations only.
+    expect(course.practice.cards.map(card => card.id)).toEqual(['practice:0', 'practice:1', 'practice:2']);
+    expect(course.practice.cards.map(card => card.objective)).toEqual(plan.outcomes);
+    for (const card of course.practice.cards) expect(Object.keys(card).sort()).toEqual(['id', 'objective', 'prompt', 'source']);
     for (const section of course.lessons[0].sections) {
       expect(Object.keys(section).sort()).toEqual(['source', 'text']);
       expect(section.text).not.toContain(canonicalAnswer);
+      expect(section.text).not.toContain(canonicalAnswerB);
     }
-    // The stored content still carries them (server-side), the view never does.
+    // The stored content still carries the full set (server-side), the view never does.
     const stored = await database().query<{ content: unknown }>("SELECT content FROM app.generated_course WHERE root_id=$1 AND status='ready'", [study.rootId]);
-    expect(JSON.stringify(stored.rows[0].content)).toContain(canonicalAnswer);
+    const storedCards = practiceCardsOf(storedCourseContent(stored.rows[0].content)!);
+    expect(storedCards.map(card => card.answer)).toEqual([canonicalAnswer, canonicalAnswerB, canonicalAnswer]);
+    expect(recallOf(storedCourseContent(stored.rows[0].content)!).answer).toBe(canonicalAnswer);
     // Recall: submit the canonical answer, receive it back exactly once here.
+    // The 2.1 verb derives from card 0 and by its contract records feedback
+    // and a content-free receipt ONLY — NO typed evidence row (evidence kinds
+    // are learner-declared and only the practice verb's schema declares one).
     const feedback = await submitRecall(a, study.rootId, { ...command(study.revision), attempted: canonicalAnswer });
     expect(feedback.outcome).toBe('correct');
+    expect(feedback.cardId).toBe('practice:0');
+    expect(feedback.evidenceKind).toBeUndefined();
     expect(feedback.answer).toBe(canonicalAnswer);
     expect(feedback.rationale).toContain('notes.txt');
     expect(feedback.source.filename).toBe('notes.txt');
     const wrong = await submitRecall(a, study.rootId, { ...command(study.revision), attempted: 'something else entirely' });
     expect(wrong.outcome).toBe('incorrect');
+    expect(wrong.evidenceKind).toBeUndefined();
+    // The recall verb persisted ZERO evidence rows — typed evidence belongs
+    // to the practice verb (covered by the S5 suite below).
+    const evidence = await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.practice_attempt WHERE owner_id=$1', [a.userId]);
+    expect(evidence.rows[0].count).toBe(0);
     // Invalid body → INVALID_INPUT; nothing recorded.
     await expect(submitRecall(a, study.rootId, { ...command(study.revision), attempted: '' })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
     // One content-free zero-token ledger row with the generation as its only trace.
@@ -396,7 +417,7 @@ describe('epic-2 S1: confirmed-plan-to-generated-course tracer', () => {
     const study = await confirmedStudy(a);
     await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
     const job = await jobOf(a, study.rootId);
-    // A valid v3 draft whose completion marks the row failed 'timeout' DURING
+    // A valid v4 draft whose completion marks the row failed 'timeout' DURING
     // the dispatch — after the worker's phase-1 pending check, before persist.
     const validDraftJson = JSON.stringify({
       lessons: [{ framing: 'Plain-language walkthrough of the lesson.', sections: [
@@ -404,7 +425,11 @@ describe('epic-2 S1: confirmed-plan-to-generated-course tracer', () => {
         { text: 'A test double stands in for a real dependency during the test.', sourcePosition: 1, locator: 'opening lines' },
       ] }],
       objectiveIndexes: [0, 1, 2],
-      recall: { objectiveIndex: 0, sourcePosition: 0, locator: 'opening lines', prompt: 'State the three parts of a unit test.', answer: 'Arrange, act, assert.', rationale: 'Stated in the opening of notes.txt.' },
+      cards: [
+        { objectiveIndex: 0, sourcePosition: 0, locator: 'opening lines', prompt: 'State the three parts of a unit test.', answer: 'Arrange, act, assert.', rationale: 'Stated in the opening of notes.txt.' },
+        { objectiveIndex: 1, sourcePosition: 1, locator: 'opening lines', prompt: 'Name the double.', answer: 'A test double.', rationale: 'Stated in the opening of doubles.txt.' },
+        { objectiveIndex: 2, sourcePosition: 0, locator: 'second sentence', prompt: 'State what coverage reports.', answer: 'Executed lines.', rationale: 'Stated in notes.txt.' },
+      ],
     });
     const racing: () => TextCompletionPort = () => ({
       complete: async () => {
@@ -471,10 +496,10 @@ describe('epic-2 S3: player shell content v2 and content-item tracking', () => {
     expect(optional.text === null || optional.text.length > 0).toBe(true);
     // No dwell/scroll/completion semantics ride the payload anywhere.
     for (const banned of ['"dwell"', '"scroll"', '"visibility"', '"completion"', '"score"', '"credit"']) expect(JSON.stringify(state)).not.toContain(banned);
-    // The stored content is v3 with the code-derived adaptation record and the
-    // recall answer only server-side.
+    // The stored content is v4 with the code-derived adaptation record and
+    // every card answer only server-side.
     const stored = await database().query<{ content: { contentVersion?: number; adaptation?: { track: string } } }>("SELECT content FROM app.generated_course WHERE root_id=$1 AND status='ready'", [study.rootId]);
-    expect(stored.rows[0].content.contentVersion).toBe(3);
+    expect(stored.rows[0].content.contentVersion).toBe(4);
     expect(stored.rows[0].content.adaptation).toEqual({ track: 'neutral', backgroundSummary: '' });
   });
 
@@ -647,6 +672,275 @@ describe('epic-2 S3: player shell content v2 and content-item tracking', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Epic-2 S5: the active recall practice set and typed feedback — one card per
+// plan objective, per-card submission with the learner-declared assisted
+// flag, typed evidence rows without attempt semantics, fresh retries, replay
+// idempotency, per-version sets, legacy one-card serving, and lifecycle
+// purge/export honesty.
+// ---------------------------------------------------------------------------
+
+describe('epic-2 S5: practice set and typed feedback', () => {
+  it('generates the practice set across every objective and withholds every card answer until that card\'s own submission', async () => {
+    const a = await actor('practice-set');
+    await grant(a);
+    const study = await confirmedStudy(a, multiPlan);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const state = await getCourse(a, study.rootId);
+    expect(state.state).toBe('ready');
+    if (state.state !== 'ready') return;
+    const course = state.course;
+    expect(course.practice.cards).toHaveLength(multiPlan.outcomes.length);
+    expect(course.practice.cards.map(card => card.id)).toEqual(['practice:0', 'practice:1', 'practice:2']);
+    expect(course.practice.cards.map(card => card.objective)).toEqual(multiPlan.outcomes);
+    for (const card of course.practice.cards) expect(Object.keys(card).sort()).toEqual(['id', 'objective', 'prompt', 'source']);
+    // Every card's canonical answer (its own source's opening sentence) is
+    // absent from the whole GET payload and every served section text.
+    const serialized = JSON.stringify(state);
+    for (const banned of [canonicalAnswer, canonicalAnswerB, '"answer"', '"rationale"', '"score"', '"credit"', '"completion"']) expect(serialized).not.toContain(banned);
+    // Per-card submission releases THAT card's answer with correctness,
+    // rationale, source and the declared evidence kind.
+    const unaided = await submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: course.courseId, cardId: 'practice:1', attempted: canonicalAnswerB, assisted: false });
+    expect(unaided).toMatchObject({ rootId: study.rootId, courseId: course.courseId, cardId: 'practice:1', outcome: 'correct', attempted: canonicalAnswerB, answer: canonicalAnswerB, evidenceKind: 'unaided' });
+    expect(unaided.rationale).toContain('doubles.txt');
+    expect(unaided.source.filename).toBe('doubles.txt');
+    // After card 1's submission the OTHER cards' answers stay withheld: a
+    // fresh GET still carries none of them.
+    const after = JSON.stringify(await getCourse(a, study.rootId));
+    for (const banned of [canonicalAnswer, canonicalAnswerB, '"answer"', '"rationale"']) expect(after).not.toContain(banned);
+    // One typed evidence row exists — exactly the submission event above.
+    const rows = await database().query<{ card_id: string; outcome: string; evidence_kind: string }>(
+      'SELECT card_id,outcome,evidence_kind FROM app.practice_attempt WHERE owner_id=$1', [a.userId],
+    );
+    expect(rows.rows).toEqual([{ card_id: 'practice:1', outcome: 'correct', evidence_kind: 'unaided' }]);
+  });
+
+  it('records one typed evidence row per submission event; retries are fresh rows and replays write nothing new', async () => {
+    const a = await actor('practice-evidence');
+    await grant(a);
+    const study = await confirmedStudy(a, multiPlan);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const course = await courseRowOf(a, study.rootId);
+    const envelope = { ...command(study.revision), courseId: course.id, cardId: 'practice:0', attempted: canonicalAnswer, assisted: false };
+    const first = await submitPracticeCard(a, study.rootId, envelope);
+    expect(first).toMatchObject({ cardId: 'practice:0', outcome: 'correct', evidenceKind: 'unaided' });
+    // Command replay: the SAME envelope returns the identical recorded
+    // feedback and writes NO second evidence row.
+    expect(await submitPracticeCard(a, study.rootId, envelope)).toEqual(first);
+    // Assisted practice is learner-declared at submission and recorded as its
+    // own evidence kind — never merged with unaided.
+    const assisted = await submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: course.id, cardId: 'practice:1', attempted: 'i peeked at my notes', assisted: true });
+    expect(assisted).toMatchObject({ cardId: 'practice:1', outcome: 'incorrect', evidenceKind: 'assisted' });
+    // Retry after feedback: a FRESH command lands a FRESH row; the prior rows
+    // are untouched and nothing is deduplicated or double-counted.
+    const retry = await submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: course.id, cardId: 'practice:1', attempted: canonicalAnswerB, assisted: true });
+    expect(retry).toMatchObject({ cardId: 'practice:1', outcome: 'correct', evidenceKind: 'assisted' });
+    const rows = await database().query<{ card_id: string; attempted: string; outcome: string; evidence_kind: string }>(
+      'SELECT card_id,attempted,outcome,evidence_kind FROM app.practice_attempt WHERE course_id=$1 ORDER BY submitted_at,id', [course.id],
+    );
+    expect(rows.rows).toHaveLength(3); // one per event — the replay added none
+    expect(rows.rows.map(row => [row.card_id, row.attempted, row.outcome, row.evidence_kind])).toEqual([
+      ['practice:0', canonicalAnswer, 'correct', 'unaided'],
+      ['practice:1', 'i peeked at my notes', 'incorrect', 'assisted'],
+      ['practice:1', canonicalAnswerB, 'correct', 'assisted'],
+    ]);
+    // The table carries no score, credit, completion, course-attempt or
+    // scheduling column at all — only the typed submission event.
+    const columns = await database().query<{ column_name: string }>(
+      "SELECT column_name FROM information_schema.columns WHERE table_schema='app' AND table_name='practice_attempt'",
+    );
+    expect(columns.rows.map(row => row.column_name).sort()).toEqual(['attempted', 'card_id', 'course_id', 'evidence_kind', 'id', 'outcome', 'owner_id', 'submitted_at']);
+  });
+
+  it('keeps per-version practice sets: regeneration supersedes, prior versions keep their cards and evidence', async () => {
+    const a = await actor('practice-versions');
+    await grant(a);
+    const study = await confirmedStudy(a, multiPlan);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const v1 = await courseRowOf(a, study.rootId);
+    await submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: v1.id, cardId: 'practice:0', attempted: canonicalAnswer, assisted: false });
+    // Re-confirm a changed plan and regenerate as version 2.
+    const saved = await savePlan(a, study.rootId, { ...command(study.revision), plan: { ...multiPlan, topic: 'Unit testing, deeper' }, selectionId: study.selection!.id, extractionId: study.extractionIds[0] });
+    const confirmed = await confirmPlan(a, study.rootId, { ...command(saved.revision), planRevisionId: saved.planRevisionId! });
+    await requestCourseGeneration(a, study.rootId, { ...command(confirmed.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const current = await getCourse(a, study.rootId);
+    expect(current.state === 'ready' && current.course.practice.cards.map(card => card.id)).toEqual(['practice:0', 'practice:1', 'practice:2']);
+    // The prior version keeps its OWN set readable, accepts submissions
+    // through the same machinery, and its evidence rows stay its own.
+    const prior = await getCourse(a, study.rootId, v1.id);
+    expect(prior.state === 'ready' && prior.course.practice.cards.map(card => card.id)).toEqual(['practice:0', 'practice:1', 'practice:2']);
+    await submitPracticeCard(a, study.rootId, { ...command(confirmed.revision), courseId: v1.id, cardId: 'practice:2', attempted: 'from the studied version', assisted: false });
+    const byCourse = await database().query<{ course_id: string; count: number }>(
+      'SELECT course_id,count(*)::int AS count FROM app.practice_attempt WHERE owner_id=$1 GROUP BY course_id', [a.userId],
+    );
+    expect(byCourse.rows.find(row => row.course_id === v1.id)?.count).toBe(2);
+    expect(byCourse.rows).toHaveLength(1); // v2 has no evidence yet — fresh set, fresh state
+  });
+
+  it('denies cross-owner, unknown-card, stale-revision and invalid submissions without a leak and records nothing', async () => {
+    const a = await actor('practice-denied-a');
+    await grant(a);
+    const study = await confirmedStudy(a, multiPlan);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const course = await courseRowOf(a, study.rootId);
+    const b = await actor('practice-denied-b');
+    await grant(b);
+    await expect(submitPracticeCard(b, study.rootId, { ...command(study.revision), courseId: course.id, cardId: 'practice:0', attempted: 'x', assisted: false })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    // A card id not part of this course version is a stale-view conflict.
+    await expect(submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: course.id, cardId: 'practice:7', attempted: 'x', assisted: false })).rejects.toMatchObject({ code: 'CONFLICT' });
+    // A foreign/unknown course id under the owner's own root conflicts.
+    await expect(submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: crypto.randomUUID(), cardId: 'practice:0', attempted: 'x', assisted: false })).rejects.toMatchObject({ code: 'CONFLICT' });
+    // Stale expectedRevision conflicts honestly.
+    await expect(submitPracticeCard(a, study.rootId, { ...command(study.revision + 5), courseId: course.id, cardId: 'practice:0', attempted: 'x', assisted: false })).rejects.toMatchObject({ code: 'CONFLICT' });
+    // Invalid bodies never record: empty attempt text, missing assisted flag,
+    // a malformed card id.
+    for (const body of [
+      { ...command(study.revision), courseId: course.id, cardId: 'practice:0', attempted: '', assisted: false },
+      { ...command(study.revision), courseId: course.id, cardId: 'practice:0', attempted: 'x' },
+      { ...command(study.revision), courseId: course.id, cardId: 'not-a-card', attempted: 'x', assisted: true },
+    ]) await expect(submitPracticeCard(a, study.rootId, body)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    const rows = await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.practice_attempt WHERE owner_id=ANY($1::uuid[])', [[a.userId, b.userId]]);
+    expect(rows.rows[0].count).toBe(0);
+  });
+
+  it('serves a stored pre-2.5 course unchanged: the single recall is its one-card set view and stays submittable', async () => {
+    const a = await actor('practice-legacy');
+    await grant(a);
+    const study = await confirmedStudy(a);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const generated = await courseRowOf(a, study.rootId);
+    // Simulate a stored pre-2.4 v2 row: exactly the v2 contract shape with its
+    // single recall and no practice field.
+    const v2Content = {
+      contentVersion: 2,
+      lessons: [{ title: 'What a unit test is', sections: [{ text: 'A unit test isolates one behavior.', sourceRef: { extractionId: study.extractionIds[0], filename: 'notes.txt', locator: 'opening lines' } }], items: [{ id: 'lesson:1:reading', kind: 'reading', required: true, title: 'Read lesson 1: What a unit test is' }] }],
+      objectives: [{ index: 0, text: 'Explain arrange-act-assert' }],
+      recall: { objectiveIndex: 0, sourceRef: { extractionId: study.extractionIds[0], filename: 'notes.txt', locator: 'opening lines' }, prompt: 'State the three parts of a unit test.', answer: 'Arrange, act, assert.', rationale: 'Stated in the opening of notes.txt.' },
+    };
+    await database().query('UPDATE app.generated_course SET content=$2 WHERE id=$1', [generated.id, v2Content]);
+    const state = await getCourse(a, study.rootId);
+    expect(state.state === 'ready' && state.course.practice.cards.map(card => card.id)).toEqual(['practice:0']);
+    if (state.state !== 'ready') return;
+    expect(state.course.practice.cards[0]).toMatchObject({ objective: 'Explain arrange-act-assert', prompt: 'State the three parts of a unit test.' });
+    // The legacy card submits through the SAME machinery (one judge, two
+    // verbs) and records typed evidence like any v4 card.
+    const feedback = await submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: generated.id, cardId: 'practice:0', attempted: 'Arrange, act, assert.', assisted: false });
+    expect(feedback).toMatchObject({ cardId: 'practice:0', outcome: 'correct', answer: 'Arrange, act, assert.', evidenceKind: 'unaided' });
+    // No regeneration-on-read, no silent rewrite: the stored document keeps
+    // its exact v2 shape after serving and submitting.
+    const stored = await database().query<{ content: { contentVersion?: number } }>('SELECT content FROM app.generated_course WHERE id=$1', [generated.id]);
+    expect(stored.rows[0].content.contentVersion).toBe(2);
+  });
+
+  it('serves a stored pre-2.5 v3 course unchanged: the single recall is its one-card set view and stays submittable', async () => {
+    const a = await actor('practice-legacy-v3');
+    await grant(a);
+    const study = await confirmedStudy(a);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const generated = await courseRowOf(a, study.rootId);
+    // Simulate a stored v3 row exactly as generation emitted it at 1104e95:
+    // the full-lesson set with per-lesson TREATMENT framing, the code-derived
+    // adaptation record and the factual-core digest over the single recall.
+    const v3Lessons = [{
+      title: 'What a unit test is',
+      framing: '“What a unit test is” is presented directly as your sources state it; no track-specific framing was added.',
+      sections: [{ text: 'A unit test isolates one behavior and asserts its outcome.', sourceRef: { extractionId: study.extractionIds[0], filename: 'notes.txt', locator: 'opening lines' } }],
+      items: [{ id: 'lesson:1:reading', kind: 'reading' as const, required: true, title: 'Read lesson 1: What a unit test is' }],
+    }];
+    const v3Objectives = [{ index: 0, text: 'Explain arrange-act-assert' }, { index: 1, text: 'Explain test doubles' }];
+    const v3Recall = {
+      objectiveIndex: 1,
+      sourceRef: { extractionId: study.extractionIds[1], filename: 'doubles.txt', locator: 'opening lines' },
+      prompt: 'Name what stands in for a dependency.',
+      answer: 'A test double.',
+      rationale: 'Stated in the opening of doubles.txt.',
+    };
+    const v3Content = {
+      contentVersion: 3 as const,
+      lessons: v3Lessons,
+      objectives: v3Objectives,
+      recall: v3Recall,
+      adaptation: { track: 'neutral' as const, backgroundSummary: '' },
+      factsDigest: computeFactsDigest({ lessons: v3Lessons, objectives: v3Objectives, recall: v3Recall }),
+    };
+    expect(courseContentV3Schema.safeParse(v3Content).success).toBe(true);
+    await database().query('UPDATE app.generated_course SET content=$2 WHERE id=$1', [generated.id, v3Content]);
+    const state = await getCourse(a, study.rootId);
+    expect(state.state === 'ready' && state.course.practice.cards.map(card => card.id)).toEqual(['practice:1']);
+    if (state.state !== 'ready') return;
+    // The v3 row serves UNCHANGED through the new practice-set view: framing,
+    // adaptation and digest all still surface, and the single recall becomes
+    // its one-card set view under its own objective index.
+    expect(state.course.practice.cards[0]).toMatchObject({ objective: 'Explain test doubles', prompt: 'Name what stands in for a dependency.' });
+    expect(state.course.practice.cards[0].source.filename).toBe('doubles.txt');
+    expect(state.course.lessons[0].framing).toContain('no track-specific framing');
+    expect(state.course.adaptation).toEqual({ track: 'neutral', backgroundSummary: '' });
+    expect(state.course.factsDigest).toBe(v3Content.factsDigest);
+    expect(state.course.recall.objective).toBe('Explain test doubles');
+    // A submission against the legacy v3 card works through the SAME
+    // machinery and records typed evidence under its derived card id.
+    const feedback = await submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: generated.id, cardId: 'practice:1', attempted: 'A test double.', assisted: false });
+    expect(feedback).toMatchObject({ cardId: 'practice:1', outcome: 'correct', answer: 'A test double.', evidenceKind: 'unaided' });
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.practice_attempt WHERE course_id=$1 AND card_id=$2', [generated.id, 'practice:1'])).rows[0].count).toBe(1);
+    // No regeneration-on-read, no silent rewrite: the stored document keeps
+    // its exact v3 shape after serving and submitting.
+    const stored = await database().query<{ content: { contentVersion?: number; recall?: unknown } }>('SELECT content FROM app.generated_course WHERE id=$1', [generated.id]);
+    expect(stored.rows[0].content.contentVersion).toBe(3);
+    expect(stored.rows[0].content.recall).toBeDefined();
+  });
+
+  it('root deletion purges practice evidence with the course lineage; personal removal purges it with the owner; export records the honest skip', async () => {
+    const a = await actor('practice-purge');
+    await grant(a);
+    const study = await confirmedStudy(a, multiPlan);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const course = await courseRowOf(a, study.rootId);
+    await submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: course.id, cardId: 'practice:0', attempted: 'one', assisted: false });
+    await submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: course.id, cardId: 'practice:1', attempted: 'two', assisted: true });
+    // The deletion preview counts practice evidence as its own category.
+    const preview = await transaction(client => previewDerivatives(client, { ownerId: a.userId, rootIds: [study.rootId], objectIds: [], personal: false }));
+    expect(preview.find(category => category.key === 'practice-evidence')).toMatchObject({ label: 'Practice evidence', count: 2 });
+    await removeRoot(a, study.rootId, { ...command(study.revision) });
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.practice_attempt WHERE course_id=$1', [course.id])).rows[0].count).toBe(0);
+    // Personal removal purges practice evidence with the owner.
+    const b = await actor('practice-purge-personal');
+    await grant(b);
+    const other = await confirmedStudy(b, multiPlan);
+    await requestCourseGeneration(b, other.rootId, { ...command(other.revision) });
+    await runCourseGeneration(await jobOf(b, other.rootId));
+    const otherCourse = await courseRowOf(b, other.rootId);
+    await submitPracticeCard(b, other.rootId, { ...command(other.revision), courseId: otherCourse.id, cardId: 'practice:0', attempted: 'one', assisted: false });
+    await personalRemoval(b, { ...command() });
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.practice_attempt WHERE owner_id=$1', [b.userId])).rows[0].count).toBe(0);
+    // The export surface lists practice-evidence as deliberately skipped with
+    // its honest reason; no evidence row ever enters the artifact.
+    const c = await actor('practice-export-skip');
+    await grant(c);
+    const cstudy = await confirmedStudy(c, multiPlan);
+    await requestCourseGeneration(c, cstudy.rootId, { ...command(cstudy.revision) });
+    await runCourseGeneration(await jobOf(c, cstudy.rootId));
+    const ccourse = await courseRowOf(c, cstudy.rootId);
+    await submitPracticeCard(c, cstudy.rootId, { ...command(cstudy.revision), courseId: ccourse.id, cardId: 'practice:0', attempted: 'one', assisted: false });
+    const exportPreview = await listExports(c);
+    const category = exportPreview.categories.find(item => item.category === 'practice-evidence');
+    expect(category).toMatchObject({ available: true, count: null });
+    expect(category?.note).toContain('deliberately excluded');
+    const manifest = await transaction(client => captureManifest(client, c.userId));
+    const skip = manifest.skipped.find(item => item.category === 'practice-evidence');
+    expect(skip?.reason).toContain('Deliberately excluded');
+    expect(skip?.reason).toContain('answer keys');
+    expect(manifest.entries.every(entry => entry.category !== 'practice-evidence')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Epic-2 S2: bounded source retrieval and attributed supplementation. The
 // default proposal and fetch ports are the deterministic local fixtures —
 // zero network egress in every case below; injected fake ports exercise the
@@ -656,9 +950,13 @@ describe('epic-2 S3: player shell content v2 and content-item tracking', () => {
 // Gap markers (docs/bounded-source-fetch.md): gap 0 supported, gap 1 a
 // conflicting statement about the SECOND upload's own subject, gap 2 an
 // unverifiable claim whose passage the fixture source does not contain.
+// Epic-2 S5 note: the conflict gap names COVERAGE and ASSERTION QUALITY —
+// terms of source two's SERVED remainder (the opening sentence is now a
+// withheld practice-card answer), so the side-by-side conflict still fires
+// against the lesson text the learner actually sees.
 const supplementsPlan: Plan = {
   ...plan,
-  missingExplanations: 'Sources do not cover mock frameworks. A conflicting statement about doubles and dependencies appears in public documentation. One unverifiable claim exists about coverage.',
+  missingExplanations: 'Sources do not cover mock frameworks. A conflicting statement about coverage and assertion quality appears in public documentation. One unverifiable claim exists about coverage.',
 };
 
 const deniedPort = (reason: FetchDenyReason): BoundedFetchPort => ({ fetch: async () => ({ ok: false, code: 'denied', reason, message: 'denied fixture' }) });
@@ -691,10 +989,12 @@ describe('epic-2 S2: bounded source retrieval and attributed supplementation', (
     expect(supported.locator).toContain('fetched document');
     expect(supported.contentHash).toMatch(/^[0-9a-f]{64}$/u);
     expect(Number.isNaN(Date.parse(supported.retrievedAt ?? ''))).toBe(false);
-    // Conflict: both sources recorded, never resolved.
+    // Conflict: both sources recorded, never resolved. The upload side is the
+    // SERVED remainder of source two (its opening sentence is a withheld
+    // practice-card answer and never appears in lesson text).
     const conflict = state.gaps[1].supplement!;
     expect(conflict.passage).toContain('not the case');
-    expect(conflict.conflict?.uploadExcerpt).toContain('test double');
+    expect(conflict.conflict?.uploadExcerpt).toContain('Coverage reports');
     expect(conflict.conflict?.uploadSource).toContain('doubles.txt');
     // Unsupported: no content persisted, only the honest checked record.
     const unsupported = state.gaps[2].supplement!;

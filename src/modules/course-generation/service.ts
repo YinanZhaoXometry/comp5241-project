@@ -1,16 +1,20 @@
-import { commandSchema, uuid, type Identity, type Receipt } from "../../contracts/setup";
+import { commandSchema, uuid, type Command, type Identity, type Receipt } from "../../contracts/setup";
 import {
   contentAdaptation,
   contentFactsDigest,
   courseTrackerItems,
   lessonFraming,
   markItemDoneSchema,
+  practiceCardsOf,
+  recallOf,
   requestSupplementsSchema,
   storedCourseContent,
+  submitPracticeSchema,
   submitRecallSchema,
   type CourseState,
+  type EvidenceKind,
   type GapResolution,
-  type RecallFeedback,
+  type PracticeFeedback,
   type SupplementOutcome,
   type SupplementsState,
 } from "../../contracts/courses";
@@ -25,7 +29,7 @@ import { batchRow } from "../materials-setup/batches";
 import { planRevision } from "../materials-setup/repository";
 import { preferenceRow } from "../setup-preferences/repository";
 import { ledgerTotalTokens } from "../ai-setup/repository";
-import { buildRecallFeedback } from "./generation";
+import { buildPracticeFeedback } from "./generation";
 import { declaredGapCount, deriveGaps } from "./supplements";
 import * as repository from "./repository";
 import { fail } from "../../platform/errors";
@@ -164,7 +168,15 @@ export async function getCourse(identity: Identity, rawId: string, requested?: s
     if (!row.content || !row.settled_at) fail("RETRYABLE_FAILURE");
     const content = storedCourseContent(row.content);
     if (!content) fail("RETRYABLE_FAILURE");
-    const recallObjective = content.objectives.find(objective => objective.index === content.recall.objectiveIndex)?.text ?? "";
+    // Epic-2 S5: the practice set serves per version — one recall card per
+    // stored objective on v4 rows, the legacy single recall as its own
+    // one-card set view on pre-2.5 rows. Prompt/objective/source only: the
+    // canonical answer and rationale of every card appear in no view. The 2.1
+    // single-recall view derives from card 0 (recallOf).
+    const cards = practiceCardsOf(content);
+    const objectiveText = (index: number) => content.objectives.find(objective => objective.index === index)?.text ?? "";
+    const recall = recallOf(content);
+    const recallObjective = objectiveText(recall.objectiveIndex);
     // Tracker join: this owner's explicit done rows for THIS course version —
     // prior versions keep their own state, superseded learners stay put.
     const superseded = await repository.newerReadyExists(client, rootId, row.id);
@@ -204,10 +216,18 @@ export async function getCourse(identity: Identity, rawId: string, requested?: s
         })),
         items,
         objectives: content.objectives,
+        practice: {
+          cards: cards.map(card => ({
+            id: card.id,
+            objective: objectiveText(card.objectiveIndex),
+            prompt: card.prompt,
+            source: { filename: card.sourceRef.filename, locator: card.sourceRef.locator },
+          })),
+        },
         recall: {
-          prompt: content.recall.prompt,
+          prompt: recall.prompt,
           objective: recallObjective,
-          source: { filename: content.recall.sourceRef.filename, locator: content.recall.sourceRef.locator },
+          source: { filename: recall.sourceRef.filename, locator: recall.sourceRef.locator },
         },
       },
     };
@@ -256,42 +276,125 @@ export async function markItemDone(identity: Identity, rawId: string, raw: unkno
   });
 }
 
-// Recall submission: the sole reveal path for the canonical answer. The
-// durable receipt is CONTENT-FREE (rootId, revision, courseId, outcome) — the
-// answer, rationale and attempted text never persist, so a revealed answer
-// cannot survive root/personal deletion at rest. A replayed command recomputes
-// the identical feedback view from the live course's immutable stored content
-// while that course is still readable; once it is not (purged/revoked), the
-// replay returns only the reduced receipt shape. NO evidence row is written —
-// typed practice evidence belongs to entry 5.
-export async function submitRecall(identity: Identity, rawId: string, raw: unknown): Promise<RecallFeedback> {
+// ---------------------------------------------------------------------------
+// Epic-2 S5 per-card practice submission: the sole reveal path for every
+// card's canonical answer and rationale. ONE implementation, TWO thin verbs
+// over it — submitPracticeCard (per-card, course-version-scoped, required
+// learner-declared assisted flag, ONE typed evidence row per submission
+// event) and the 2.1 submitRecall (card 0 of the latest ready course) which
+// by its 2.1 contract returns feedback and records a CONTENT-FREE receipt
+// ONLY — no evidence row, because evidence kinds are learner-declared and the
+// legacy schema declares none. The durable practice receipt carries the
+// declared evidence kind; a replayed command recomputes the identical
+// feedback from the live course's immutable stored content while that course
+// is still readable and writes NO second evidence row; once it is not
+// (purged/revoked), the replay returns only the reduced receipt shape. A
+// replay never INFERS an evidence kind — it returns only what the recorded
+// receipt declared. NO score, credit, completion, course-attempt or
+// scheduling effect exists anywhere (epics 3/4 own those), and a retry is
+// always a FRESH command that lands a FRESH row — never deduplicated, never
+// double-counted.
+// ---------------------------------------------------------------------------
+async function submitCard(
+  identity: Identity,
+  rawId: string,
+  input: {
+    // The full parsed command (its exact fields ride the replay hash — a
+    // re-sent commandKey with different content conflicts honestly).
+    command: Command & { attempted: string };
+    // The learner-declared evidence kind. Present ONLY on the practice verb
+    // (its schema requires the assisted declaration); absent on the legacy
+    // recall verb, which records no typed evidence at all.
+    evidenceKind?: EvidenceKind;
+    // The exact ready course version (per-version practice set); null resolves
+    // the latest ready course — the 2.1 single-recall behavior.
+    courseId: string | null;
+    cardId: string | null;
+    receiptKind: "submit-practice" | "submit-recall";
+  },
+): Promise<PracticeFeedback> {
   const rootId = parse(uuid, rawId);
-  const command = parse(submitRecallSchema, raw);
+  const command = input.command;
   return transaction(async client => {
     await authorize(client, identity);
     await lifecycle.scopedRoot(client, identity.userId, rootId);
     const item = await batchRow(client, rootId);
     if (item.revision !== command.expectedRevision) fail("CONFLICT");
     const hash = requestHash({ rootId, command });
-    const repeated = await lifecycle.replay(client, identity.userId, command, "submit-recall", hash);
+    const repeated = await lifecycle.replay(client, identity.userId, command, input.receiptKind, hash);
     if (repeated) {
-      const prior = repeated as { operationId?: string };
+      // Command replay: the recorded feedback returns idempotently and NO
+      // second evidence row is written. The feedback is recomputed from the
+      // still-readable course's immutable stored content, carrying only the
+      // evidence kind the recorded receipt declared — never an inferred one;
+      // a purged course returns only the reduced receipt shape.
+      const prior = repeated as { operationId?: string; cardId?: string; evidenceKind?: EvidenceKind };
       const course = prior.operationId ? await repository.readyCourseById(client, identity.userId, rootId, prior.operationId) : null;
       if (course?.content) {
         const settled = storedCourseContent(course.content);
-        if (settled) return buildRecallFeedback({ rootId, revision: item.revision, courseId: course.id, content: settled, attempted: command.attempted });
+        if (settled) {
+          const cards = practiceCardsOf(settled);
+          const card = prior.cardId ? cards.find(candidate => candidate.id === prior.cardId) : cards[0];
+          if (card) return buildPracticeFeedback({ rootId, revision: item.revision, courseId: course.id, card, attempted: command.attempted, ...(prior.evidenceKind !== undefined ? { evidenceKind: prior.evidenceKind } : {}) });
+        }
       }
-      return repeated as unknown as RecallFeedback; // course no longer readable: reduced shape only
+      return repeated as unknown as PracticeFeedback; // course no longer readable: reduced shape only
     }
-    const course = await repository.latestReadyCourse(client, identity.userId, rootId);
+    const course = input.courseId
+      ? await repository.readyCourseById(client, identity.userId, rootId, input.courseId)
+      : await repository.latestReadyCourse(client, identity.userId, rootId);
     if (!course?.content) fail("CONFLICT"); // nothing studyable yet — confirm and generate first
     await lifecycle.assertObjects(client, identity.userId, [course.object_id, ...(course.object_ids ?? [])].filter((id): id is string => !!id));
     const content = storedCourseContent(course.content);
     if (!content) fail("RETRYABLE_FAILURE");
-    const feedback = buildRecallFeedback({ rootId, revision: item.revision, courseId: course.id, content, attempted: command.attempted });
-    const recorded: Receipt & { outcome: RecallFeedback["outcome"] } = { rootId, operationId: course.id, revision: item.revision, outcome: feedback.outcome };
-    await lifecycle.receipt(client, identity, command, "submit-recall", hash, recorded);
+    const cards = practiceCardsOf(content);
+    const card = input.cardId ? cards.find(candidate => candidate.id === input.cardId) : cards[0];
+    if (!card) fail("CONFLICT"); // the card is not part of this course version — re-read the course
+    const feedback = buildPracticeFeedback({ rootId, revision: item.revision, courseId: course.id, card, attempted: command.attempted, ...(input.evidenceKind !== undefined ? { evidenceKind: input.evidenceKind } : {}) });
+    // ONLY the practice verb's learner-declared flag records typed evidence.
+    if (input.evidenceKind !== undefined)
+      await repository.insertPracticeAttempt(client, { ownerId: identity.userId, courseId: course.id, cardId: card.id, attempted: command.attempted, outcome: feedback.outcome, evidenceKind: input.evidenceKind });
+    // The receipt is CONTENT-FREE and carries the declared evidence kind only
+    // on the practice verb (the recall receipt has none to carry).
+    const recorded: Receipt & { cardId: string; outcome: PracticeFeedback["outcome"]; evidenceKind?: EvidenceKind } = {
+      rootId,
+      operationId: course.id,
+      revision: item.revision,
+      cardId: card.id,
+      outcome: feedback.outcome,
+      ...(input.evidenceKind !== undefined ? { evidenceKind: input.evidenceKind } : {}),
+    };
+    await lifecycle.receipt(client, identity, command, input.receiptKind, hash, recorded);
     return feedback;
+  });
+}
+
+// Epic-2 S5 per-card practice submission over the exact ready course version.
+export async function submitPracticeCard(identity: Identity, rawId: string, raw: unknown): Promise<PracticeFeedback> {
+  const command = parse(submitPracticeSchema, raw);
+  return submitCard(identity, rawId, {
+    command,
+    // Learner-declared at submission, never inferred; the two evidence kinds
+    // are never conflated (D2).
+    evidenceKind: command.assisted ? "assisted" : "unaided",
+    courseId: command.courseId,
+    cardId: command.cardId,
+    receiptKind: "submit-practice",
+  });
+}
+
+// The 2.1 single-recall endpoint, now a thin verb over the same machinery:
+// card 0 of the latest ready course. By the 2.1 contract it returns feedback
+// and records a content-free receipt ONLY — no typed evidence row, because
+// evidence kinds are learner-declared and this verb's schema declares none.
+// Legacy receipts recorded before 2.5 replay through the same reduced path.
+export async function submitRecall(identity: Identity, rawId: string, raw: unknown): Promise<PracticeFeedback> {
+  const command = parse(submitRecallSchema, raw);
+  return submitCard(identity, rawId, {
+    command,
+    courseId: null,
+    cardId: null,
+    receiptKind: "submit-recall",
   });
 }
 

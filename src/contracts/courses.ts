@@ -36,6 +36,7 @@ export const courseRecallSchema = z.strictObject({
   answer: z.string().trim().min(1).max(800),
   rationale: z.string().trim().min(1).max(800),
 });
+export type CourseRecall = z.infer<typeof courseRecallSchema>;
 // Legacy single-lesson content (pre-2.3 stored rows). Kept verbatim so those
 // rows keep serving unchanged; the v2 union below wraps them at read time —
 // no regeneration-on-read, no silent rewrite.
@@ -178,14 +179,94 @@ export const courseContentV3Schema = z
   .superRefine((content, context) => refinePositionalReadingItems(content, context));
 export type CourseContentV3 = z.infer<typeof courseContentV3Schema>;
 
-// The stored-content union: v3 rows parse natively; pre-2.4 v2 rows keep their
-// exact stored shape (no adaptation field ⇒ neutral presentation, nothing
-// invented); pre-2.3 v1 rows keep theirs and wrap at read time.
-export const courseContentSchema = z.union([courseContentV3Schema, courseContentV2Schema, courseContentV1Schema]);
-export type CourseContent = CourseContentV3 | CourseContentV2 | CourseContentV1;
-// What every settled row serves as after storedCourseContent: v3 native or v2
-// (a wrapped legacy v1 row is its own single-lesson v2 degenerate case).
-export type CourseContentServing = CourseContentV3 | CourseContentV2;
+// ---------------------------------------------------------------------------
+// Epic-2 S5: content v4 — the active recall PRACTICE SET. One recall card per
+// confirmed-plan objective replaces the single recall item in STORED content
+// (the served `recall` view and the 2.1 single-recall endpoint derive from
+// card 0 — one judge, two thin verbs, no parallel path). Canonical answers and
+// rationales live in the stored cards and in per-card submission feedback
+// ONLY, never in any GET payload. There are still deliberately no score,
+// grade, completion, course-attempt or credit fields: typed practice evidence
+// (unaided vs assisted) is recorded per submission in app.practice_attempt
+// (migration 019) and owns nothing but the submission event itself.
+// ---------------------------------------------------------------------------
+
+// Stable per-card identity, exactly the tracker pattern: the card binds to the
+// objective index it examines. Plain string ids so no new uuid surface enters
+// URLs.
+export const practiceCardIdPattern = /^practice:[0-7]$/u;
+
+// Canonical answer/rationale live here and in the submission feedback ONLY.
+export const practiceCardSchema = z.strictObject({
+  id: z.string().regex(practiceCardIdPattern),
+  objectiveIndex: z.number().int().min(0).max(7),
+  sourceRef: sourceRefSchema,
+  prompt: z.string().trim().min(1).max(1200),
+  answer: z.string().trim().min(1).max(800),
+  rationale: z.string().trim().min(1).max(800),
+});
+export type PracticeCard = z.infer<typeof practiceCardSchema>;
+
+export const coursePracticeSetSchema = z.strictObject({
+  cards: z.array(practiceCardSchema).min(1).max(8),
+});
+export type CoursePracticeSet = z.infer<typeof coursePracticeSetSchema>;
+
+// Practice-set integrity, enforced structurally at every parse: EXACTLY one
+// card per stored objective (every objective covered, no duplicates, no
+// invented objectives), and each card's id is its objective index.
+function refinePracticeSet(
+  content: { objectives: Array<{ index: number }>; practice: { cards: PracticeCard[] } },
+  context: z.RefinementCtx,
+): void {
+  const indexes = content.objectives.map(objective => objective.index);
+  const cards = content.practice.cards;
+  if (cards.length !== indexes.length) {
+    context.addIssue({ code: "custom", path: ["practice", "cards"], message: "the practice set must carry exactly one card per objective" });
+    return;
+  }
+  const seen = new Set<number>();
+  cards.forEach((card, position) => {
+    if (card.id !== `practice:${card.objectiveIndex}`)
+      context.addIssue({ code: "custom", path: ["practice", "cards", position, "id"], message: `card id must be practice:${card.objectiveIndex}` });
+    if (seen.has(card.objectiveIndex))
+      context.addIssue({ code: "custom", path: ["practice", "cards", position], message: "duplicate objective index in the practice set" });
+    seen.add(card.objectiveIndex);
+  });
+  for (const index of indexes)
+    if (!seen.has(index))
+      context.addIssue({ code: "custom", path: ["practice", "cards"], message: `objective ${index} has no card` });
+}
+
+export const courseContentV4Schema = z
+  .strictObject({
+    contentVersion: z.literal(4),
+    lessons: z.array(courseLessonV3Schema).min(1).max(8),
+    objectives: z.array(courseObjectiveSchema).min(1).max(8),
+    practice: coursePracticeSetSchema,
+    enrichment: courseEnrichmentSchema.optional(),
+    adaptation: courseAdaptationSchema,
+    // SHA-256 hex over the FACTUAL core only (lesson titles in order, every
+    // section's text, its source's filename + locator, objectives, the FULL
+    // practice set including every withheld answer, and the optional
+    // enrichment). Computed by the strict parser at settle time; treatment
+    // (framing, adaptation) and per-upload extraction ids never enter it.
+    factsDigest: z.string().regex(/^[0-9a-f]{64}$/u),
+  })
+  .superRefine((content, context) => {
+    refinePositionalReadingItems(content, context);
+    refinePracticeSet(content, context);
+  });
+export type CourseContentV4 = z.infer<typeof courseContentV4Schema>;
+
+// The stored-content union: v4 rows parse natively; pre-2.5 v3 rows, pre-2.4
+// v2 rows and pre-2.3 v1 rows keep their exact stored shapes and serve
+// unchanged (the legacy single recall becomes their one-card set view).
+export const courseContentSchema = z.union([courseContentV4Schema, courseContentV3Schema, courseContentV2Schema, courseContentV1Schema]);
+export type CourseContent = CourseContentV4 | CourseContentV3 | CourseContentV2 | CourseContentV1;
+// What every settled row serves as after storedCourseContent: v4 native, v3,
+// or v2 (a wrapped legacy v1 row is its own single-lesson v2 degenerate case).
+export type CourseContentServing = CourseContentV4 | CourseContentV3 | CourseContentV2;
 export type CourseSection = z.infer<typeof courseSectionSchema>;
 export type CourseSourceRef = z.infer<typeof sourceRefSchema>;
 
@@ -219,6 +300,8 @@ export function wrapLegacyCourseContent(v1: CourseContentV1): CourseContentV2 {
 // Parse any stored content row into the serving shape; null when the stored
 // document matches neither version (the honest RETRYABLE_FAILURE path).
 export function storedCourseContent(raw: unknown): CourseContentServing | null {
+  const v4 = courseContentV4Schema.safeParse(raw);
+  if (v4.success) return v4.data;
   const v3 = courseContentV3Schema.safeParse(raw);
   if (v3.success) return v3.data;
   const v2 = courseContentV2Schema.safeParse(raw);
@@ -226,6 +309,29 @@ export function storedCourseContent(raw: unknown): CourseContentServing | null {
   const v1 = courseContentV1Schema.safeParse(raw);
   if (v1.success) return wrapLegacyCourseContent(v1.data);
   return null;
+}
+
+// The epic-2 S5 practice set over ANY stored content: v4 rows carry their own
+// per-objective cards; a pre-2.5 row's stored single recall becomes its own
+// one-card set view (its objective index names the card) — the stored row is
+// never rewritten and never gains content it did not store.
+export function practiceCardsOf(content: CourseContentServing): PracticeCard[] {
+  if ("practice" in content) return content.practice.cards;
+  const recall = content.recall;
+  return [{ id: `practice:${recall.objectiveIndex}`, ...recall }];
+}
+
+// The 2.1 single-recall view over any stored content, derived from card 0 —
+// one judge, two thin verbs, no parallel submission path.
+export function recallOf(content: CourseContentServing): CourseRecall {
+  const card = practiceCardsOf(content)[0];
+  return {
+    objectiveIndex: card.objectiveIndex,
+    sourceRef: card.sourceRef,
+    prompt: card.prompt,
+    answer: card.answer,
+    rationale: card.rationale,
+  };
 }
 
 // Treatment accessors over the serving union: pre-2.4 rows (v2, wrapped v1)
@@ -280,6 +386,8 @@ export const courseDraftSectionSchema = z.strictObject({
   sourcePosition: z.number().int().min(0).max(9),
   locator: z.string().trim().min(1).max(120),
 });
+// The pre-2.5 single-recall draft shape (kept inside the legacy draft schemas
+// below for the contract record); the v4 practice draft carries cards instead.
 export const courseDraftRecallSchema = z.strictObject({
   objectiveIndex: z.number().int().min(0).max(7),
   sourcePosition: z.number().int().min(0).max(9),
@@ -316,8 +424,29 @@ export const courseDraftV3Schema = z.strictObject({
 });
 export type CourseDraftV3 = z.infer<typeof courseDraftV3Schema>;
 
+// Epic-2 S5 v4 draft: the v3 shape with the single recall REPLACED by the
+// practice set — one card per listed plan outcome (the parser enforces full
+// coverage, exactly one card per objective, resolvable links). Card ids are
+// DERIVED at settle time from each card's objective index, exactly like lesson
+// titles come from the plan; nothing card-identifying is trusted from output.
+export const courseDraftCardSchema = z.strictObject({
+  objectiveIndex: z.number().int().min(0).max(7),
+  sourcePosition: z.number().int().min(0).max(9),
+  locator: z.string().trim().min(1).max(120),
+  prompt: z.string().trim().min(1).max(1200),
+  answer: z.string().trim().min(1).max(800),
+  rationale: z.string().trim().min(1).max(800),
+});
+export const courseDraftV4Schema = z.strictObject({
+  lessons: z.array(courseDraftLessonV3Schema).min(1).max(8),
+  objectiveIndexes: z.array(z.number().int().min(0).max(7)).min(1).max(8),
+  cards: z.array(courseDraftCardSchema).min(1).max(8),
+  enrichment: courseDraftEnrichmentSchema.optional(),
+});
+export type CourseDraftV4 = z.infer<typeof courseDraftV4Schema>;
+
 // The legacy single-lesson draft shape (pre-2.3 processors); kept so the
-// contract record stays complete. Generation now emits and accepts v3 only.
+// contract record stays complete. Generation now emits and accepts v4 only.
 export const courseDraftV1Schema = z.strictObject({
   sections: z.array(courseDraftSectionSchema).min(1).max(8),
   objectiveIndexes: z.array(z.number().int().min(0).max(7)).min(1).max(8),
@@ -327,7 +456,7 @@ export type CourseDraftV1 = z.infer<typeof courseDraftV1Schema>;
 
 // The pre-2.4 multi-lesson draft shape (no framing); kept so the contract
 // record stays complete. A draft without per-lesson framing is now INVALID —
-// the v3 parser rejects it, never repairs it.
+// the v4 parser rejects it, never repairs it.
 export const courseDraftV2Schema = z.strictObject({
   lessons: z.array(courseDraftLessonSchema).min(1).max(8),
   objectiveIndexes: z.array(z.number().int().min(0).max(7)).min(1).max(8),
@@ -361,13 +490,34 @@ export const coursePreferencePinSchema = z.strictObject({
 });
 export type CoursePreferencePin = z.infer<typeof coursePreferencePinSchema>;
 
-// Recall submission: the plain command envelope plus the attempted recall
-// text. Feedback is computed and returned (and replayed by command key); no
-// attempt-evidence row is written (entry 5 owns typed practice evidence).
+// Recall submission (2.1, legacy thin verb): the plain command envelope plus
+// the attempted recall text. It derives from card 0 of the latest ready course
+// through the SAME machinery as submitPracticeCard — one judge, no parallel
+// path — but by the 2.1 contract it returns feedback and records a
+// content-free receipt ONLY: no typed evidence row, because evidence kinds
+// are learner-declared and this schema declares none.
 export const submitRecallSchema = commandSchema.extend({
   attempted: z.string().trim().min(1).max(2000),
 });
 export type SubmitRecall = z.infer<typeof submitRecallSchema>;
+
+// Epic-2 S5 typed practice evidence kinds. The kind is LEARNER-DECLARED at
+// submission (never inferred) and the two kinds are never conflated (D2).
+export const evidenceKinds = ["unaided", "assisted"] as const;
+export type EvidenceKind = (typeof evidenceKinds)[number];
+
+// Per-card practice submission: the command envelope plus the exact ready
+// course version, the stable card id and the learner-declared assisted flag.
+// Feedback is computed and returned (and replayed by command key); ONE typed
+// evidence row is written per submission event — retries are fresh rows under
+// fresh commands, never deduplicated, never double-counted as anything.
+export const submitPracticeSchema = commandSchema.extend({
+  courseId: uuid,
+  cardId: z.string().regex(practiceCardIdPattern),
+  attempted: z.string().trim().min(1).max(2000),
+  assisted: z.boolean(),
+});
+export type SubmitPractice = z.infer<typeof submitPracticeSchema>;
 
 // Epic-2 S3 explicit content-item mark-done: the plain command envelope plus
 // the exact ready course version and the stable item id being marked. Only
@@ -441,6 +591,18 @@ export type CourseView = {
   // with this owner's done state for THIS course version.
   items: CourseItemView[];
   objectives: Array<{ index: number; text: string }>;
+  // The epic-2 S5 practice set: one recall card per objective, prompts and
+  // source locations only — the canonical answer and rationale of every card
+  // appear in NO view, only in per-card submission feedback.
+  practice: {
+    cards: Array<{
+      id: string;
+      objective: string;
+      prompt: string;
+      source: { filename: string; locator: string };
+    }>;
+  };
+  // The 2.1 single-recall view, derived from card 0 for compatibility.
   recall: {
     prompt: string;
     objective: string;
@@ -449,17 +611,25 @@ export type CourseView = {
 };
 
 // Released exactly once per submission command; the sole reveal path for the
-// canonical answer and rationale.
-export type RecallFeedback = {
+// canonical answers and rationales. `evidenceKind` is ALWAYS present on
+// practice-verb feedback (the learner's own assisted declaration) and ABSENT
+// on the legacy 2.1 single-recall verb, which records no typed evidence at
+// all — a kind is never inferred (D2).
+export type PracticeFeedback = {
   rootId: string;
   revision: number;
   courseId: string;
+  cardId: string;
   outcome: "correct" | "incorrect";
   attempted: string;
   answer: string;
   rationale: string;
   source: { filename: string; locator: string };
+  evidenceKind?: EvidenceKind;
 };
+// The 2.1 single-recall feedback, now the card-0 member of the same family
+// (one feedback shape, no parallel path) — evidence-free by the 2.1 contract.
+export type RecallFeedback = PracticeFeedback;
 
 // ---------------------------------------------------------------------------
 // Epic-2 S2: bounded source retrieval and attributed supplementation. A

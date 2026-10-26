@@ -92,10 +92,10 @@ describe('export contracts', () => {
     expect(exportJobSchema.safeParse({ schemaVersion: 1, requestId: crypto.randomUUID() }).success).toBe(true);
     expect(exportJobSchema.safeParse({ schemaVersion: 1, requestId: crypto.randomUUID(), extra: 1 }).success).toBe(false);
     // S6 added the advisory 'ai-drafts' category, epic-2 S1 added
-    // 'generated-courses' and epic-2 S2 added 'supplements' (all three
-    // deliberately excluded from the artifact; listed so owners see the
-    // exclusion).
-    expect(exportCategories).toHaveLength(11);
+    // 'generated-courses', epic-2 S2 added 'supplements' and epic-2 S5 added
+    // 'practice-evidence' (all four deliberately excluded from the artifact;
+    // listed so owners see the exclusion).
+    expect(exportCategories).toHaveLength(12);
     expect(MAX_EXPORT_BYTES).toBe(512 * 1024 * 1024);
   });
 

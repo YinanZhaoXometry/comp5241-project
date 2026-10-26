@@ -14,12 +14,22 @@ const sources = [
   { name: "course-0.txt", text: "Synthetic course source one. A second sentence gives the lesson body some structure." },
   { name: "course-1.txt", text: "Synthetic course source two. Doubles and coverage appear here for a second section." },
 ];
-// The synthetic fixture's canonical recall answer is the first sentence of
-// source one, and that source's section teaches from the remainder AFTER it —
-// so the answer string itself, the rationale and the feedback labels must all
-// stay absent from the page and every GET payload until submission.
+// The synthetic fixture's per-card canonical answers are the opening
+// sentences of the sources the cards draw from (round-robin over the plan's
+// outcomes), and each card's source teaches from the remainder AFTER its
+// opening sentence — so every card's answer string, every rationale and the
+// feedback labels must all stay absent from the page and every GET payload
+// until that card's own submission.
 const canonicalAnswer = "Synthetic course source one.";
-const withheldProbes = [canonicalAnswer, "The opening of course-0.txt states this directly.", "Canonical answer:", "Rationale:"];
+const secondCardAnswer = "Synthetic course source two.";
+const withheldProbes = [
+  canonicalAnswer,
+  secondCardAnswer,
+  "The opening of course-0.txt states this directly.",
+  "The opening of course-1.txt states this directly.",
+  "Canonical answer:",
+  "Rationale:",
+];
 
 test.beforeEach(async () => { await database().query('DELETE FROM auth."rateLimit"'); });
 test.afterAll(async () => { await closeDatabase(); });
@@ -64,7 +74,7 @@ async function grantConsent(page: Page) {
   expect(decision.status()).toBe(200);
 }
 
-async function uploadAndConfirm(page: Page, missing: string, lessons: string[] = ["One generated lesson"]) {
+async function uploadAndConfirm(page: Page, missing: string, lessons: string[] = ["One generated lesson"], outcomes: string[] = ["Recall the first source", "Explain the second source"]) {
   await page.getByLabel("Synthetic study materials").setInputFiles(sources.map(source => ({ name: source.name, mimeType: "text/plain", buffer: Buffer.from(source.text) })));
   const created = page.waitForResponse(response => response.url().endsWith("/api/v1/batches") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Upload materials", exact: true }).click();
@@ -77,7 +87,7 @@ async function uploadAndConfirm(page: Page, missing: string, lessons: string[] =
   }
   await page.getByRole("button", { name: "Continue with acknowledged selection", exact: true }).click();
   await page.getByLabel("Topic", { exact: true }).fill("Synthetic course topic");
-  await page.getByLabel("Learning outcomes").fill("Recall the first source\nExplain the second source");
+  await page.getByLabel("Learning outcomes").fill(outcomes.join("\n"));
   await page.getByLabel("Source coverage / missing explanations", { exact: false }).fill(missing);
   await page.getByLabel("One mini-course title").fill("Course tracer");
   await page.getByLabel("Lessons · one per line").fill(lessons.join("\n"));
@@ -120,27 +130,37 @@ test("A generates and studies the labeled course; the recall answer is withheld 
   await expect(panel.getByText("Source: course-0.txt ·", { exact: false }).first()).toBeVisible();
   await expect(panel.getByText("Source: course-1.txt ·", { exact: false }).first()).toBeVisible();
   // Pre-submission withholding: the course view (this panel's DOM) and every
-  // course GET payload carry neither the canonical answer string, its field,
-  // its label nor the rationale. (The Materials preview above legitimately
-  // still shows the owner's OWN uploaded source — the answer's origin — which
-  // is owner content, not a served course payload.)
+  // course GET payload carry neither canonical answer (card 1 draws from
+  // source one, card 2 from source two — one card per plan outcome), any
+  // field, any label nor any rationale. (The Materials preview above
+  // legitimately still shows the owner's OWN uploaded sources — the answers'
+  // origin — which is owner content, not a served course payload.)
   const panelHtml = await panel.innerHTML();
   for (const probe of withheldProbes) expect(panelHtml).not.toContain(probe);
   const state = await (await page.request.get(`/api/v1/studies/${rootId}/course`)).json() as unknown;
   const serialized = JSON.stringify(state);
   expect(serialized).not.toContain('"answer"');
   expect(serialized).not.toContain('"rationale"');
-  for (const probe of [canonicalAnswer, "The opening of course-0.txt states this directly."]) expect(serialized).not.toContain(probe);
+  for (const probe of [canonicalAnswer, secondCardAnswer, "The opening of course-0.txt states this directly.", "The opening of course-1.txt states this directly."]) expect(serialized).not.toContain(probe);
   for (const banned of ['"score"', '"credit"', '"completion"']) expect(serialized).not.toContain(banned);
-  // Keyboard-operable recall: focus the field by label, type, Tab to submit.
-  await page.getByLabel("Your answer", { exact: true }).click();
+  // Epic-2 S5 practice set: one card per plan outcome, both withholding.
+  await expect(panel.getByText("Practice set · answers withheld until you submit", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Card 1 of 2", { exact: false })).toBeVisible();
+  await expect(panel.getByText("Card 2 of 2", { exact: false })).toBeVisible();
+  // Keyboard-operable card 1: focus the field by label, type, Tab past the
+  // assisted toggle to submit (keyboard-complete run).
+  await page.getByLabel("Your answer to card 1", { exact: true }).focus();
   await page.keyboard.type(canonicalAnswer);
   await page.keyboard.press("Tab");
-  await expect(panel.getByRole("button", { name: "Submit recall answer", exact: true })).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(panel.getByRole("button", { name: "Submit card 1 answer", exact: true })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(panel.getByText("Correct.", { exact: false })).toBeVisible();
   await expect(panel.getByText("Canonical answer:", { exact: false })).toBeVisible();
   await expect(panel.getByText(withheldProbes[0])).toBeVisible();
+  await expect(panel.getByText("Evidence kind:", { exact: false })).toBeVisible();
+  // Card 2 still withholds its answer after card 1's submission.
+  expect(await panel.getByText(secondCardAnswer).count()).toBe(0);
   for (const body of await Promise.all(courseBodies)) for (const probe of withheldProbes) expect(body).not.toContain(probe);
   // Epic-2 S3 player shell: numbered sequence in the sticky sidebar, explicit
   // keyboard mark-done of the required reading, the labeled non-blocking
@@ -451,4 +471,125 @@ test("adaptation: stated background pitches the course, neutral claims no track;
   expect(outbound).toEqual([]);
   expect(errors).toEqual([]);
   await page.screenshot({ path: info.outputPath("adapted-course-studied.png"), fullPage: true });
+});
+
+// Epic-2 S5 practice journey: the plan's outcomes drive a MULTI-CARD practice
+// set. Every card runs keyboard-only with attempt-before-answer; feedback
+// appears only after that card's own submission and states correctness,
+// canonical answer, rationale, source and the evidence kind; the assisted
+// toggle declares the evidence at submission (labeled, never conflated with
+// unaided); a retry is always a fresh attempt landing fresh typed evidence.
+// Synthetic account and content only; the processor is the local synthetic
+// fixture — zero outbound requests.
+test("practice set: multi-card keyboard-only journey, assisted label, fresh retry", async ({ page, playwright }, info) => {
+  test.setTimeout(240000);
+  const errors: string[] = [];
+  const outbound: string[] = [];
+  const courseBodies: Promise<string>[] = [];
+  page.on("pageerror", error => errors.push(error.name));
+  page.on("request", request => { if (!request.url().startsWith(origin)) outbound.push(new URL(request.url()).hostname); });
+  page.on("response", response => { if (response.url().includes("/course") && response.request().method() === "GET") courseBodies.push(response.text().catch(() => "")); });
+  await page.setViewportSize({ width: 360, height: 900 });
+  const account = await login(page, "course-practice-a");
+  await grantConsent(page);
+  const outcomes = ["Recall the first source", "Explain the second source", "Judge the third outcome"];
+  const rootId = await uploadAndConfirm(page, "Coverage not assessed. No supplementary sources fetched.", ["One generated lesson"], outcomes);
+  const panel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your mini-course", exact: true }) });
+  await panel.getByRole("button", { name: "Generate mini-course (AI)", exact: true }).click();
+  await expect(panel.getByRole("heading", { name: "1. One generated lesson", exact: true })).toBeVisible({ timeout: 60000 });
+  // One card per plan objective (three outcomes, two sources: cards 1 and 3
+  // draw from source one, card 2 from source two).
+  await expect(panel.getByText("Practice set · answers withheld until you submit", { exact: true })).toBeVisible();
+  for (const label of ["Card 1 of 3", "Card 2 of 3", "Card 3 of 3"]) await expect(panel.getByText(label, { exact: false })).toBeVisible();
+  // Withholding before any submission: no card answer in the panel DOM.
+  const panelHtml = await panel.innerHTML();
+  for (const probe of withheldProbes) expect(panelHtml).not.toContain(probe);
+  // Card 1, keyboard-only, unaided: focus by label → type → Tab past the
+  // assisted toggle → Enter on submit.
+  await page.getByLabel("Your answer to card 1", { exact: true }).focus();
+  await page.keyboard.type(canonicalAnswer);
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await expect(panel.getByRole("button", { name: "Submit card 1 answer", exact: true })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(panel.getByText("Correct.", { exact: false })).toBeVisible();
+  await expect(panel.getByText("Canonical answer:", { exact: false }).first()).toBeVisible();
+  await expect(panel.getByText("Evidence kind:", { exact: false })).toBeVisible();
+  await expect(panel.getByText(/Unaided\./).first()).toBeVisible();
+  // Card 2, assisted — declared at submission by the keyboard-operable toggle
+  // (scoped to card 2's own form): the label states what Assisted means;
+  // feedback carries the label.
+  const card2 = panel.locator(".practice-card").nth(1);
+  const assistedToggle = card2.getByRole("checkbox", { name: /record it as Assisted/ });
+  await assistedToggle.focus();
+  await page.keyboard.press("Space");
+  await expect(assistedToggle).toBeChecked();
+  await page.getByLabel("Your answer to card 2", { exact: true }).focus();
+  await page.keyboard.type(secondCardAnswer);
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await expect(panel.getByRole("button", { name: "Submit card 2 answer", exact: true })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(panel.getByText(/Assisted — declared by you at submission/)).toBeVisible();
+  await expect(panel.getByText(secondCardAnswer).first()).toBeVisible(); // revealed for card 2 only
+  // Card 3 still withholds: no feedback block, its input still present — then
+  // it too runs keyboard-only (its canonical answer is source one's opening,
+  // the same sentence card 1 drew).
+  const card3 = panel.locator(".practice-card").nth(2);
+  await expect(card3.getByRole("textbox")).toBeVisible();
+  await expect(card3.getByText("Canonical answer:", { exact: false })).toHaveCount(0);
+  await page.getByLabel("Your answer to card 3", { exact: true }).focus();
+  await page.keyboard.type(canonicalAnswer);
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Enter");
+  await expect(card3.getByText("Correct.", { exact: false })).toBeVisible();
+  // Retry affordance: try card 2 again — the feedback clears, the form
+  // returns, and the next submission is a FRESH attempt (fresh command).
+  await panel.getByRole("button", { name: "Try card 2 again (fresh attempt)", exact: true }).click();
+  await expect(page.getByLabel("Your answer to card 2", { exact: true })).toBeVisible();
+  await page.getByLabel("Your answer to card 2", { exact: true }).fill("A fresh unaided attempt.");
+  await panel.getByRole("button", { name: "Submit card 2 answer", exact: true }).click();
+  // The resubmitted card's feedback block ALWAYS receives focus — including
+  // after a retry, where the focus key is unchanged from the first submission
+  // and the retry button the keyboard user was on has unmounted.
+  const retriedFeedback = panel.locator(".feedback").filter({ hasText: "Not correct." });
+  await expect(retriedFeedback).toBeVisible();
+  await expect(retriedFeedback).toBeFocused();
+  // Server-side typed evidence: four fresh rows — one per submission event
+  // (unaided, assisted, unaided, unaided retry) — never deduplicated, no
+  // score columns anywhere.
+  const rows = await database().query<{ card_id: string; outcome: string; evidence_kind: string }>(
+    "SELECT pa.card_id,pa.outcome,pa.evidence_kind FROM app.practice_attempt pa JOIN app.generated_course c ON c.id=pa.course_id WHERE pa.owner_id=$1 ORDER BY pa.submitted_at,pa.id",
+    [account.userId],
+  );
+  expect(rows.rows.map(row => [row.card_id, row.outcome, row.evidence_kind])).toEqual([
+    ["practice:0", "correct", "unaided"],
+    ["practice:1", "correct", "assisted"],
+    ["practice:2", "correct", "unaided"],
+    ["practice:1", "incorrect", "unaided"],
+  ]);
+  // Every course GET payload across the whole journey stayed answer-free and
+  // carried no scored/attempt semantics.
+  for (const body of await Promise.all(courseBodies)) {
+    for (const probe of withheldProbes) expect(body).not.toContain(probe);
+    for (const banned of ['"score"', '"credit"', '"completion"', '"attempt"']) expect(body).not.toContain(banned);
+  }
+  // B (another learner) cannot submit on A's practice set — no existence leak.
+  const stranger = await provisionSynthetic("course-practice-b", "learner");
+  const client = await playwright.request.newContext({ baseURL: origin });
+  try {
+    expect((await client.post("/api/v1/auth/sign-in/email", { headers: { Origin: origin }, data: { email: stranger.email, password: stranger.password } })).status()).toBe(200);
+    const denied = await client.post(`/api/v1/studies/${rootId}/course/practice`, { headers: { Origin: origin }, data: { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0, courseId: crypto.randomUUID(), cardId: "practice:0", attempted: "x", assisted: false } });
+    expect(denied.status()).toBe(404);
+  } finally { await client.dispose(); }
+  // Keyboard-complete and overflow-free at 360px and desktop.
+  for (const width of [360, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(panel.getByRole("heading", { name: "1. One generated lesson", exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  expect(outbound).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: info.outputPath("practice-set-studied.png"), fullPage: true });
 });

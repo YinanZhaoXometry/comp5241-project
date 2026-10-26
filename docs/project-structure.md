@@ -18,10 +18,15 @@ project-new/
 │   │   ├── page.tsx · study-app.tsx · plan-editor.tsx · materials.tsx    private tracer UI
 │   │   ├── privacy-panel.tsx · goal-stage.tsx · check-stage.tsx ·        S3/S4/S7 stage panels
 │   │   │   export-panel.tsx · danger-zone.tsx                            S8/S9 panels
-│   │   │   course-stage.tsx                                              epic-2 S1–S3 player shell: numbered
+│   │   │   course-stage.tsx                                              epic-2 S1–S5 player shell: numbered
 │   │   │                                                                 lesson sequence, sticky sidebar (<850px
 │   │   │                                                                 top nav), content-item tracker with explicit
-│   │   │                                                                 per-version mark-done + optional enrichment
+│   │   │                                                                 per-version mark-done + optional enrichment,
+│   │   │                                                                 and the S5 practice set — per-card recall
+│   │   │                                                                 cards with attempt-before-answer, typed
+│   │   │                                                                 feedback blocks (correctness, canonical
+│   │   │                                                                 answer, rationale, source, evidence kind),
+│   │   │                                                                 assisted-declaration toggle and fresh retries
 │   │   ├── shell/          product + instructor page shells (sidebar/topnav, honesty label)
 │   │   ├── screens/        static styled screen content (library, course, practice, …)
 │   │   └── library·course·practice·progress·recovery·roadmap·review·why·       static product pages
@@ -32,14 +37,17 @@ project-new/
 │   │   ├── batches.ts      batch admission/selection contracts
 │   │   ├── consent.ts · preferences.ts · diagnostic.ts · export.ts   S3/S4/S7/S8 contracts
 │   │   ├── ai-provider.ts  provider-neutral text-completion port (dormant)
-│   │   └── courses.ts      epic-2 S1–S4 generated-course + supplement +
-│   │                         player contracts (content v3 = v2 full-lesson set
-│   │                         with tracker items PLUS per-lesson treatment
-│   │                         framing and the code-derived adaptation record
-│   │                         {track, backgroundSummary}; v2/v1 legacy union
-│   │                         wrap serves unchanged; mark-done command; recall
-│   │                         answer exists only server-side + feedback;
-│   │                         verified supplement records)
+│   │   └── courses.ts      epic-2 S1–S5 generated-course + supplement +
+│   │                         player contracts (content v4 = v3 full-lesson set
+│   │                         with per-lesson treatment framing and the
+│   │                         code-derived adaptation record PLUS the practice
+│   │                         set: one recall card per plan objective,
+│   │                         answers/rationales withheld server-side and
+│   │                         released only in per-card submission feedback
+│   │                         with the learner-declared evidence kind; v3/v2/v1
+│   │                         legacy union wrap serves unchanged — the stored
+│   │                         single recall becomes the one-card set view;
+│   │                         mark-done command; verified supplement records)
 │   ├── modules/            shared web/worker services; never import app/worker/next
 │   │   ├── identity-access/    auth, sessions, role fences, synthetic provisioning
 │   │   ├── materials-setup/    uploads, extraction, batches, plans, handoff (queries/repository/service)
@@ -47,12 +55,12 @@ project-new/
 │   │   ├── setup-preferences/  resumable goal/topic/preferences with pinned revision (S4)
 │   │   ├── setup-diagnostic/   synthetic check bundles, evidence, skip path (S7 infrastructure)
 │   │   ├── setup-export/       consistent manifest snapshot + tar.gz artifacts (S8)
-│   │   ├── course-generation/  epic-2 S1–S4 tracer: confirmed-plan → generated
+│   │   ├── course-generation/  epic-2 S1–S5 tracer: confirmed-plan → generated
 │   │   │                       course (handoff-consuming service, restart-safe worker
 │   │   │                       running the local synthetic fixture behind
 │   │   │                       TextCompletionPort, versioned course/objective/source
-│   │   │                       lineage, recall feedback); S3 player shell serving —
-│   │   │                       content v2 full-lesson set, legacy v1 wrap, explicit
+│   │   │                       lineage); S3 player shell serving — content v2
+│   │   │                       full-lesson set, legacy v1 wrap, explicit
 │   │   │                       per-version content-item mark-done (017 tracker table),
 │   │   │                       content-free generated signal for library/plan copy;
 │   │   │                       S2 supplements.ts — plan-gap derivation, strict proposal
@@ -61,7 +69,13 @@ project-new/
 │   │   │                       docs/bounded-source-fetch.md); S4 adaptation.ts —
 │   │   │                       deterministic background classifier (beginner/
 │   │   │                       advanced/neutral), per-track prompt instruction and
-│   │   │                       fixture framing, cross-track fact-identity validator
+│   │   │                       fixture framing, cross-track fact-identity validator;
+│   │   │                       S5 practice set + typed feedback — one recall card
+│   │   │                       per plan objective with per-card source-bound
+│   │   │                       withheld answers, submitPracticeCard (assisted flag,
+│   │   │                       fresh retries, replay-idempotent feedback) and typed
+│   │   │                       practice evidence rows (019 app.practice_attempt)
+│   │   │                       cascading with the course lineage
 │   │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
 │   │                           derivative ports, dependencies preview (S9),
 │   │                           retention registry/scheduler + archive contract (S10)

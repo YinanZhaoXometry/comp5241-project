@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, command, json } from "./client";
 import type { Command } from "../contracts/setup";
-import type { CourseItemView, CourseState, CourseView, RecallFeedback, SupplementsState } from "../contracts/courses";
+import type { CourseItemView, CourseState, CourseView, PracticeFeedback, SupplementsState } from "../contracts/courses";
 import type { Study } from "../modules/materials-setup/service";
 
 type Props = { study: Study; busy: boolean; onBusy: (value: boolean) => void; onFailure: (error: unknown) => void; onCourseReady?: () => void };
@@ -44,14 +44,34 @@ function supplementFailureText(code: string | null | undefined): string {
 // epic-6 deferral stands: the player renders lesson text and tracker items
 // only and claims nothing about simulations, role play, games, slides or
 // coding. S2's "Gaps & supplements" section rides along unchanged.
+// Epic-2 S5 replaces the single recall item with the PRACTICE SET: one recall
+// card per plan objective, each withholding its answer/rationale until that
+// card's own submission, typed feedback blocks stating correctness, canonical
+// answer, rationale, source and the evidence kind, assisted practice declared
+// by the learner at submission and labeled separately from unaided (never
+// conflated), and a retry affordance that always starts a FRESH attempt — no
+// scores, no completion effects anywhere.
 export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: Props) {
   const [state, setState] = useState<CourseResponse | null>(null);
   const [notice, setNotice] = useState("");
   const [trackerNotice, setTrackerNotice] = useState("");
   const [disclosure, setDisclosure] = useState<Disclosure | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [attempt, setAttempt] = useState("");
-  const [feedback, setFeedback] = useState<RecallFeedback | null>(null);
+  // Epic-2 S5 per-card practice state, keyed by "<courseId>:<cardId>" — a new
+  // course version or card starts with an empty draft and no feedback by
+  // construction (no reset effects). Feedback is transient client state: the
+  // block appears only after that card's submission, exactly as the spine
+  // requires.
+  const [practiceDrafts, setPracticeDrafts] = useState<Record<string, { attempted: string; assisted: boolean }>>({});
+  const [practiceFeedbacks, setPracticeFeedbacks] = useState<Record<string, PracticeFeedback | null>>({});
+  // Per-card command envelopes kept as state (not a ref), each PINNING the
+  // exact submission payload it was minted for: a lost response replays the
+  // SAME command only while the body (attempted + assisted) is unchanged; any
+  // edit mints a FRESH command — an edited resubmission is a new attempt — so
+  // a stale commandKey can never be re-sent with a different request hash
+  // (which would CONFLICT with no retry affordance in view). An explicit
+  // retry deletes the entry entirely.
+  const [practiceEnvelopes, setPracticeEnvelopes] = useState(new Map<string, { envelope: Command; attempted: string; assisted: boolean }>());
   const [supplements, setSupplements] = useState<SupplementsResponse | null>(null);
   const [supplementing, setSupplementing] = useState(false);
   const [supplementReload, setSupplementReload] = useState(0);
@@ -76,6 +96,13 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
   // mints a fresh command. The server's UNIQUE row keeps any duplicate a
   // structural no-op either way.
   const [trackEnvelopes, setTrackEnvelopes] = useState(new Map<string, Command>());
+  // The card whose feedback block should receive focus next (post-submit
+  // choreography): set as STATE, focused in the effect below — refs are never
+  // read during render. Retry resets it to null so a resubmission of the SAME
+  // card (unchanged key) still re-triggers the effect and moves focus onto
+  // the new feedback block — the retry button the keyboard user was on has
+  // unmounted by then.
+  const [practiceFocus, setPracticeFocus] = useState<string | null>(null);
   const poll = useRef<ReturnType<typeof setInterval> | null>(null);
   const supPoll = useRef<ReturnType<typeof setInterval> | null>(null);
   const intentKey = useRef<ReturnType<typeof command> | null>(null);
@@ -83,7 +110,6 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
   const heading = useRef<HTMLHeadingElement>(null);
   const lessonHeading = useRef<HTMLHeadingElement>(null);
   const trackerStatus = useRef<HTMLParagraphElement>(null);
-  const feedbackRef = useRef<HTMLDivElement>(null);
   const supHeading = useRef<HTMLHeadingElement>(null);
   const failureRef = useRef(onFailure);
   const courseReadyRef = useRef(onCourseReady);
@@ -156,7 +182,7 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
     // NEW command, which is the only path that may dispatch again.
     if (fresh || !intentKey.current) intentKey.current = command(study.revision);
     const envelope = intentKey.current;
-    onBusy(true); setGenerating(true); setNotice(""); setFeedback(null);
+    onBusy(true); setGenerating(true); setNotice("");
     const started = Date.now();
     try {
       await api(`studies/${rootId}/course`, json(envelope));
@@ -226,17 +252,42 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
     } finally { onBusy(false); setSupplementing(false); }
   };
 
-  const submit = async () => {
-    if (!attempt.trim()) return;
+  // Epic-2 S5 per-card practice submission. The cached envelope replays the
+  // SAME command only when the current body is byte-identical to the pinned
+  // payload (a lost response); anything else — an edit, an assisted toggle, a
+  // retry — mints a FRESH command, so the next submission is a fresh attempt.
+  async function submitCard(courseId: string, cardId: string) {
+    const key = `${courseId}:${cardId}`;
+    const draft = practiceDrafts[key] ?? { attempted: "", assisted: false };
+    if (!draft.attempted.trim()) return;
+    const cached = practiceEnvelopes.get(key);
+    const reusable = cached && cached.attempted === draft.attempted && cached.assisted === draft.assisted;
+    const envelope = reusable ? cached.envelope : command(study.revision);
+    if (!reusable) setPracticeEnvelopes(previous => new Map(previous).set(key, { envelope, attempted: draft.attempted, assisted: draft.assisted }));
     onBusy(true); setNotice("");
     try {
-      const result = await api<RecallFeedback>(`studies/${rootId}/course/recall`, json({ ...command(study.revision), attempted: attempt }));
-      setFeedback(result);
-      requestAnimationFrame(() => feedbackRef.current?.focus());
+      const result = await api<PracticeFeedback>(`studies/${rootId}/course/practice`, json({ ...envelope, courseId, cardId, attempted: draft.attempted, assisted: draft.assisted }));
+      setPracticeFeedbacks(previous => ({ ...previous, [key]: result }));
+      setPracticeFocus(key);
     } catch (error) {
-      failureRef.current(error);
+      onFailure(error);
     } finally { onBusy(false); }
-  };
+  }
+
+  // The retry affordance: clear this card's feedback and draft so the card
+  // renders its input again. The next submit mints a FRESH command and lands a
+  // FRESH attempt row server-side — prior evidence stays untouched and nothing
+  // is deduplicated or double-counted. The focus state resets so a
+  // resubmission of the SAME card still moves focus onto its new feedback
+  // block (the effect keys on the state value, and the retry button the
+  // keyboard user was on has unmounted).
+  function retryCard(courseId: string, cardId: string) {
+    const key = `${courseId}:${cardId}`;
+    setPracticeFeedbacks(previous => ({ ...previous, [key]: null }));
+    setPracticeDrafts(previous => ({ ...previous, [key]: { attempted: "", assisted: false } }));
+    setPracticeEnvelopes(previous => { const next = new Map(previous); next.delete(key); return next; });
+    setPracticeFocus(null);
+  }
 
   // Explicit mark-done of one required item. The envelope is reused per item
   // within one attempt (a lost response replays the same command); the server
@@ -290,6 +341,13 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
   useEffect(() => {
     if (trackerNotice) requestAnimationFrame(() => trackerStatus.current?.focus());
   }, [trackerNotice]);
+  // Practice focus choreography (effect, never a render read): a completed
+  // card submission moves focus to that card's feedback block, addressed by
+  // its stable DOM id (one course version renders at a time, so
+  // "<courseId>:<cardId>" is unique in the document).
+  useEffect(() => {
+    if (practiceFocus) requestAnimationFrame(() => document.getElementById(`feedback-${practiceFocus}`)?.focus());
+  }, [practiceFocus]);
 
     if (!state) return null;
     const granted = disclosure?.configuration.eligibility === "eligible" && disclosure.decision === "granted";
@@ -379,20 +437,36 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
             </article>
             {shown === course.lessons.length && optionalItems.length > 0 && optionalItems.map(item => <TrackerOptionalRow key={item.id} item={item} />)}
             <fieldset>
-              <legend>Recall item · answer withheld until you submit</legend>
-              <p>{course.recall.prompt}</p>
-              <p className="fine">Objective: {course.recall.objective || "linked objective"} · Source: {course.recall.source.filename} · {course.recall.source.locator}</p>
-              {!feedback && <div className="actions">
-                <label htmlFor="recall-attempt">Your answer</label>
-                <textarea id="recall-attempt" rows={3} maxLength={2000} value={attempt} onChange={event => setAttempt(event.target.value)} />
-                <button disabled={busy || !attempt.trim()} onClick={() => { void submit(); }}>Submit recall answer</button>
-              </div>}
-              {feedback && <div className="feedback" ref={feedbackRef} tabIndex={-1}>
-                <p><strong>{feedback.outcome === "correct" ? "Correct" : "Not correct"}.</strong> Attempt-before-answer evidence with uncertainty, not a grade.</p>
-                <p><strong>Canonical answer:</strong> {feedback.answer}</p>
-                <p><strong>Rationale:</strong> {feedback.rationale}</p>
-                <p className="fine">Source: {feedback.source.filename} · {feedback.source.locator}</p>
-              </div>}
+              <legend>Practice set · answers withheld until you submit</legend>
+              <p className="fine">One recall card per plan objective. Attempt every card from memory first — the canonical answer, rationale and source appear only after your own submission, as typed feedback. Declare honestly whether you used help: Assisted and Unaided evidence are recorded and shown separately, never merged, and nothing here is scored or counts toward completion.</p>
+              {course.practice.cards.map((card, index) => {
+                const key = `${course.courseId}:${card.id}`;
+                const draft = practiceDrafts[key] ?? { attempted: "", assisted: false };
+                const cardFeedback = practiceFeedbacks[key] ?? null;
+                const inputId = `practice-attempt-${card.id}`;
+                return <div key={card.id} className="tracker-row practice-card">
+                  <p><strong>Card {index + 1} of {course.practice.cards.length}</strong> <span className="fine">· {card.id}</span></p>
+                  <p>{card.prompt}</p>
+                  <p className="fine">Objective: {card.objective || "linked objective"} · Source: {card.source.filename} · {card.source.locator}</p>
+                  {!cardFeedback && <div className="actions practice-form">
+                    <label htmlFor={inputId}>Your answer to card {index + 1}</label>
+                    <textarea id={inputId} rows={3} maxLength={2000} value={draft.attempted} onChange={event => setPracticeDrafts(previous => ({ ...previous, [key]: { ...draft, attempted: event.target.value } }))} />
+                    <label className="fine">
+                      <input type="checkbox" checked={draft.assisted} onChange={event => setPracticeDrafts(previous => ({ ...previous, [key]: { ...draft, assisted: event.target.checked } }))} />
+                      I used my notes, sources or other help on this attempt — record it as Assisted
+                    </label>
+                    <button disabled={busy || !draft.attempted.trim()} onClick={() => { void submitCard(course.courseId, card.id); }}>Submit card {index + 1} answer</button>
+                  </div>}
+                  {cardFeedback && <div className="feedback" id={`feedback-${key}`} tabIndex={-1}>
+                    <p><strong>{cardFeedback.outcome === "correct" ? "Correct" : "Not correct"}.</strong> Attempt-before-answer evidence with uncertainty, not a grade.</p>
+                    <p><strong>Evidence kind:</strong> {cardFeedback.evidenceKind === "assisted" ? "Assisted" : "Unaided"}{cardFeedback.evidenceKind === "assisted" ? " — declared by you at submission; shown separately from unaided evidence." : "."}</p>
+                    <p><strong>Canonical answer:</strong> {cardFeedback.answer}</p>
+                    <p><strong>Rationale:</strong> {cardFeedback.rationale}</p>
+                    <p className="fine">Source: {cardFeedback.source.filename} · {cardFeedback.source.locator}</p>
+                    <div className="actions"><button className="secondary" disabled={busy} onClick={() => { retryCard(course.courseId, card.id); }}>Try card {index + 1} again (fresh attempt)</button></div>
+                  </div>}
+                </div>;
+              })}
             </fieldset>
             <h4 ref={supHeading} tabIndex={-1}>Gaps &amp; supplements</h4>
             <p className="fine">Your plan declared what your own sources do not explain. A supplement pass proposes allowlisted public reference pages, fetches them through this machine&apos;s bounded fetcher, and shows only passages verified against the fetched page — never the model&apos;s word alone. Supplements are badged, never replace your uploads, and never become scored items.</p>

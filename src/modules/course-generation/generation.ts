@@ -1,11 +1,12 @@
 import {
   SYNTHETIC_COURSE_MODEL,
-  courseContentV3Schema,
-  courseDraftV3Schema,
+  courseContentV4Schema,
+  courseDraftV4Schema,
   readingItemFor,
-  type CourseContentServing,
-  type CourseContentV3,
-  type RecallFeedback,
+  type CourseContentV4,
+  type EvidenceKind,
+  type PracticeCard,
+  type PracticeFeedback,
 } from "../../contracts/courses";
 import type { Plan } from "../../contracts/setup";
 import type { TextCompletionPort, TextCompletionRequest, TextCompletionResult } from "../../contracts/ai-provider";
@@ -21,9 +22,12 @@ import { backgroundSummaryOf, classifyTrack, computeFactsDigest, framingFor, isC
 // (kept OUT of the factual sections so cross-track fact identity is
 // structurally checkable), and the settled content records its adaptation
 // basis {track, backgroundSummary} — the track is derived by code, never taken
-// from the reply. No I/O anywhere: the caller supplies the confirmed plan, the
-// stated goal/topic/background and the excerpt store's texts; everything here
-// is deterministic and bounded. The synthetic completion implements
+// from the reply. Epic-2 S5 replaces the single recall item with the PRACTICE
+// SET: one recall card per confirmed-plan objective, each card's canonical
+// answer derived from its own source and withheld from every served text. No
+// I/O anywhere: the caller supplies the confirmed plan, the stated
+// goal/topic/background and the excerpt store's texts; everything here is
+// deterministic and bounded. The synthetic completion implements
 // TextCompletionPort over its own input messages so the worker stays identical
 // in shape to runAiDraft — F-A can later swap the port for
 // createLiveCompletion() without pipeline changes.
@@ -60,15 +64,15 @@ const SYSTEM_PROMPT = [
   'The JSON object has exactly four keys: "lessons" (one object per listed plan lesson, IN LISTED ORDER — never fewer, never more, each with exactly "framing" (1-600 characters of TREATMENT prose pitching this lesson to the stated track per the track instruction: plain language, familiar examples and explicit prerequisites for a beginner track; application scenarios and trade-off depth for an advanced track; no track claims when neutral — framing never states, weakens or hides a factual claim the sources do not)',
   'and "sections" (1 to 8 objects with exactly text (1-2000 characters, teaching prose grounded in the named source),',
   "sourcePosition (integer, the 0-based index into the listed sources the section teaches from) and locator (1-120 characters naming where in that source the text comes from, e.g. 'opening lines'))),",
-  '"objectiveIndexes" (1 to 8 distinct integers, the 0-based indexes into the listed plan outcomes this course covers),',
-  'and "recall" with exactly objectiveIndex (integer index into the listed plan outcomes), sourcePosition (integer index into the listed sources),',
-  "locator (1-120 characters naming where in that source the canonical answer is stated),",
+  '"objectiveIndexes" (ALL of the listed plan outcomes, as distinct 0-based indexes — the course and its practice set cover every outcome),',
+  'and "cards" (the active recall PRACTICE SET: exactly one object per listed plan outcome, each with exactly objectiveIndex (integer index into the listed plan outcomes), sourcePosition (integer index into the listed sources),',
+  "locator (1-120 characters naming where in that source the card's canonical answer is stated),",
   "prompt (1-1200 characters, one free-recall question whose canonical short answer is stated verbatim in that source),",
-  "answer (1-800 characters, the canonical short answer as stated in the source), rationale (1-800 characters explaining the answer per the source),",
+  "answer (1-800 characters, the canonical short answer as stated in the source), rationale (1-800 characters explaining the answer per the source)),",
   'and "enrichment" (OPTIONAL; include it only when the sources support one extra optional reading — an object with exactly sourcePosition (integer index into the listed sources),',
   "locator (1-120 characters naming where in that source the passage comes from) and text (1-2000 characters grounded in that source)).",
-  "Framing is the ONLY track-dependent part of your reply: sections, objectiveIndexes, recall and enrichment must not depend on the stated track in any way — every factual claim and source link stays exactly as the sources state them.",
-  "Lesson titles are taken from the plan itself and are NOT part of your reply. Base every section, the recall item and any enrichment on the provided sources; when the sources do not cover something, do not invent it — teach only what they state.",
+  "Framing is the ONLY track-dependent part of your reply: sections, objectiveIndexes, cards and enrichment must not depend on the stated track in any way — every factual claim and source link stays exactly as the sources state them.",
+  "Lesson titles are taken from the plan itself and are NOT part of your reply. Base every section, every practice card and any enrichment on the provided sources; when the sources do not cover something, do not invent it — teach only what they state.",
 ].join(" ");
 
 // Bounded system+user message pair over the confirmed plan's exact FULL lesson
@@ -107,7 +111,7 @@ export function buildCourseMessages(input: CourseInput) {
     header,
     ...sources,
     truncated ? "Note: one or more sources were longer than the bounded prompt and were truncated to fair prefixes; the omitted text was NOT sent." : null,
-    'Return ONLY the JSON object with "lessons", "objectiveIndexes", "recall" and (when supported) "enrichment".',
+    'Return ONLY the JSON object with "lessons", "objectiveIndexes", "cards" and (when supported) "enrichment".',
   ].filter((part): part is string => part !== null).join("\n\n");
   return [{ role: "system" as const, content: SYSTEM_PROMPT }, { role: "user" as const, content: user }];
 }
@@ -141,19 +145,21 @@ export function firstJsonObject(text: string): string | null {
   return null;
 }
 
-export type CourseParse = { ok: true; content: CourseContentV3 } | { ok: false };
+export type CourseParse = { ok: true; content: CourseContentV4 } | { ok: false };
 export type CourseParseSource = { extractionId: string; filename: string };
 
 // Strict validation of the processor reply against the CONFIRMED PLAN's own
 // bounds: the draft must carry EXACTLY one lessons entry per plan lesson, in
 // listed order — every lesson title is substituted from the plan itself, never
 // taken from the reply — with the epic-2 S4 treatment framing per lesson kept
-// OUT of the factual sections; objective indexes and source positions must
-// resolve; duplicate objective indexes and unresolved item links are rejected.
-// The adaptation record is DERIVED HERE from the stated background (pure
-// classifyTrack code, never trusted from the reply). Anything else — prose,
-// wrong shapes, a pre-2.4 draft without framing, unresolved links — is an
-// INVALID draft that fails honestly, never repaired into a course.
+// OUT of the factual sections; the epic-2 S5 practice set must cover EVERY
+// plan outcome with EXACTLY one card each (duplicate cards, uncovered
+// outcomes, subset coverage and unresolved links are all invalid), and every
+// card id is derived here from its objective index. The adaptation record is
+// DERIVED HERE from the stated background (pure classifyTrack code, never
+// trusted from the reply). Anything else — prose, wrong shapes, a pre-2.5
+// single-recall draft, unresolved links — is an INVALID draft that fails
+// honestly, never repaired into a course.
 export function parseCourseOutput(
   text: string,
   bounds: { plan: Plan; sources: CourseParseSource[]; background: string },
@@ -168,17 +174,25 @@ export function parseCourseOutput(
     if (balanced === null) return { ok: false };
     try { parsed = JSON.parse(balanced); } catch { return { ok: false }; }
   }
-  const shape = courseDraftV3Schema.safeParse(parsed);
+  const shape = courseDraftV4Schema.safeParse(parsed);
   if (!shape.success) return { ok: false };
   const draft = shape.data;
   const planLessons = bounds.plan.miniCourse.lessons;
   if (draft.lessons.length !== planLessons.length) return { ok: false };
   if (new Set(draft.objectiveIndexes).size !== draft.objectiveIndexes.length) return { ok: false };
   for (const index of draft.objectiveIndexes) if (index >= bounds.plan.outcomes.length) return { ok: false };
+  // Practice-set integrity: one card per confirmed-plan objective — the draft
+  // must cover ALL plan outcomes (subset coverage is invalid) and the cards
+  // must match that coverage exactly, distinctly.
+  if (draft.objectiveIndexes.length !== bounds.plan.outcomes.length) return { ok: false };
+  if (draft.cards.length !== draft.objectiveIndexes.length) return { ok: false };
+  const cardIndexes = draft.cards.map(card => card.objectiveIndex);
+  if (new Set(cardIndexes).size !== cardIndexes.length) return { ok: false };
+  for (const index of cardIndexes) if (!draft.objectiveIndexes.includes(index)) return { ok: false };
   const resolve = (position: number) => bounds.sources[position] ?? null;
-  const lessons: CourseContentV3["lessons"] = [];
+  const lessons: CourseContentV4["lessons"] = [];
   for (const [index, lesson] of draft.lessons.entries()) {
-    const sections: CourseContentV3["lessons"][number]["sections"] = [];
+    const sections: CourseContentV4["lessons"][number]["sections"] = [];
     for (const section of lesson.sections) {
       const source = resolve(section.sourcePosition);
       if (!source) return { ok: false };
@@ -191,9 +205,20 @@ export function parseCourseOutput(
       items: [readingItemFor(index, planLessons[index])],
     });
   }
-  const recallSource = resolve(draft.recall.sourcePosition);
-  if (!recallSource || draft.recall.objectiveIndex >= bounds.plan.outcomes.length) return { ok: false };
-  let enrichment: CourseContentV3["enrichment"];
+  const cards: CourseContentV4["practice"]["cards"] = [];
+  for (const card of draft.cards) {
+    const source = resolve(card.sourcePosition);
+    if (!source) return { ok: false };
+    cards.push({
+      id: `practice:${card.objectiveIndex}`,
+      objectiveIndex: card.objectiveIndex,
+      sourceRef: { extractionId: source.extractionId, filename: source.filename, locator: card.locator },
+      prompt: card.prompt,
+      answer: card.answer,
+      rationale: card.rationale,
+    });
+  }
+  let enrichment: CourseContentV4["enrichment"];
   if (draft.enrichment) {
     const source = resolve(draft.enrichment.sourcePosition);
     if (!source) return { ok: false };
@@ -207,32 +232,25 @@ export function parseCourseOutput(
     };
   }
   const objectives = draft.objectiveIndexes.map(index => ({ index, text: bounds.plan.outcomes[index] }));
-  const recall = {
-    objectiveIndex: draft.recall.objectiveIndex,
-    sourceRef: { extractionId: recallSource.extractionId, filename: recallSource.filename, locator: draft.recall.locator },
-    prompt: draft.recall.prompt,
-    answer: draft.recall.answer,
-    rationale: draft.recall.rationale,
-  };
   const content = {
-    contentVersion: 3 as const,
+    contentVersion: 4 as const,
     lessons,
     objectives,
-    recall,
+    practice: { cards },
     adaptation: {
       track: classifyTrack(bounds.background),
       backgroundSummary: backgroundSummaryOf(bounds.background),
     },
     // Factual-core digest at settle time (treatment excluded) so consumers can
     // check cross-course fact identity cheaply.
-    factsDigest: computeFactsDigest({ lessons, objectives, recall, ...(enrichment ? { enrichment } : {}) }),
+    factsDigest: computeFactsDigest({ lessons, objectives, cards, ...(enrichment ? { enrichment } : {}) }),
     ...(enrichment ? { enrichment } : {}),
   };
-  const settled = courseContentV3Schema.safeParse(content);
+  const settled = courseContentV4Schema.safeParse(content);
   return settled.success ? { ok: true, content: settled.data } : { ok: false };
 }
 
-// Honest free-text judgement for the recall tracer: a normalized exact match,
+// Honest free-text judgement for every recall card: a normalized exact match,
 // or the canonical answer appearing inside the attempt when the answer is a
 // substantial phrase. Uncertain matches are recorded as incorrect — the
 // canonical answer is always shown either way, so nothing is guessed.
@@ -244,23 +262,27 @@ export function judgeRecall(attempted: string, answer: string): "correct" | "inc
   return a === b || (b.length >= 8 && a.includes(b)) ? "correct" : "incorrect";
 }
 
-export function buildRecallFeedback(input: {
+export function buildPracticeFeedback(input: {
   rootId: string;
   revision: number;
   courseId: string;
-  content: Pick<CourseContentServing, "recall">;
+  card: PracticeCard;
   attempted: string;
-}): RecallFeedback {
-  const recall = input.content.recall;
+  // The learner's declaration on the practice verb; absent on the evidence-free
+  // legacy recall verb — never defaulted, never inferred.
+  evidenceKind?: EvidenceKind;
+}): PracticeFeedback {
   return {
     rootId: input.rootId,
     revision: input.revision,
     courseId: input.courseId,
-    outcome: judgeRecall(input.attempted, recall.answer),
+    cardId: input.card.id,
+    outcome: judgeRecall(input.attempted, input.card.answer),
     attempted: input.attempted,
-    answer: recall.answer,
-    rationale: recall.rationale,
-    source: { filename: recall.sourceRef.filename, locator: recall.sourceRef.locator },
+    answer: input.card.answer,
+    rationale: input.card.rationale,
+    source: { filename: input.card.sourceRef.filename, locator: input.card.sourceRef.locator },
+    ...(input.evidenceKind !== undefined ? { evidenceKind: input.evidenceKind } : {}),
   };
 }
 
@@ -269,10 +291,15 @@ export function buildRecallFeedback(input: {
 // messages: deterministic, no I/O, no config reads, zero-token usage (honest
 // accounting — never fabricated counts). It reads the same bounded prompt the
 // builder produced (indexed lessons, indexed outcomes, positioned sources) and
-// emits a v2 draft the strict parser above accepts for those bounds: every
+// emits a v4 draft the strict parser above accepts for those bounds: every
 // plan lesson present in order, sources distributed fairly across the lessons
-// (round-robin by source position; each lesson capped at 8 sections), and one
-// labeled optional enrichment passage when a source supports it.
+// (round-robin by source position; each lesson capped at 8 sections), one
+// labeled optional enrichment passage when a source supports it, and the
+// epic-2 S5 PRACTICE SET — one recall card per plan outcome, each card's
+// canonical answer being its own source's opening sentence. WITHHOLDING: every
+// source a card draws from has that opening sentence held back — its lesson
+// sections and any enrichment teach from the REMAINDER after it — so no served
+// course text ever quotes any card's canonical answer.
 // ---------------------------------------------------------------------------
 
 function firstSentence(text: string): string {
@@ -313,23 +340,48 @@ export function syntheticCourseDraft(messages: TextCompletionRequest["messages"]
   const primaryOutcome = usableOutcomes[0] ?? { index: 0, text: "the confirmed plan's first outcome" };
   const outcomeText = (lessonIndex: number) =>
     (usableOutcomes.length ? usableOutcomes[lessonIndex % usableOutcomes.length]?.text : undefined) ?? primaryOutcome.text;
-  const primarySource = usableSources[0];
-  // The recall's canonical answer is the primary source's opening sentence, so
-  // that source's sections teach from the REMAINDER after it: no served course
-  // text (sections or enrichment) may quote the withheld answer — the frozen
-  // boundary says the answer is never present in any GET payload. When the
-  // remainder is empty the text falls back to a non-quoting summary sentence.
-  const primaryHead = primarySource ? firstSentence(primarySource.text) : "";
+  // The epic-2 S5 practice set: one card per plan outcome, round-robin over
+  // the usable sources. Each card's canonical answer is ITS OWN source's
+  // opening sentence, and that sentence is held back from every served text
+  // (sections and enrichment) of that source — the frozen boundary says no
+  // card answer appears in any GET payload.
+  const cardsDraft = (usableOutcomes.length >= 1 ? usableOutcomes : [{ index: primaryOutcome.index, text: primaryOutcome.text }]).map((outcome, ordinal) => {
+    const source = usableSources[ordinal % Math.max(1, usableSources.length)];
+    return source
+      ? {
+          objectiveIndex: outcome.index,
+          sourcePosition: source.position,
+          locator: `opening excerpt (first ${firstSentence(source.text).length} characters)`,
+          prompt: `From memory, state the key point your source gives for: ${outcome.text}`,
+          answer: firstSentence(source.text),
+          rationale: `The opening of ${source.name} states this directly.`,
+        }
+      : {
+          objectiveIndex: outcome.index,
+          sourcePosition: 0,
+          locator: "plan outcome (no excerpt text reached the prompt)",
+          prompt: `From memory, state the key point your source gives for: ${outcome.text}`,
+          answer: outcome.text,
+          rationale: "No source excerpt reached the bounded prompt; the confirmed plan's outcome is the reference.",
+        };
+  });
+  const cardSourcePositions = new Set(cardsDraft.map(card => card.sourcePosition));
+  // Withholding-aware section derivation: a source whose opening sentence is
+  // some card's withheld answer teaches from the REMAINDER after it; a source
+  // no card draws from teaches from its opening. When the remainder is empty
+  // the text falls back to a non-quoting summary sentence.
+  const heads = new Map(usableSources
+    .filter(source => cardSourcePositions.has(source.position))
+    .map(source => [source.position, firstSentence(source.text)] as const));
   const sectionFor = (source: { position: number; text: string }): { text: string; locator: string } => {
     const opening = clampText(source.text);
-    if (!primarySource || source.position !== primarySource.position || !primaryHead) {
-      return { text: opening, locator: `opening excerpt (first ${opening.length} characters)` };
-    }
-    const index = source.text.indexOf(primaryHead);
-    const remainder = clampText(index >= 0 ? source.text.slice(index + primaryHead.length) : source.text);
+    const head = heads.get(source.position);
+    if (!head) return { text: opening, locator: `opening excerpt (first ${opening.length} characters)` };
+    const index = source.text.indexOf(head);
+    const remainder = clampText(index >= 0 ? source.text.slice(index + head.length) : source.text);
     if (!remainder) {
       return {
-        text: `This section works alongside "${outcomeText(0)}" from your own reading; the linked source's opening sentence is held back for the recall item.`,
+        text: `This section works alongside "${outcomeText(0)}" from your own reading; the linked source's opening sentence is held back for a practice card.`,
         locator: "generated summary (the source has no text after its opening sentence)",
       };
     }
@@ -367,24 +419,14 @@ export function syntheticCourseDraft(messages: TextCompletionRequest["messages"]
       : [fallbackSection(lessonIndex)],
   }));
   // One optional enrichment passage overall, from the LAST usable source
-  // (withholding-aware: when that source IS the primary, its remainder after
-  // the held-back opening sentence is used, exactly like its lesson sections).
+  // (withholding-aware: when that source is a card source, its remainder
+  // after the held-back opening sentence is used, exactly like its sections).
   const last = usableSources[usableSources.length - 1];
   const enrichment = last ? { sourcePosition: last.position, ...sectionFor(last) } : undefined;
-  const recallAnswer = primarySource ? firstSentence(primarySource.text) : primaryOutcome.text;
   return JSON.stringify({
     lessons: draftLessons,
-    objectiveIndexes: (usableOutcomes.length >= 1 ? usableOutcomes : [{ index: 0, text: primaryOutcome.text }]).map(outcome => outcome.index),
-    recall: {
-      objectiveIndex: primaryOutcome.index,
-      sourcePosition: primarySource?.position ?? 0,
-      locator: primarySource ? `opening excerpt (first ${firstSentence(primarySource.text).length} characters)` : "plan outcome (no excerpt text reached the prompt)",
-      prompt: `From memory, state the key point your source gives for: ${primaryOutcome.text}`,
-      answer: recallAnswer,
-      rationale: primarySource
-        ? `The opening of ${primarySource.name} states this directly.`
-        : "No source excerpt reached the bounded prompt; the confirmed plan's outcome is the reference.",
-    },
+    objectiveIndexes: cardsDraft.map(card => card.objectiveIndex),
+    cards: cardsDraft,
     ...(enrichment ? { enrichment } : {}),
   });
 }

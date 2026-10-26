@@ -3,8 +3,8 @@ title: 'Active recall practice set and typed feedback'
 type: 'feature'
 ticket: '2.5'
 created: '2026-10-27'
-status: 'draft'
-baseline_revision: ''
+status: 'built'
+baseline_revision: '1104e95'
 route: 'full'
 route_source: 'auto'
 risk: 'high'
@@ -71,12 +71,12 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `migrations/019-practice-evidence.sql` — practice evidence table + guards; lifecycle counts.
-- [ ] `src/contracts/courses.ts` — v4 practice schemas, submission/feedback/evidence shapes, legacy compat.
-- [ ] `src/modules/course-generation/generation.ts` — fixture + parser: one card per objective, per-card source-bound answers, strict bounds, withholding preserved across lesson/framing/enrichment.
-- [ ] `src/modules/course-generation/{service,repository}.ts` — `submitPracticeCard` (typed evidence, assisted, replay-recompute), set serving, purge/export.
-- [ ] `src/app/course-stage.tsx` — practice cards UI per the spine (withhold → submit → feedback; retry fresh; assisted labeled; keyboard-complete).
-- [ ] API route updates if paths change; tests per Code Map; `docs/project-structure.md`.
+- [x] `migrations/019-practice-evidence.sql` — practice evidence table + guards; lifecycle counts.
+- [x] `src/contracts/courses.ts` — v4 practice schemas, submission/feedback/evidence shapes, legacy compat.
+- [x] `src/modules/course-generation/generation.ts` — fixture + parser: one card per objective, per-card source-bound answers, strict bounds, withholding preserved across lesson/framing/enrichment.
+- [x] `src/modules/course-generation/{service,repository}.ts` — `submitPracticeCard` (typed evidence, assisted, replay-recompute), set serving, purge/export.
+- [x] `src/app/course-stage.tsx` — practice cards UI per the spine (withhold → submit → feedback; retry fresh; assisted labeled; keyboard-complete).
+- [x] API route updates if paths change; tests per Code Map; `docs/project-structure.md`.
 
 **Acceptance Criteria:**
 - Given a course generated from a plan with N outcomes, when studied, then N recall cards each withhold answer/rationale until that card's submission and feedback states correctness, canonical answer, rationale, source and evidence kind.
@@ -89,6 +89,15 @@ context:
 ## Plan Change Log
 
 ## Review Triage Log
+
+### Quick lens pass (2026-10-27, 4 findings, verified by the orchestrator)
+
+- **medium** — retry→resubmit of the same card never moves focus (`setPracticeFocus` receives an unchanged key; the retry button the keyboard user was on has unmounted) — keyboard choreography breaks exactly on the retry flow the AC names. → patch (reset the focus key on retry / key the effect on a submission counter; browser test asserts focus after retry resubmission).
+- **medium** — the per-card command envelope is cached while the payload stays editable: a committed-but-lost response followed by an edited resubmission replays the same commandKey with a different hash and CONFLICTs, with no retry affordance rendered yet — an unrecoverable dead-end. → patch (pin the exact payload with the cached envelope; reuse only when the body is identical, otherwise mint a fresh command — edited resubmission is a new attempt by definition).
+- **medium** — the legacy `submitRecall` verb now writes evidence rows labeled `unaided` with no learner declaration (and replays infer `prior.evidenceKind ?? "unaided"`), violating the frozen "learner-declared, never inferred" boundary and changing the 2.1 verb's no-evidence contract. → patch (the legacy verb returns feedback and records a content-free receipt but writes NO evidence row; only `submitPracticeCard` with its required assisted declaration records typed evidence; no inferred kind anywhere).
+- **low** — no test exercises a stored content v3 row (the shape every real baseline course carries) through the new serving/submit path. → patch (integration test constructing a v3 row and asserting unchanged serving + working submission).
+
+Verdict counts: medium 3, low 1, false 0, maybe-false 0. All route to patch.
 
 ## Design Notes
 
@@ -106,3 +115,8 @@ context:
 
 **Manual checks (if no CLI):**
 - Keyboard-run every card; submit; verify feedback and assisted label; retry and confirm a fresh attempt.
+
+
+### Patch round (2026-10-27)
+
+All four findings patched (retry resets the practice focus key so resubmission always moves focus — browser journey asserts it; the cached envelope pins its exact payload and any edit mints a fresh command, closing the lost-response CONFLICT dead-end; the legacy submitRecall verb is evidence-free again with no inferred evidence kind anywhere — only the practice verb's required assisted declaration records rows; a stored content v3 legacy case now proves unchanged serving and working submission). Post-patch: boundaries, both typechecks, lint, unit 208/208, integration 158/158, browser practice journey green.

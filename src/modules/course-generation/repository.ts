@@ -3,12 +3,12 @@ import type { AdmissionOutcome } from "../../contracts/consent";
 import type { CourseContent, CoursePreferencePin, CourseUsage, SupplementOutcome } from "../../contracts/courses";
 
 // Module-owned rows for the epic-2 course tracer. Write ownership: only
-// this module writes app.generated_course, app.course_objective and
-// app.course_source. The content-free accounting ledger app.ai_dispatch_ledger
-// is deliberately SHARED budget infrastructure (012 created it for all AI
-// dispatch accounting): this module appends one zero-token row per generation
-// exactly as the entry's plan directs — tokens are the processor's own claim,
-// never fabricated.
+// this module writes app.generated_course, app.course_objective,
+// app.course_source and app.practice_attempt. The content-free accounting
+// ledger app.ai_dispatch_ledger is deliberately SHARED budget infrastructure
+// (012 created it for all AI dispatch accounting): this module appends one
+// zero-token row per generation exactly as the entry's plan directs — tokens
+// are the processor's own claim, never fabricated.
 // Epic-2 S2 adds app.supplement_request and app.course_supplement under the
 // same ownership: one tracked supplement pass per command and its verified
 // (or honestly unsupported) rows, cascading from the course they explain.
@@ -17,6 +17,10 @@ import type { CourseContent, CoursePreferencePin, CourseUsage, SupplementOutcome
 // action — the table records no dwell, scroll, visibility or score columns,
 // and the ON DELETE CASCADE from generated_course keeps root purge and
 // whole-personal removal deleting tracker rows with the course lineage.
+// Epic-2 S5 adds app.practice_attempt: typed practice evidence, one row per
+// submission event (owner, course version, card, attempted text, outcome,
+// learner-declared evidence kind) with NO attempt semantics — cascading from
+// the course lineage exactly like the tracker rows.
 
 export type GeneratedCourseRow = {
   id: string;
@@ -147,6 +151,24 @@ export async function itemStates(client: PoolClient, ownerId: string, courseId: 
     [ownerId, courseId],
   );
   return result.rows;
+}
+
+// ---------------------------------------------------------------------------
+// Epic-2 S5 typed practice evidence (migration 019 app.practice_attempt). One
+// row per SUBMISSION EVENT — no UNIQUE constraint anywhere: retries are fresh
+// rows under fresh commands, never deduplicated and never double-counted as
+// anything. Command-envelope replay never reaches this insert (the service
+// replays through the command_receipt machinery first). The row deliberately
+// carries no score, credit, completion, course-attempt or scheduling fields.
+// ---------------------------------------------------------------------------
+export async function insertPracticeAttempt(
+  client: PoolClient,
+  row: { ownerId: string; courseId: string; cardId: string; attempted: string; outcome: "correct" | "incorrect"; evidenceKind: "unaided" | "assisted" },
+) {
+  await client.query(
+    "INSERT INTO app.practice_attempt(id,owner_id,course_id,card_id,attempted,outcome,evidence_kind) VALUES($1,$2,$3,$4,$5,$6,$7)",
+    [crypto.randomUUID(), row.ownerId, row.courseId, row.cardId, row.attempted, row.outcome, row.evidenceKind],
+  );
 }
 // Terminal, single-direction transitions from pending; a settled row never
 // changes again. claimReady runs FIRST inside the persist transaction and

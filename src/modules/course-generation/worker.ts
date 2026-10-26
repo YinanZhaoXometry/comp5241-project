@@ -1,5 +1,5 @@
 import type { PgBoss } from "pg-boss";
-import { COURSE_QUEUE, SUPPLEMENT_QUEUE, courseJobSchema, courseContentV3Schema, coursePreferencePinSchema, storedCourseContent, supplementJobSchema, type CourseContentServing, type CourseContentV3, type CourseGap, type CourseJob, type SupplementJob } from "../../contracts/courses";
+import { COURSE_QUEUE, SUPPLEMENT_QUEUE, courseJobSchema, courseContentV4Schema, coursePreferencePinSchema, storedCourseContent, supplementJobSchema, type CourseContentServing, type CourseContentV4, type CourseGap, type CourseJob, type SupplementJob } from "../../contracts/courses";
 import { textCompletionRequestSchema, type TextCompletionPort } from "../../contracts/ai-provider";
 import type { BoundedFetchPort } from "../../adapters/source-fetch";
 import type { Plan } from "../../contracts/setup";
@@ -116,7 +116,7 @@ export async function runCourseGeneration(job: CourseJob, completion?: () => Tex
   // honestly without consuming the admission — retryable via a new command.
   const parsed = parseCourseOutput(outcome.text, { plan: claim.plan, sources: claim.sources, background: claim.background });
   if (!parsed.ok) { await failRequest("invalid-output"); return; }
-  const content: CourseContentV3 = courseContentV3Schema.parse(parsed.content);
+  const content: CourseContentV4 = courseContentV4Schema.parse(parsed.content);
   // Phase 3 — settlement before persistence: the existing machinery re-checks
   // everything; only an ACCEPTED settle may store any effect. The single
   // transaction CLAIMS the pending→ready transition FIRST: a row that already

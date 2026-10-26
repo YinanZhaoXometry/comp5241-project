@@ -172,6 +172,20 @@ export async function captureManifest(
   } else {
     skipped.push({ category: 'supplements', reason: 'Table app.course_supplement is not present in this deployment' });
   }
+  // Epic-2 S5: typed practice evidence is deliberately excluded from the
+  // artifact — the attempted text is owner content, but the recorded feedback
+  // bundle references withheld answer keys through its rationale/source
+  // fields, and include-vs-exclude is entry 8's scope decision. The skip line
+  // records the exclusion honestly.
+  if (await tableColumns(client, 'practice_attempt')) {
+    skipped.push({
+      category: 'practice-evidence',
+      reason:
+        'Deliberately excluded: practice evidence rows carry the attempted text (owner content), but their submission feedback bundle references the withheld answer keys in its rationale/source references; include-vs-exclude is deferred to the lifecycle story (entry 8)',
+    });
+  } else {
+    skipped.push({ category: 'practice-evidence', reason: 'Table app.practice_attempt is not present in this deployment' });
+  }
 
   return {
     capturedAt,

@@ -142,7 +142,25 @@ export function factsIdenticalAcrossTracks(
     });
   });
   if (JSON.stringify(a.objectives) !== JSON.stringify(b.objectives)) differences.push("objectives");
-  if (
+  // Epic-2 S5: the practice set is factual core. A v4 row compares its full
+  // card set (prompt, canonical answer, rationale, objective index, source
+  // ref); a pre-2.5 row's single recall keeps its own comparison. Mixing a
+  // practice-set row with a single-recall row is honest drift, not identity.
+  if ("practice" in a || "practice" in b) {
+    if (!("practice" in a) || !("practice" in b)) differences.push("practice");
+    else if (a.practice.cards.length !== b.practice.cards.length) differences.push("practice.cards.length");
+    else a.practice.cards.forEach((card, index) => {
+      const other = b.practice.cards[index];
+      if (
+        card.id !== other?.id
+        || card.objectiveIndex !== other?.objectiveIndex
+        || card.prompt !== other?.prompt
+        || card.answer !== other?.answer
+        || card.rationale !== other?.rationale
+        || !sameSourceRef(card.sourceRef, other?.sourceRef, ignoreSourceIds)
+      ) differences.push(`practice.cards[${index}]`);
+    });
+  } else if (
     a.recall.prompt !== b.recall.prompt
     || a.recall.answer !== b.recall.answer
     || a.recall.rationale !== b.recall.rationale
@@ -181,7 +199,8 @@ const sourceRefTuple = (ref: { filename: string; locator: string }) =>
 export function computeFactsDigest(core: {
   lessons: Array<{ title: string; sections: Array<{ text: string; sourceRef: { filename: string; locator: string } }> }>;
   objectives: Array<{ index: number; text: string }>;
-  recall: { objectiveIndex: number; prompt: string; answer: string; rationale: string; sourceRef: { filename: string; locator: string } };
+  recall?: { objectiveIndex: number; prompt: string; answer: string; rationale: string; sourceRef: { filename: string; locator: string } };
+  cards?: Array<{ id: string; objectiveIndex: number; prompt: string; answer: string; rationale: string; sourceRef: { filename: string; locator: string } }>;
   enrichment?: { text: string; sourceRef: { filename: string; locator: string } } | undefined;
 }): string {
   const canonical = [
@@ -190,13 +209,19 @@ export function computeFactsDigest(core: {
       lesson.sections.map(section => [section.text, ...sourceRefTuple(section.sourceRef)]),
     ]),
     core.objectives.map(objective => [objective.index, objective.text]),
-    [
-      core.recall.objectiveIndex,
-      core.recall.prompt,
-      core.recall.answer,
-      core.recall.rationale,
-      ...sourceRefTuple(core.recall.sourceRef),
-    ],
+    // Epic-2 S5: content v4 digests the FULL practice set (every withheld
+    // canonical answer included); a pre-2.5 core digests its single recall.
+    // The two forms differ by construction, so a v3 row never reports false
+    // identity with a v4 row.
+    core.cards
+      ? core.cards.map(card => [card.id, card.objectiveIndex, card.prompt, card.answer, card.rationale, ...sourceRefTuple(card.sourceRef)])
+      : [
+          core.recall!.objectiveIndex,
+          core.recall!.prompt,
+          core.recall!.answer,
+          core.recall!.rationale,
+          ...sourceRefTuple(core.recall!.sourceRef),
+        ],
     ...(core.enrichment ? [[core.enrichment.text, ...sourceRefTuple(core.enrichment.sourceRef)]] : []),
   ];
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");
