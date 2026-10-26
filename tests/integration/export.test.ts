@@ -135,7 +135,7 @@ describe('authenticated consistent personal-setup export', () => {
     // than owner, so exactly those two are skipped — deliberately, as the
     // answer-key item bank is not owner content — while the owner-scoped
     // diagnostic evidence is captured.
-    expect(manifest.skipped.map(item => item.category)).toEqual(['diagnostic-evidence', 'diagnostic-evidence', 'ai-drafts', 'generated-courses']);
+    expect(manifest.skipped.map(item => item.category)).toEqual(['diagnostic-evidence', 'diagnostic-evidence', 'ai-drafts', 'generated-courses', 'supplements']);
     expect(manifest.skipped.filter(item => item.category === 'diagnostic-evidence').every(item => item.reason.includes('Deliberately excluded') && item.reason.includes('answer keys'))).toBe(true);
     // S6: advisory AI drafts are deliberately excluded (suggestions, not owner
     // content); no excerpt or provider reply ever enters the artifact.
@@ -144,6 +144,9 @@ describe('authenticated consistent personal-setup export', () => {
     // withheld recall answer must not ride along; include-vs-exclude is entry
     // 8's scope decision).
     expect(manifest.skipped.find(item => item.category === 'generated-courses')!.reason).toContain('Deliberately excluded');
+    // Epic-2 S2: verified source supplements are deliberately excluded here
+    // (fetched external passages and conflict excerpts; entry 8 owns inclusion).
+    expect(manifest.skipped.find(item => item.category === 'supplements')!.reason).toContain('Deliberately excluded');
     // Every storage key in the manifest is a real registered copy of this owner.
     const withKeys = manifest.entries.filter(entry => entry.storageKey);
     expect(withKeys.length).toBeGreaterThanOrEqual(2);

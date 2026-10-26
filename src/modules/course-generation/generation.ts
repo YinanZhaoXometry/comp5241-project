@@ -92,7 +92,9 @@ export function buildCourseMessages(input: CourseInput) {
 // First balanced top-level JSON object in the text (string/escape aware);
 // recovers deterministic complete objects from trailing noise without
 // inventing content — the schema below still rejects anything malformed.
-function firstJsonObject(text: string): string | null {
+// (Exported for the S2 supplement proposal parser, which reuses the exact
+// recovery semantics.)
+export function firstJsonObject(text: string): string | null {
   const start = text.indexOf("{");
   if (start < 0) return null;
   let depth = 0;

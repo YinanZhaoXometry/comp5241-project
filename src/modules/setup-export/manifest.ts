@@ -158,6 +158,20 @@ export async function captureManifest(
   } else {
     skipped.push({ category: 'generated-courses', reason: 'Table app.generated_course is not present in this deployment' });
   }
+  // Epic-2 S2: verified source supplements are deliberately excluded from the
+  // artifact — they carry fetched third-party passages and the upload excerpts
+  // they conflict with, and whether supplement records join the export is the
+  // same entry 8 lifecycle-class decision. The skip line records the
+  // exclusion honestly.
+  if (await tableColumns(client, 'course_supplement')) {
+    skipped.push({
+      category: 'supplements',
+      reason:
+        'Deliberately excluded: verified source supplements carry fetched external-source passages and the upload excerpts they are shown beside; include-vs-exclude is deferred to the lifecycle story (entry 8)',
+    });
+  } else {
+    skipped.push({ category: 'supplements', reason: 'Table app.course_supplement is not present in this deployment' });
+  }
 
   return {
     capturedAt,

@@ -64,7 +64,7 @@ async function grantConsent(page: Page) {
   expect(decision.status()).toBe(200);
 }
 
-async function uploadAndConfirm(page: Page) {
+async function uploadAndConfirm(page: Page, missing: string) {
   await page.getByLabel("Synthetic study materials").setInputFiles(sources.map(source => ({ name: source.name, mimeType: "text/plain", buffer: Buffer.from(source.text) })));
   const created = page.waitForResponse(response => response.url().endsWith("/api/v1/batches") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Upload materials", exact: true }).click();
@@ -78,6 +78,7 @@ async function uploadAndConfirm(page: Page) {
   await page.getByRole("button", { name: "Continue with acknowledged selection", exact: true }).click();
   await page.getByLabel("Topic", { exact: true }).fill("Synthetic course topic");
   await page.getByLabel("Learning outcomes").fill("Recall the first source\nExplain the second source");
+  await page.getByLabel("Source coverage / missing explanations", { exact: false }).fill(missing);
   await page.getByLabel("One mini-course title").fill("Course tracer");
   await page.getByLabel("Lessons · one per line").fill("One generated lesson");
   await page.getByLabel("Practice activity").fill("Submit one recall item");
@@ -101,7 +102,7 @@ test("A generates and studies the labeled course; the recall answer is withheld 
   // Consent is granted before the confirmed plan mounts the course stage, so
   // the stage's own disclosure read already sees the v5 grant.
   await grantConsent(page);
-  const rootId = await uploadAndConfirm(page);
+  const rootId = await uploadAndConfirm(page, "Coverage not assessed. No supplementary sources fetched.");
   const panel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your mini-course", exact: true }) });
   await expect(panel).toBeVisible();
   await expect(panel.getByText("Plan confirmed — course not generated.", { exact: true })).toBeVisible();
@@ -158,4 +159,79 @@ test("A generates and studies the labeled course; the recall answer is withheld 
   expect(outbound).toEqual([]);
   expect(errors).toEqual([]);
   await page.screenshot({ path: info.outputPath("generated-course-studied.png"), fullPage: true });
+});
+
+// Epic-2 S2 supplement journey: the plan's declared gaps drive one
+// consent-gated check against allowlisted public sources through the bounded
+// fetcher (local deterministic fixtures — zero outbound requests). Verified
+// passages arrive badged with identity/location/time/hash; a conflict renders
+// both sources side by side; an unfindable passage states the honest
+// unsupported stop; a fetch that always errors fails honestly with a retry.
+test("A checks plan gaps against bounded public sources: badge, side-by-side conflict, unsupported, honest failure", async ({ page }, info) => {
+  test.setTimeout(240000);
+  const errors: string[] = [];
+  const outbound: string[] = [];
+  page.on("pageerror", error => errors.push(error.name));
+  page.on("request", request => { if (!request.url().startsWith(origin)) outbound.push(new URL(request.url()).hostname); });
+  await page.setViewportSize({ width: 360, height: 900 });
+  await login(page, "course-supplement-a");
+  await grantConsent(page);
+  const missing = "No source explains mock frameworks. A conflicting statement about doubles and coverage appears in public documentation. One unverifiable claim exists about coverage.";
+  const rootId = await uploadAndConfirm(page, missing);
+  const panel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your mini-course", exact: true }) });
+  await panel.getByRole("button", { name: "Generate mini-course (AI)", exact: true }).click();
+  await expect(panel.getByRole("heading", { name: "One generated lesson", exact: true })).toBeVisible({ timeout: 60000 });
+  // The declared gaps list honestly as unaddressed before any check.
+  const gapsHeading = panel.getByRole("heading", { name: "Gaps & supplements", exact: true });
+  await expect(gapsHeading).toBeVisible();
+  await expect(panel.getByText("No source explains mock frameworks.", { exact: false }).first()).toBeVisible();
+  await expect(panel.getByText("Not checked yet", { exact: false }).first()).toBeVisible();
+  // Keyboard run: focus the consent-gated action and submit with Enter.
+  const check = panel.getByRole("button", { name: "Check gaps against public sources (AI)", exact: true });
+  await check.focus();
+  await expect(check).toBeFocused();
+  await page.keyboard.press("Enter");
+  // Supported: the supplement badge with source identity and retrieval facts.
+  await expect(panel.getByText("Supplement — external source", { exact: false }).first()).toBeVisible({ timeout: 60000 });
+  await expect(panel.getByText(/docs\.example\.org \(https:\/\/docs\.example\.org\//)).toBeVisible();
+  await expect(panel.getByText(/content sha256 [0-9a-f]/).first()).toBeVisible();
+  await expect(panel.getByText(/retrieved /).first()).toBeVisible();
+  // Conflict: both sources shown side by side, never resolved.
+  await expect(panel.getByText(/Conflict — both sources shown/).first()).toBeVisible();
+  await expect(panel.getByText("Your upload says:", { exact: false })).toBeVisible();
+  await expect(panel.getByText("The public source says:", { exact: false })).toBeVisible();
+  await expect(panel.getByText(/never resolved silently/)).toBeVisible();
+  // Unsupported: the honest stop, no passage shown, nothing added.
+  await expect(panel.getByText("Checked, unsupported.", { exact: false })).toBeVisible();
+  await expect(panel.getByText(/no supplement content was added/)).toBeVisible();
+  // Focus choreography: the completed check moves focus to the section heading.
+  await expect(gapsHeading).toBeFocused();
+  // GET payload honesty: identity/passage/outcome only — no scored semantics.
+  const state = await (await page.request.get(`/api/v1/studies/${rootId}/supplements`)).json() as unknown;
+  const serialized = JSON.stringify(state);
+  for (const banned of ['"score"', '"credit"', '"completion"', '"attempt"']) expect(serialized).not.toContain(banned);
+  expect(serialized).toContain('"supported"');
+  expect(serialized).toContain('"conflict"');
+  expect(serialized).toContain('"unsupported"');
+  // Honest failure: a second study declares a gap whose fixture source always
+  // errors at fetch — the whole request fails honestly with a retry action.
+  await page.getByRole("button", { name: "Back to library", exact: true }).click();
+  const failingRoot = await uploadAndConfirm(page, "Sources lack a worked example. An unfetchable page always errors when fetched.");
+  const second = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your mini-course", exact: true }) });
+  await second.getByRole("button", { name: "Generate mini-course (AI)", exact: true }).click();
+  await expect(second.getByRole("heading", { name: "One generated lesson", exact: true })).toBeVisible({ timeout: 60000 });
+  await second.getByRole("button", { name: "Check gaps against public sources (AI)", exact: true }).click();
+  await expect(second.getByText("Supplement check failed — nothing was saved.", { exact: false })).toBeVisible({ timeout: 60000 });
+  await expect(second.getByText(/A proposed source could not be fetched/)).toBeVisible();
+  await expect(second.getByRole("button", { name: "Retry supplement check", exact: true })).toBeVisible();
+  // No supplement persisted for the failed pass.
+  const failed = await (await page.request.get(`/api/v1/studies/${failingRoot}/supplements`)).json() as { state: string };
+  expect(failed.state).toBe("failed");
+  for (const width of [360, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  expect(outbound).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: info.outputPath("supplements-checked.png"), fullPage: true });
 });

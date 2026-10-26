@@ -240,6 +240,12 @@ registerLifecyclePort(aiSetupPort);
 // write is needed here. Purge removes the course lineage with the root; the
 // ON DELETE CASCADE from plan/selection revisions keeps root purge correct
 // regardless of port ordering inside purgeRoot.
+// Epic-2 S2 extends the same port with the supplement tables: the tracked
+// supplement passes (app.supplement_request) and their verified rows
+// (app.course_supplement) cascade from the course they explain, so deleting
+// the course rows removes them in both root and personal scopes, and the
+// preview counts them for the deletion preview. The 'supplement' lifecycle
+// objects are removed with the root's object deletion like every kind.
 const courseGenerationPort: LifecyclePort = {
   name: 'course-generation',
   label: 'Generated mini-courses',
@@ -250,7 +256,15 @@ const courseGenerationPort: LifecyclePort = {
         'SELECT count(*)::int AS count FROM app.generated_course WHERE owner_id=$1',
         [scope.ownerId],
       );
-      return [{ key: 'courses', label: this.label, count: rows.rows[0].count }];
+      const categories: PortCategory[] = [{ key: 'courses', label: this.label, count: rows.rows[0].count }];
+      if (await tableReady(client, 'app.course_supplement', ['course_id'])) {
+        const supplements = await client.query<{ count: number }>(
+          'SELECT count(*)::int AS count FROM app.course_supplement WHERE course_id IN (SELECT id FROM app.generated_course WHERE owner_id=$1)',
+          [scope.ownerId],
+        );
+        categories.push({ key: 'supplements', label: 'Verified source supplements', count: supplements.rows[0].count });
+      }
+      return categories;
     }
     if (!scope.rootIds.length) return [];
     if (!(await tableReady(client, 'app.generated_course', ['root_id']))) return [];
@@ -258,7 +272,15 @@ const courseGenerationPort: LifecyclePort = {
       'SELECT count(*)::int AS count FROM app.generated_course WHERE root_id=ANY($1::uuid[])',
       [scope.rootIds],
     );
-    return [{ key: 'courses', label: this.label, count: rows.rows[0].count }];
+    const categories: PortCategory[] = [{ key: 'courses', label: this.label, count: rows.rows[0].count }];
+    if (await tableReady(client, 'app.course_supplement', ['course_id'])) {
+      const supplements = await client.query<{ count: number }>(
+        'SELECT count(*)::int AS count FROM app.course_supplement WHERE course_id IN (SELECT id FROM app.generated_course WHERE root_id=ANY($1::uuid[]))',
+        [scope.rootIds],
+      );
+      categories.push({ key: 'supplements', label: 'Verified source supplements', count: supplements.rows[0].count });
+    }
+    return categories;
   },
   async deny() {
     // Fenced by lineage invalidation + worker/settlement re-checks; see above.
@@ -272,6 +294,7 @@ const courseGenerationPort: LifecyclePort = {
     if (!scope.rootIds.length) return;
     if (await tableReady(client, 'app.generated_course', ['root_id']))
       await client.query('DELETE FROM app.generated_course WHERE root_id=ANY($1::uuid[])', [scope.rootIds]);
+    // supplement_request/course_supplement ride the course ON DELETE CASCADE.
   },
 };
 

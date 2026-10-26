@@ -1,6 +1,7 @@
 import type { PgBoss } from "pg-boss";
-import { COURSE_QUEUE, courseJobSchema, courseContentSchema, type CourseJob } from "../../contracts/courses";
+import { COURSE_QUEUE, SUPPLEMENT_QUEUE, courseJobSchema, courseContentSchema, supplementJobSchema, type CourseContent, type CourseGap, type CourseJob, type SupplementJob } from "../../contracts/courses";
 import { textCompletionRequestSchema, type TextCompletionPort } from "../../contracts/ai-provider";
+import type { BoundedFetchPort } from "../../adapters/source-fetch";
 import type { Plan } from "../../contracts/setup";
 import { transaction } from "../../adapters/postgres/database";
 import * as files from "../../adapters/private-files";
@@ -12,9 +13,18 @@ import { authorize } from "../identity-access/access";
 import * as lifecycle from "../lifecycle-platform/repository";
 import { errorCode } from "../../platform/errors";
 import { buildCourseMessages, createSyntheticCourseCompletion, parseCourseOutput } from "./generation";
+import {
+  FIXTURE_FETCH_ALLOWLIST,
+  buildProposalMessages,
+  createFixtureFetchPort,
+  createSyntheticProposalCompletion,
+  deriveGaps,
+  parseProposalOutput,
+  verifySupplement,
+} from "./supplements";
 import * as repository from "./repository";
 
-export { COURSE_QUEUE };
+export { COURSE_QUEUE, SUPPLEMENT_QUEUE };
 
 type Claim = {
   planRevisionId: string;
@@ -99,18 +109,21 @@ export async function runCourseGeneration(job: CourseJob, completion?: () => Tex
   const content = courseContentSchema.parse(parsed.content);
   // Phase 3 — settlement before persistence: the existing machinery re-checks
   // everything; only an ACCEPTED settle may store any effect. The single
-  // transaction registers the 'course' lifecycle object (root lock also
-  // serializes version assignment), supersedes prior versions, stores the
-  // course/objective/source lineage, marks ready and appends the one
-  // content-free zero-token ledger row.
+  // transaction CLAIMS the pending→ready transition FIRST: a row that already
+  // reached a terminal state after phase 1 (e.g. a stranded row marked failed
+  // 'timeout' by a new command) returns no claim and NOTHING is written — no
+  // lifecycle object, no content, no ledger row. The claim plus the root lock
+  // also serialize version assignment.
   try {
     const settled = await settleDispatch(identity, claim.admissionId);
     if (settled.outcome !== "accepted") { await failRequest("rejected-late"); return; }
     await transaction(async client => {
+      const claimed = await repository.claimReady(client, job.requestId);
+      if (!claimed) return; // terminal state raced this delivery: persist nothing
       const objectId = await lifecycle.registerObject(client, job.rootId, "course", [claim.planRevisionId]);
-      const version = (await repository.readyCount(client, job.rootId)) + 1;
+      const version = (await repository.readyCount(client, job.rootId, job.requestId)) + 1;
       await repository.supersedePrior(client, job.rootId, job.requestId);
-      await repository.markReady(client, job.requestId, { content, model: outcome.provenance.returnedModel, usage: outcome.usage, version, objectId });
+      await repository.completeReady(client, job.requestId, { content, model: outcome.provenance.returnedModel, usage: outcome.usage, version, objectId });
       await repository.insertObjectives(client, job.requestId, content.objectives);
       const seen = new Set<string>();
       const sources: Array<{ position: number; extractionId: string; filename: string }> = [];
@@ -144,6 +157,168 @@ export async function workCourseGenerations(boss: PgBoss, completion?: () => Tex
       if (envelope.requestId !== job.id) throw new Error("Invalid job identity");
       await runCourseGeneration(envelope, completion);
       console.log(JSON.stringify({ event: "course-generation-processed", requestId: envelope.requestId }));
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Epic-2 S2 supplement phase. One attempt (retryLimit 0): the request row is
+// the single durable record and lands in an honest terminal state on every
+// path. Pipeline order is the plan's contract: fenced re-read → ONE proposal
+// completion → per-candidate bounded fetch (fixture default, zero egress) →
+// VERIFY BEFORE SETTLE → settleDispatch → single-transaction persist + ledger.
+// The proposal is an untrusted suggestion and the fetch is untrusted content:
+// a supplement persists only when deterministic code verified the claimed
+// passage inside the fetched bytes, and only an ACCEPTED settle may store any
+// effect — a rejected-late result is discarded, never stored.
+// ---------------------------------------------------------------------------
+
+type SupplementClaim = {
+  admissionId: string;
+  courseId: string;
+  courseObjectId: string;
+  lessonTitle: string;
+  gaps: CourseGap[];
+  outcomes: string[];
+  sections: CourseContent["sections"];
+};
+
+export async function runSupplementFetch(
+  job: SupplementJob,
+  completion?: () => TextCompletionPort,
+  fetchPort?: () => BoundedFetchPort,
+): Promise<void> {
+  const identity = { userId: job.ownerId, sessionId: job.sessionId };
+  const failRequest = async (code: string) => {
+    await transaction(client => repository.markSupplementFailed(client, job.requestId, code))
+      .catch(() => console.error(JSON.stringify({ event: "supplement-terminal-pending", requestId: job.requestId })));
+  };
+  // Phase 1 — fenced re-read of the SAME pinned course under the recorded
+  // owner. Any fence (revoked session, deleted root, invalidated lineage) or
+  // an unready/missing course ends the request without any dispatch.
+  let claim: SupplementClaim | null | "fenced";
+  try {
+    claim = await transaction(async client => {
+      await authorize(client, identity);
+      const request = await repository.supplementRequestById(client, identity.userId, job.requestId);
+      if (!request || request.status !== "pending") return null; // already settled by a duplicate delivery
+      await lifecycle.scopedRoot(client, identity.userId, job.rootId);
+      const objectIds = request.object_ids ?? [];
+      if (!(await lifecycle.objectsActive(client, identity.userId, objectIds))) return "fenced" as const;
+      const course = await repository.readyCourseById(client, identity.userId, job.rootId, job.courseId);
+      if (!course || !course.content || !course.object_id) return "fenced" as const;
+      const settledContent = courseContentSchema.safeParse(course.content);
+      if (!settledContent.success) return "fenced" as const;
+      const confirmed = await planRevision(client, course.plan_revision_id);
+      if (!confirmed) return "fenced" as const;
+      return {
+        admissionId: request.admission_id,
+        courseId: course.id,
+        courseObjectId: course.object_id,
+        lessonTitle: settledContent.data.lessonTitle,
+        gaps: deriveGaps(confirmed.plan, settledContent.data),
+        outcomes: confirmed.plan.outcomes,
+        sections: settledContent.data.sections,
+      };
+    });
+  } catch (error) {
+    const code = errorCode(error);
+    await failRequest(code === "UNAUTHENTICATED" || code === "FORBIDDEN_OR_NOT_FOUND" ? "rejected-late" : "processing-blocked");
+    return;
+  }
+  if (claim === null) return;
+  if (claim === "fenced") { await failRequest("rejected-late"); return; }
+  // Phase 2 — one bounded proposal completion through the port. Production
+  // default is the deterministic local synthetic fixture (zero-token, no I/O);
+  // a live proposal processor stays deferred to gate F-A.
+  const port = (completion ? completion() : createSyntheticProposalCompletion());
+  const messages = buildProposalMessages({
+    lessonTitle: claim.lessonTitle,
+    gaps: claim.gaps,
+    outcomes: claim.outcomes,
+    sections: claim.sections,
+    allowlist: FIXTURE_FETCH_ALLOWLIST,
+  });
+  const request = textCompletionRequestSchema.safeParse({ messages, maxOutputTokens: AI_BUDGET.maxOutputTokens });
+  if (!request.success) { await failRequest("invalid-input"); return; }
+  const outcome = await port.complete(request.data);
+  if (!outcome.ok) { await failRequest(outcome.error.code); return; }
+  // Strict parse BEFORE any fetch: an unparseable or out-of-bounds proposal
+  // fails honestly without fetching anything — retryable via a new command.
+  const parsed = parseProposalOutput(outcome.text, {
+    gaps: claim.gaps,
+    outcomes: claim.outcomes,
+    sections: claim.sections,
+    allowlist: FIXTURE_FETCH_ALLOWLIST,
+  });
+  if (!parsed.ok) { await failRequest("invalid-output"); return; }
+  // Phase 3 — per-candidate bounded fetch (fixture default, zero egress) and
+  // deterministic verification. Any fetch failure fails the request honestly
+  // with a content-free code; a denied target records its deny reason.
+  const fetcher = fetchPort ? fetchPort() : createFixtureFetchPort();
+  const verified: Array<{ gapIndex: number; fetched: { url: string; origin: string; contentHash: string; retrievedAt: string } | null; verified: ReturnType<typeof verifySupplement> }> = [];
+  for (const candidate of parsed.candidates) {
+    const fetched = await fetcher.fetch(candidate.url);
+    if (!fetched.ok) {
+      const code = fetched.code === "denied" ? `fetch-denied:${fetched.reason}` : fetched.code === "unavailable" ? "fetch-unavailable" : `fetch-${fetched.code}`;
+      await failRequest(code);
+      return;
+    }
+    verified.push({
+      gapIndex: candidate.gap.index,
+      fetched: { url: fetched.url, origin: fetched.origin, contentHash: fetched.contentHash, retrievedAt: fetched.retrievedAt },
+      verified: verifySupplement(candidate, fetched.text),
+    });
+  }
+  // Phase 4 — settlement before persistence: the existing machinery re-checks
+  // everything; only an ACCEPTED settle may store any effect. The single
+  // transaction CLAIMS the pending→ready transition FIRST: a row that already
+  // reached a terminal state after phase 1 returns no claim and NOTHING is
+  // written — no 'supplement' lifecycle object, no rows, no ledger row.
+  try {
+    const settled = await settleDispatch(identity, claim.admissionId);
+    if (settled.outcome !== "accepted") { await failRequest("rejected-late"); return; }
+    await transaction(async client => {
+      const claimed = await repository.claimSupplementReady(client, job.requestId);
+      if (!claimed) return; // terminal state raced this delivery: persist nothing
+      const objectId = await lifecycle.registerObject(client, job.rootId, "supplement", [claim.courseObjectId]);
+      for (const item of verified) {
+        await repository.insertSupplementRow(client, {
+          requestId: job.requestId,
+          courseId: claim.courseId,
+          position: item.gapIndex,
+          outcome: item.verified.outcome,
+          url: item.fetched!.url,
+          origin: item.fetched!.origin,
+          locator: item.verified.locator,
+          passage: item.verified.passage,
+          contentHash: item.verified.passage === null ? null : item.fetched!.contentHash,
+          retrievedAt: new Date(item.fetched!.retrievedAt),
+          claim: parsed.candidates.find(candidate => candidate.gap.index === item.gapIndex)!.claim,
+          uploadExcerpt: item.verified.conflict?.uploadExcerpt ?? null,
+          uploadSource: item.verified.conflict?.uploadSource ?? null,
+        });
+      }
+      await repository.completeSupplementReady(client, job.requestId, objectId);
+      await repository.insertLedgerRow(client, job.ownerId, outcome.usage);
+    });
+  } catch (error) {
+    const code = errorCode(error);
+    await failRequest(code === "UNAUTHENTICATED" || code === "FORBIDDEN_OR_NOT_FOUND" ? "rejected-late" : "processing-blocked");
+  }
+}
+
+// One-line worker registration for the supplement queue, mirroring
+// workCourseGenerations: single-job batches; the queue policy matches
+// migrate.ts exactly.
+export async function workSupplementFetches(boss: PgBoss, completion?: () => TextCompletionPort, fetchPort?: () => BoundedFetchPort): Promise<void> {
+  await boss.createQueue(SUPPLEMENT_QUEUE, { retryLimit: 0, expireInSeconds: 120, retentionSeconds: 86400 });
+  await boss.work<SupplementJob>(SUPPLEMENT_QUEUE, { batchSize: 1, pollingIntervalSeconds: 1 }, async jobs => {
+    for (const job of jobs) {
+      const envelope = supplementJobSchema.parse(job.data);
+      if (envelope.requestId !== job.id) throw new Error("Invalid job identity");
+      await runSupplementFetch(envelope, completion, fetchPort);
+      console.log(JSON.stringify({ event: "supplement-processed", requestId: envelope.requestId }));
     }
   });
 }

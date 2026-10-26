@@ -3,7 +3,7 @@ import type { PoolClient } from 'pg';
 import { config } from '../platform/config';
 import type { ExtractionJob } from '../contracts/setup';
 import { AI_DRAFT_QUEUE, type AiDraftJob } from '../contracts/ai-setup';
-import { COURSE_QUEUE, type CourseJob } from '../contracts/courses';
+import { COURSE_QUEUE, SUPPLEMENT_QUEUE, type CourseJob, type SupplementJob } from '../contracts/courses';
 
 export const EXTRACTION_QUEUE = 'extract-txt-v1';
 let instance: PgBoss | undefined;
@@ -58,6 +58,17 @@ export async function enqueueAiDraft(client: PoolClient, job: AiDraftJob) {
 // pending cap the AI draft queue uses — job id = request id.
 export async function enqueueCourseGeneration(client: PoolClient, job: CourseJob) {
   return transactionQueue(client).send(COURSE_QUEUE, job, {
+    db: transactionDb(client),
+    id: job.requestId,
+    retryLimit: 0,
+    expireInSeconds: 120,
+    retentionSeconds: 86400,
+  });
+}
+// Epic-2 S2 supplement fetch jobs: the identical single-attempt policy — one
+// bounded proposal + one fetch pass per delivery, job id = request id.
+export async function enqueueSupplementFetch(client: PoolClient, job: SupplementJob) {
+  return transactionQueue(client).send(SUPPLEMENT_QUEUE, job, {
     db: transactionDb(client),
     id: job.requestId,
     retryLimit: 0,

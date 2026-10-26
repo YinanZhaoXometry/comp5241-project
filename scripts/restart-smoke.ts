@@ -141,8 +141,33 @@ try {
   const recall = await client.post(`${coursePath}/course/recall`, { headers: { Origin: origin }, data: { ...command(confirmedRevision), attempted: "Synthetic course restart source." } });
   assert.equal(recall.status(), 200);
   assert.equal(((await recall.json()) as { outcome: string }).outcome, "correct");
+  // Epic-2 S2 beat: queue the supplement pass while NO worker runs, then a
+  // full web+worker restart must complete the persisted job exactly once with
+  // a verified attributed supplement and one 'supplement' lifecycle object.
+  const courseId = (await database().query<{ id: string }>("SELECT id FROM app.generated_course WHERE root_id=$1 AND status='ready'", [courseReceipt.rootId])).rows[0].id;
+  await stop();
+  await startWeb();
+  const supplementCommand = command(confirmedRevision);
+  const supplementResponse = await client.post(`${coursePath}/supplements`, { headers: { Origin: origin }, data: { ...supplementCommand, courseId } });
+  assert.equal(supplementResponse.status(), 202);
+  const supplementGeneration = await supplementResponse.json() as Receipt;
+  assert.equal(supplementGeneration.state, "pending");
+  await stop(); await start();
+  await expect.poll(async () => (await (await client.get(`${coursePath}/supplements?course=${courseId}`)).json() as { state: string }).state, { timeout: 120000 }).toBe("ready");
+  const supplements = await (await client.get(`${coursePath}/supplements?course=${courseId}`)).json() as { state: string; gaps: Array<{ outcome: string; supplement: { outcome: string; passage: string | null; origin: string } | null }> };
+  assert.equal(supplements.gaps.length, 1);
+  assert.equal(supplements.gaps[0].outcome, "supported");
+  assert.ok(supplements.gaps[0].supplement?.passage?.includes("coverage"), "verified passage persisted");
+  assert.equal(supplements.gaps[0].supplement?.origin, "docs.example.org");
+  const replayedSupplement = await (await client.post(`${coursePath}/supplements`, { headers: { Origin: origin }, data: { ...supplementCommand, courseId } })).json();
+  assert.deepEqual(replayedSupplement, supplementGeneration); // identical receipt, no second effect
+  assert.equal((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.supplement_request WHERE course_id=$1 AND status='ready'", [courseId])).rows[0].count, 1);
+  assert.equal((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.course_supplement WHERE course_id=$1", [courseId])).rows[0].count, 1);
+  assert.equal((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.lifecycle_object WHERE root_id=$1 AND kind='supplement'", [courseReceipt.rootId])).rows[0].count, 1);
+  assert.equal((await database().query("SELECT count(*)::int AS count FROM app.ai_dispatch_ledger WHERE owner_id=$1", [owner.userId])).rows[0].count, 2);
   const courseStudy = await (await client.get(coursePath)).json();
   assert.equal((await client.post(`${coursePath}/removal`, { headers: { Origin: origin }, data: command(courseStudy.revision) })).status(), 200);
+  assert.equal((await database().query("SELECT count(*)::int AS count FROM app.course_supplement WHERE course_id=$1", [courseId])).rows[0].count, 0);
   for (const secret of [text, courseText, owner.email, owner.password, other.email, other.password]) assert.ok(!output.join("").includes(secret), "Private data reached process output");
-  console.log("Restart smoke passed: exact plan/session persisted, B denied, queued PDF recovered with the same original and one extraction, duplicate receipt replayed, course generation queued without a worker completed exactly once across restart with an identical replayed receipt and one ready course, recall answer released only on submission, roots removed; process output content-free.");
+  console.log("Restart smoke passed: exact plan/session persisted, B denied, queued PDF recovered with the same original and one extraction, duplicate receipt replayed, course generation queued without a worker completed exactly once across restart with an identical replayed receipt and one ready course, recall answer released only on submission, supplement pass queued without a worker completed exactly once with a verified attributed supplement and purged with its root; process output content-free.");
 } finally { await stop(); await client.dispose(); await denied.dispose(); await closeDatabase(); }

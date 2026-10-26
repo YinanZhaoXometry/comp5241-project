@@ -29,8 +29,9 @@ project-new/
 │   │   ├── batches.ts      batch admission/selection contracts
 │   │   ├── consent.ts · preferences.ts · diagnostic.ts · export.ts   S3/S4/S7/S8 contracts
 │   │   ├── ai-provider.ts  provider-neutral text-completion port (dormant)
-│   │   └── courses.ts      epic-2 S1 generated-course contracts (content/job/serving
-│   │                         shapes; recall answer exists only server-side + feedback)
+│   │   └── courses.ts      epic-2 S1/S2 generated-course + supplement contracts
+│   │                         (content/job/serving shapes; recall answer exists only
+│   │                         server-side + feedback; verified supplement records)
 │   ├── modules/            shared web/worker services; never import app/worker/next
 │   │   ├── identity-access/    auth, sessions, role fences, synthetic provisioning
 │   │   ├── materials-setup/    uploads, extraction, batches, plans, handoff (queries/repository/service)
@@ -41,7 +42,11 @@ project-new/
 │   │   ├── course-generation/  epic-2 S1 tracer: confirmed-plan → generated course
 │   │   │                       (handoff-consuming service, restart-safe worker running
 │   │   │                       the local synthetic fixture behind TextCompletionPort,
-│   │   │                       versioned course/objective/source lineage, recall feedback)
+│   │   │                       versioned course/objective/source lineage, recall feedback);
+│   │   │                       S2 supplements.ts — plan-gap derivation, strict proposal
+│   │   │                       parsing, deterministic passage verification/conflict and
+│   │   │                       the zero-egress fixture fetch port (see
+│   │   │                       docs/bounded-source-fetch.md)
 │   │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
 │   │                           derivative ports, dependencies preview (S9),
 │   │                           retention registry/scheduler + archive contract (S10)
@@ -52,6 +57,10 @@ project-new/
 │   │   ├── txt-extractor.ts    Seatbelt TXT helper wrapper
 │   │   ├── document-extractor.ts · document-sandbox.ts   four-format parser dispatch/admission
 │   │   ├── protected-journal.ts  protective journal store/delivery/replay (S13)
+│   │   ├── source-fetch.ts  AD-11 bounded public-source fetch adapter — allowlist/
+│   │   │                       DNS/IP/redirect/size/credential guards, stdlib-only,
+│   │   │                       fixture-driven with zero egress; live admission is
+│   │   │                       gate F-B's (docs/bounded-source-fetch.md)
 │   │   └── openai-compatible.ts  dormant Chat Completions adapter (see docs/ai-provider-adapter.md)
 │   ├── platform/           config (loopback-only enforcement), errors, HTTP helpers,
 │   │                       shared command-envelope helpers (commands.ts: requestHash/parse)
@@ -63,6 +72,8 @@ project-new/
 │                             fails closed without fresh admission — see
 │                             docs/bounded-document-extraction.md)
 ├── docs/backup-restore.md  S13 encrypted local snapshot + protective restore procedure
+├── docs/bounded-source-fetch.md  epic-2 S2 bounded fetch boundary + fixture mode
+│                                  (F-B owns live admission)
 ├── migrations/             ordered SQL, applied only by scripts/migrate.ts at dev time;
 │   │                       runtime cannot migrate; additive changes must preserve v1 data
 ├── scripts/                dev-time tooling, run via package.json scripts
@@ -84,7 +95,8 @@ project-new/
 │   │                       course — production build
 │   └── fixtures/           original synthetic documents only
 ├── docs/                   guides: ai-provider-adapter, bounded-document-extraction,
-│                           backup-restore, lint-coverage, project-structure (this file)
+│                           bounded-source-fetch, backup-restore, lint-coverage,
+│                           project-structure (this file)
 ├── _bmad/                  the installed BMad Method tooling itself — do not edit casually
 ├── _bmad-output/           BMad-generated planning artifacts for this initiative (below)
 ├── .local/                 ignored local runtime state (below)

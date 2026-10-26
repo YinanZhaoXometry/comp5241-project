@@ -11,7 +11,7 @@ import { getPreferences, savePreferences } from "../../../../modules/setup-prefe
 import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finishCheck, flagUnclear } from "../../../../modules/setup-diagnostic/service";
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
-import { requestCourseGeneration, getCourse, submitRecall } from "../../../../modules/course-generation/service";
+import { requestCourseGeneration, getCourse, submitRecall, requestSupplements, getSupplements } from "../../../../modules/course-generation/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -127,6 +127,13 @@ async function handle(request: Request, context: Context) {
           const course = await getCourse(identity, rootId, requested);
           return protectedResponse(identity, rootId, course, request.signal, false, course.objectIds);
         }
+        if (action === "supplements") {
+          // Optional ?course=<uuid|version> mirrors the course read path: the
+          // supplement state of one specific ready course version.
+          const requested = new URL(request.url).searchParams.get("course") ?? undefined;
+          const supplements = await getSupplements(identity, rootId, requested);
+          return protectedResponse(identity, rootId, supplements, request.signal, false, supplements.objectIds);
+        }
       }
       if (request.method === "POST") {
         const body = await jsonBody(request);
@@ -135,8 +142,9 @@ async function handle(request: Request, context: Context) {
           : action === "removal" ? await removeRoot(identity, rootId, body as Command)
           : action === "ai-draft" ? await requestAiDraft(identity, rootId, body)
           : action === "ai-check" ? await requestAiCheck(identity, rootId, body)
-          : action === "course" ? await requestCourseGeneration(identity, rootId, body) : null;
-        if (result) return Response.json(result, { status: action === "ai-draft" || action === "ai-check" || action === "course" ? 202 : 200, headers: privateHeaders });
+          : action === "course" ? await requestCourseGeneration(identity, rootId, body)
+          : action === "supplements" ? await requestSupplements(identity, rootId, body) : null;
+        if (result) return Response.json(result, { status: action === "ai-draft" || action === "ai-check" || action === "course" || action === "supplements" ? 202 : 200, headers: privateHeaders });
       }
     }
     if (path[0] === "preferences" && path.length === 1) {
