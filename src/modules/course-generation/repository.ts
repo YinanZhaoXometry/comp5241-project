@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import type { AdmissionOutcome } from "../../contracts/consent";
-import type { CourseContent, CourseUsage, SupplementOutcome } from "../../contracts/courses";
+import type { CourseContent, CoursePreferencePin, CourseUsage, SupplementOutcome } from "../../contracts/courses";
 
 // Module-owned rows for the epic-2 course tracer. Write ownership: only
 // this module writes app.generated_course, app.course_objective and
@@ -33,20 +33,24 @@ export type GeneratedCourseRow = {
   content: CourseContent | null;
   model: string | null;
   usage: CourseUsage | null;
+  // Request-time pin of the pitch-relevant preference fields (epic-2 S4
+  // review fix): the worker consumes THIS, never a live re-read. Null only on
+  // pre-review legacy rows, which fall back to the current preference row.
+  preference_pin: CoursePreferencePin | null;
   created_at: Date;
   settled_at: Date | null;
 };
 export type CourseWithScope = GeneratedCourseRow & { object_ids: string[]; admission_outcome: AdmissionOutcome };
 
-const columns = 'c.id,c.root_id,c.owner_id,c.plan_revision_id,c.selection_id,c.admission_id,c.object_id,c.status,c.failure_code,c.version,c.superseded_by,c.content,c.model,c.usage,c.created_at,c.settled_at,a.object_ids';
+const columns = 'c.id,c.root_id,c.owner_id,c.plan_revision_id,c.selection_id,c.admission_id,c.object_id,c.status,c.failure_code,c.version,c.superseded_by,c.content,c.model,c.usage,c.preference_pin,c.created_at,c.settled_at,a.object_ids';
 
 export async function insertCourseRequest(
   client: PoolClient,
-  row: { id: string; rootId: string; ownerId: string; planRevisionId: string; selectionId: string; admissionId: string },
+  row: { id: string; rootId: string; ownerId: string; planRevisionId: string; selectionId: string; admissionId: string; preferencePin: CoursePreferencePin },
 ) {
   await client.query(
-    "INSERT INTO app.generated_course(id,root_id,owner_id,plan_revision_id,selection_id,admission_id,status) VALUES($1,$2,$3,$4,$5,$6,'pending')",
-    [row.id, row.rootId, row.ownerId, row.planRevisionId, row.selectionId, row.admissionId],
+    "INSERT INTO app.generated_course(id,root_id,owner_id,plan_revision_id,selection_id,admission_id,status,preference_pin) VALUES($1,$2,$3,$4,$5,$6,'pending',$7)",
+    [row.id, row.rootId, row.ownerId, row.planRevisionId, row.selectionId, row.admissionId, row.preferencePin],
   );
 }
 export async function courseById(client: PoolClient, ownerId: string, requestId: string): Promise<CourseWithScope | null> {

@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { auth } from '../../src/modules/identity-access/auth';
 import { provisionSynthetic } from '../../src/modules/identity-access/provision';
 import { getDisclosure, decide, withdraw } from '../../src/modules/processing-consent/service';
+import { savePreferences } from '../../src/modules/setup-preferences/service';
 import { createBatch, uploadSlot, acknowledge, getBatch } from '../../src/modules/materials-setup/batches';
 import { runExtraction } from '../../src/modules/materials-setup/extraction';
 import { savePlan, confirmPlan, listStudies, getStudy } from '../../src/modules/materials-setup/service';
@@ -10,7 +11,8 @@ import { previewDerivatives } from '../../src/modules/lifecycle-platform/derivat
 import { requestCourseGeneration, getCourse, submitRecall, markItemDone, requestSupplements, getSupplements } from '../../src/modules/course-generation/service';
 import { runCourseGeneration, runSupplementFetch } from '../../src/modules/course-generation/worker';
 import { createFixtureFetchPort } from '../../src/modules/course-generation/supplements';
-import { courseContentV1Schema } from '../../src/contracts/courses';
+import { factsIdenticalAcrossTracks } from '../../src/modules/course-generation/adaptation';
+import { contentAdaptation, contentFactsDigest, courseContentV1Schema, lessonFraming, storedCourseContent } from '../../src/contracts/courses';
 import type { BoundedFetchPort, FetchDenyReason } from '../../src/adapters/source-fetch';
 import { listExports } from '../../src/modules/setup-export/service';
 import { captureManifest } from '../../src/modules/setup-export/manifest';
@@ -394,10 +396,10 @@ describe('epic-2 S1: confirmed-plan-to-generated-course tracer', () => {
     const study = await confirmedStudy(a);
     await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
     const job = await jobOf(a, study.rootId);
-    // A valid v2 draft whose completion marks the row failed 'timeout' DURING
+    // A valid v3 draft whose completion marks the row failed 'timeout' DURING
     // the dispatch — after the worker's phase-1 pending check, before persist.
     const validDraftJson = JSON.stringify({
-      lessons: [{ sections: [
+      lessons: [{ framing: 'Plain-language walkthrough of the lesson.', sections: [
         { text: 'A unit test isolates one behavior and asserts its outcome.', sourcePosition: 0, locator: 'opening lines' },
         { text: 'A test double stands in for a real dependency during the test.', sourcePosition: 1, locator: 'opening lines' },
       ] }],
@@ -469,9 +471,11 @@ describe('epic-2 S3: player shell content v2 and content-item tracking', () => {
     expect(optional.text === null || optional.text.length > 0).toBe(true);
     // No dwell/scroll/completion semantics ride the payload anywhere.
     for (const banned of ['"dwell"', '"scroll"', '"visibility"', '"completion"', '"score"', '"credit"']) expect(JSON.stringify(state)).not.toContain(banned);
-    // The stored content is v2 with the recall answer only server-side.
-    const stored = await database().query<{ content: { contentVersion?: number } }>("SELECT content FROM app.generated_course WHERE root_id=$1 AND status='ready'", [study.rootId]);
-    expect(stored.rows[0].content.contentVersion).toBe(2);
+    // The stored content is v3 with the code-derived adaptation record and the
+    // recall answer only server-side.
+    const stored = await database().query<{ content: { contentVersion?: number; adaptation?: { track: string } } }>("SELECT content FROM app.generated_course WHERE root_id=$1 AND status='ready'", [study.rootId]);
+    expect(stored.rows[0].content.contentVersion).toBe(3);
+    expect(stored.rows[0].content.adaptation).toEqual({ track: 'neutral', backgroundSummary: '' });
   });
 
   it('persists explicit mark-done idempotently, joins it per version and denies honestly', async () => {
@@ -913,5 +917,233 @@ describe('epic-2 S2: bounded source retrieval and attributed supplementation', (
     expect(skip?.reason).toContain('Deliberately excluded');
     expect(skip?.reason).toContain('external-source passages');
     expect(manifest.entries.every(entry => entry.category !== 'supplements')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Epic-2 S4: background and goal adaptation. The same confirmed plan and the
+// same synthetic source texts generate per-track TREATMENT with IDENTICAL
+// factual claims and source links — asserted on the settled content through
+// the cross-track fact-identity validator, never eyeballed. Changed
+// preferences flow to the next confirmed revision through the honest
+// re-save → re-confirm → regenerate path (one course per confirmed revision)
+// without touching earned tracker state; missing or unmatched backgrounds
+// default neutrally and claim no track; stored pre-2.4 v1/v2 rows serve
+// unchanged; and the v7 disclosure names the stated background category with
+// existing v6 grants honestly lapsed.
+// ---------------------------------------------------------------------------
+
+async function readyContentOf(rootId: string) {
+  const row = await database().query<{ content: unknown }>("SELECT content FROM app.generated_course WHERE root_id=$1 AND status='ready' ORDER BY version DESC LIMIT 1", [rootId]);
+  const settled = storedCourseContent(row.rows[0]?.content);
+  if (!settled) throw new Error('stored content did not settle');
+  return settled;
+}
+
+async function statedBackground(identity: Identity, background: string, expectedRevision = 0): Promise<number> {
+  // The first save a fresh owner makes bumps the pinned revision 0→1 (no
+  // prior row counts as plan-relevant); background-only re-saves then keep it.
+  const saved = await savePreferences(identity, {
+    schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision,
+    stage: 'goal', goal: null, topic: '', clarification: '', background,
+    timePreference: null, timezone: '',
+  });
+  return saved.revision;
+}
+
+describe('epic-2 S4: background and goal adaptation', () => {
+  it('generates the same objective under two tracks: treatment differs, every factual claim and source link identical', async () => {
+    const a = await actor('adapt-side-beginner');
+    await grant(a);
+    await statedBackground(a, 'non-CS, new to programming');
+    const studyA = await confirmedStudy(a, multiPlan);
+    await requestCourseGeneration(a, studyA.rootId, { ...command(studyA.revision) });
+    await runCourseGeneration(await jobOf(a, studyA.rootId));
+    const b = await actor('adapt-side-advanced');
+    await grant(b);
+    await statedBackground(b, 'CS graduate, interview prep');
+    const studyB = await confirmedStudy(b, multiPlan);
+    await requestCourseGeneration(b, studyB.rootId, { ...command(studyB.revision) });
+    await runCourseGeneration(await jobOf(b, studyB.rootId));
+    const beginner = await readyContentOf(studyA.rootId);
+    const advanced = await readyContentOf(studyB.rootId);
+    expect(contentAdaptation(beginner)).toEqual({ track: 'beginner', backgroundSummary: 'non-CS, new to programming' });
+    expect(contentAdaptation(advanced)).toEqual({ track: 'advanced', backgroundSummary: 'CS graduate, interview prep' });
+    // Treatment differs per track AND DELIVERS the pitch: the beginner
+    // framing carries a concrete everyday example built from the lesson's own
+    // outcome text plus an explicit prerequisite line; the advanced framing
+    // carries an actual application scenario and a concrete trade-off question.
+    const beginnerFraming = lessonFraming(beginner.lessons[0]) ?? '';
+    const advancedFraming = lessonFraming(advanced.lessons[0]) ?? '';
+    expect(beginnerFraming).not.toBe(advancedFraming);
+    expect(beginnerFraming).toContain('Everyday example:');
+    expect(beginnerFraming).toContain('working toward “Explain arrange-act-assert”');
+    expect(beginnerFraming).toContain('Before this lesson you need:');
+    expect(beginnerFraming).toContain('no prior programming assumed');
+    expect(advancedFraming).toContain('Scenario:');
+    expect(advancedFraming).toContain('“Explain arrange-act-assert”');
+    expect(advancedFraming).toContain('Trade-off to weigh:');
+    // …while the factual core is identical at filename+locator level (each
+    // study owns its own extraction ids — extractionId equality is covered by
+    // the unit side-by-side).
+    expect(factsIdenticalAcrossTracks(beginner, advanced, { ignoreSourceIds: true })).toEqual({ identical: true, differences: [] });
+    expect(beginner.lessons.map(lesson => lesson.sections.map(section => section.text))).toEqual(advanced.lessons.map(lesson => lesson.sections.map(section => section.text)));
+    expect(beginner.lessons.map(lesson => lesson.title)).toEqual(multiPlan.miniCourse.lessons);
+    // The two tracks SHARE the stored factual-core digest (treatment excluded)
+    // and the served views expose it for cheap cross-course identity checks.
+    expect(contentFactsDigest(beginner)).toMatch(/^[0-9a-f]{64}$/u);
+    expect(contentFactsDigest(beginner)).toBe(contentFactsDigest(advanced));
+    // The served views expose the stored adaptation basis and per-lesson
+    // framing, keep the honesty label and sources, and still withhold the
+    // recall answer from every GET payload.
+    const viewA = await getCourse(a, studyA.rootId);
+    const viewB = await getCourse(b, studyB.rootId);
+    expect(viewA.state === 'ready' && viewA.course.adaptation?.track).toBe('beginner');
+    expect(viewB.state === 'ready' && viewB.course.adaptation?.track).toBe('advanced');
+    if (viewA.state !== 'ready' || viewB.state !== 'ready') return;
+    expect(viewA.course.lessons[0].framing).not.toBe(viewB.course.lessons[0].framing);
+    expect(viewA.course.factsDigest).toBe(viewB.course.factsDigest);
+    expect(viewA.course.lessons[0].sections[0].source.filename).toBe('notes.txt');
+    for (const serialized of [JSON.stringify(viewA), JSON.stringify(viewB)]) {
+      expect(serialized).not.toContain(canonicalAnswer);
+      expect(serialized).not.toContain('"answer"');
+    }
+  });
+
+  it('missing and unmatched backgrounds generate neutrally and claim no track', async () => {
+    const a = await actor('adapt-neutral-none');
+    await grant(a);
+    const study = await confirmedStudy(a, multiPlan); // no preference row at all
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const none = await readyContentOf(study.rootId);
+    expect(contentAdaptation(none)).toEqual({ track: 'neutral', backgroundSummary: '' });
+    expect(none.lessons.every(lesson => /no track-specific framing/i.test(lessonFraming(lesson) ?? ''))).toBe(true);
+    const b = await actor('adapt-neutral-unmatched');
+    await grant(b);
+    await statedBackground(b, 'part-time ornithologist');
+    const studyB = await confirmedStudy(b, multiPlan);
+    await requestCourseGeneration(b, studyB.rootId, { ...command(studyB.revision) });
+    await runCourseGeneration(await jobOf(b, studyB.rootId));
+    const unmatched = await readyContentOf(studyB.rootId);
+    // The unmatched background is recorded honestly; the track claims nothing.
+    expect(contentAdaptation(unmatched)).toEqual({ track: 'neutral', backgroundSummary: 'part-time ornithologist' });
+    const view = await getCourse(b, studyB.rootId);
+    expect(view.state === 'ready' && view.course.adaptation).toEqual({ track: 'neutral', backgroundSummary: 'part-time ornithologist' });
+  });
+
+  it('changed preferences flow to the next confirmed revision: the superseding version adapts anew and prior tracker state stays untouched', async () => {
+    const a = await actor('adapt-change');
+    await grant(a);
+    const preferenceRevision = await statedBackground(a, 'non-CS, new to programming');
+    const study = await confirmedStudy(a, multiPlan);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const v1 = await courseRowOf(a, study.rootId);
+    await markItemDone(a, study.rootId, { ...command(study.revision), courseId: v1.id, itemId: 'lesson:1:reading' });
+    const v1Framing = lessonFraming((await readyContentOf(study.rootId)).lessons[0]) ?? '';
+    // The background changes to an advanced one (a background-only change
+    // keeps the pinned revision — epic-1's optional-preference rule). The
+    // honest path to a newly pitched course is re-save → re-confirm → generate
+    // (one course per confirmed revision; goal/topic changes additionally
+    // ride the existing preference-revision pin).
+    await statedBackground(a, 'CS graduate, interview prep', preferenceRevision);
+    const saved = await savePlan(a, study.rootId, { ...command(study.revision), plan: { ...multiPlan, topic: 'Unit testing, deeper' }, selectionId: study.selection!.id, extractionId: study.extractionIds[0] });
+    const confirmed = await confirmPlan(a, study.rootId, { ...command(saved.revision), planRevisionId: saved.planRevisionId! });
+    await requestCourseGeneration(a, study.rootId, { ...command(confirmed.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const current = await getCourse(a, study.rootId);
+    expect(current.state).toBe('ready');
+    if (current.state !== 'ready') return;
+    expect(current.course.version).toBe(2);
+    expect(current.course.adaptation).toEqual({ track: 'advanced', backgroundSummary: 'CS graduate, interview prep' });
+    expect(current.course.lessons[0].framing).not.toBe(v1Framing); // re-pitched treatment
+    expect(current.course.items.every(item => !item.done)).toBe(true); // fresh tracker for the fresh version
+    // The prior version keeps BOTH its own adaptation basis and its earned
+    // tracker state — nothing of the studied version was rewritten.
+    const prior = await getCourse(a, study.rootId, v1.id);
+    expect(prior.state).toBe('ready');
+    if (prior.state === 'ready') {
+      expect(prior.course.adaptation).toEqual({ track: 'beginner', backgroundSummary: 'non-CS, new to programming' });
+      expect(prior.course.superseded).toBe(true);
+      expect(prior.course.lessons[0].framing).toBe(v1Framing);
+      expect(prior.course.items.find(item => item.id === 'lesson:1:reading')?.done).toBe(true);
+    }
+  });
+
+  it('serves a stored pre-2.4 v2 course unchanged: no adaptation, no framing, neutral presentation', async () => {
+    const a = await actor('adapt-legacy-v2');
+    await grant(a);
+    const study = await confirmedStudy(a);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const generated = await courseRowOf(a, study.rootId);
+    const v2Content = {
+      contentVersion: 2,
+      lessons: [{ title: 'What a unit test is', sections: [{ text: 'A unit test isolates one behavior.', sourceRef: { extractionId: study.extractionIds[0], filename: 'notes.txt', locator: 'opening lines' } }], items: [{ id: 'lesson:1:reading', kind: 'reading', required: true, title: 'Read lesson 1: What a unit test is' }] }],
+      objectives: [{ index: 0, text: 'Explain arrange-act-assert' }],
+      recall: { objectiveIndex: 0, sourceRef: { extractionId: study.extractionIds[0], filename: 'notes.txt', locator: 'opening lines' }, prompt: 'State the three parts of a unit test.', answer: 'Arrange, act, assert.', rationale: 'Stated in the opening of notes.txt.' },
+    };
+    await database().query('UPDATE app.generated_course SET content=$2 WHERE id=$1', [generated.id, v2Content]);
+    const state = await getCourse(a, study.rootId);
+    expect(state.state).toBe('ready');
+    if (state.state === 'ready') {
+      expect(state.course.adaptation).toBeNull(); // missing adaptation ⇒ neutral presentation
+      expect(state.course.lessons[0].framing).toBeNull();
+      expect(state.course.lessons[0].title).toBe('What a unit test is');
+      expect(state.course.items.map(item => item.id)).toEqual(['lesson:1:reading']);
+    }
+    // No regeneration-on-read: the stored document keeps its exact v2 shape.
+    const stored = await database().query<{ content: { contentVersion?: number } }>('SELECT content FROM app.generated_course WHERE id=$1', [generated.id]);
+    expect(stored.rows[0].content.contentVersion).toBe(2);
+  });
+
+  it('pins the pitch basis at request time: a background edited before the worker runs does not re-pitch the settled course', async () => {
+    const a = await actor('adapt-pin');
+    await grant(a);
+    const preferenceRevision = await statedBackground(a, 'non-CS, new to programming');
+    const study = await confirmedStudy(a, multiPlan);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    // The pin snapshot is on the request row the moment it exists.
+    const pinned = await database().query<{ preference_pin: { background: string; goal: unknown; topic: string } | null }>(
+      "SELECT preference_pin FROM app.generated_course WHERE root_id=$1 AND status='pending' ORDER BY created_at DESC LIMIT 1", [study.rootId]);
+    expect(pinned.rows[0].preference_pin).toMatchObject({ goal: '', topic: '', background: 'non-CS, new to programming' });
+    // The background changes AFTER the request, BEFORE the job runs — the
+    // settled course still carries the request-time pitch.
+    await statedBackground(a, 'CS graduate, interview prep', preferenceRevision);
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const settled = await readyContentOf(study.rootId);
+    expect(contentAdaptation(settled)).toEqual({ track: 'beginner', backgroundSummary: 'non-CS, new to programming' });
+    expect(lessonFraming(settled.lessons[0])).toContain('Everyday example:');
+    // Legacy row without a pin (pre-review rows): the worker falls back to the
+    // CURRENT preference row — here a background first stated after the request.
+    const b = await actor('adapt-pin-legacy');
+    await grant(b);
+    const legacyStudy = await confirmedStudy(b, multiPlan);
+    await requestCourseGeneration(b, legacyStudy.rootId, { ...command(legacyStudy.revision) });
+    await database().query("UPDATE app.generated_course SET preference_pin=NULL WHERE root_id=$1 AND status='pending'", [legacyStudy.rootId]);
+    await statedBackground(b, 'non-CS, new to programming');
+    await runCourseGeneration(await jobOf(b, legacyStudy.rootId));
+    const legacy = await readyContentOf(legacyStudy.rootId);
+    expect(contentAdaptation(legacy)).toEqual({ track: 'beginner', backgroundSummary: 'non-CS, new to programming' });
+  });
+
+  it('a grant recorded under a version other than the current disclosure honestly lapses (the v7 re-grant rule)', async () => {
+    // The canonical v7 row (the migration's stated-background disclosure) is
+    // pinned on a FRESH database by migration.test.ts; on this shared dev
+    // database sibling suites' synthetic spy fixtures can squat small version
+    // numbers — the standing drift grant() already tolerates — so this test
+    // asserts the version-coupled lapse rule generically.
+    const current = await database().query<{ version: number }>('SELECT version FROM app.processor_configuration ORDER BY version DESC LIMIT 1');
+    const a = await actor('adapt-consent-lapse');
+    const study = await confirmedStudy(a);
+    await grant(a);
+    await database().query('UPDATE app.processing_decision SET disclosure_version=$2 WHERE owner_id=$1', [a.userId, current.rows[0].version - 1]);
+    await expect(requestCourseGeneration(a, study.rootId, { ...command(study.revision) })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    const rows = await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.generated_course WHERE owner_id=$1', [a.userId]);
+    expect(rows.rows[0].count).toBe(0);
+    await grant(a); // the one honest re-grant
+    const receipt = await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    expect(receipt.state).toBe('pending');
   });
 });

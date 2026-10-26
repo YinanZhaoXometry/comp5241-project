@@ -1,23 +1,31 @@
 import {
   SYNTHETIC_COURSE_MODEL,
-  courseContentV2Schema,
-  courseDraftV2Schema,
+  courseContentV3Schema,
+  courseDraftV3Schema,
   readingItemFor,
-  type CourseContentV2,
+  type CourseContentServing,
+  type CourseContentV3,
   type RecallFeedback,
 } from "../../contracts/courses";
 import type { Plan } from "../../contracts/setup";
 import type { TextCompletionPort, TextCompletionRequest, TextCompletionResult } from "../../contracts/ai-provider";
+import { backgroundSummaryOf, classifyTrack, computeFactsDigest, framingFor, isCourseTrack, trackInstruction } from "./adaptation";
 
 // Pure prompt building, strict output validation and the deterministic local
 // synthetic processor for the epic-2 course tracer. Epic-2 S3 (2.3) widened the
 // reply from one lesson to the confirmed plan's FULL lesson set: the fixture
 // distributes the acknowledged sources fairly across the plan's lessons and
-// adds one labeled optional enrichment passage. No I/O anywhere: the caller
-// supplies the confirmed plan, the stated goal/topic and the excerpt store's
-// texts; everything here is deterministic and bounded. The synthetic completion
-// implements TextCompletionPort over its own input messages so the worker stays
-// identical in shape to runAiDraft — F-A can later swap the port for
+// adds one labeled optional enrichment passage. Epic-2 S4 (2.4) adds background
+// adaptation: the stated background rides the prompt with a deterministic
+// per-track instruction, every lesson gains ONE TREATMENT framing paragraph
+// (kept OUT of the factual sections so cross-track fact identity is
+// structurally checkable), and the settled content records its adaptation
+// basis {track, backgroundSummary} — the track is derived by code, never taken
+// from the reply. No I/O anywhere: the caller supplies the confirmed plan, the
+// stated goal/topic/background and the excerpt store's texts; everything here
+// is deterministic and bounded. The synthetic completion implements
+// TextCompletionPort over its own input messages so the worker stays identical
+// in shape to runAiDraft — F-A can later swap the port for
 // createLiveCompletion() without pipeline changes.
 
 const TOTAL_CONTENT_BYTES = 30 * 1024;
@@ -44,12 +52,13 @@ function truncateToBytes(text: string, limit: number): { text: string; truncated
 }
 
 export type CourseSource = { name: string; text: string };
-export type CourseInput = { goal: string; topic: string; plan: Plan; excerpts: CourseSource[] };
+export type CourseInput = { goal: string; topic: string; background: string; plan: Plan; excerpts: CourseSource[] };
 
 const SYSTEM_PROMPT = [
   "You draft a source-linked mini-course inside a local learning prototype.",
   "Answer with STRICT JSON only: no prose, no markdown fences, no comments, no extra keys.",
-  'The JSON object has exactly four keys: "lessons" (one object per listed plan lesson, IN LISTED ORDER — never fewer, never more, each with exactly "sections" (1 to 8 objects with exactly text (1-2000 characters, teaching prose grounded in the named source),',
+  'The JSON object has exactly four keys: "lessons" (one object per listed plan lesson, IN LISTED ORDER — never fewer, never more, each with exactly "framing" (1-600 characters of TREATMENT prose pitching this lesson to the stated track per the track instruction: plain language, familiar examples and explicit prerequisites for a beginner track; application scenarios and trade-off depth for an advanced track; no track claims when neutral — framing never states, weakens or hides a factual claim the sources do not)',
+  'and "sections" (1 to 8 objects with exactly text (1-2000 characters, teaching prose grounded in the named source),',
   "sourcePosition (integer, the 0-based index into the listed sources the section teaches from) and locator (1-120 characters naming where in that source the text comes from, e.g. 'opening lines'))),",
   '"objectiveIndexes" (1 to 8 distinct integers, the 0-based indexes into the listed plan outcomes this course covers),',
   'and "recall" with exactly objectiveIndex (integer index into the listed plan outcomes), sourcePosition (integer index into the listed sources),',
@@ -58,17 +67,25 @@ const SYSTEM_PROMPT = [
   "answer (1-800 characters, the canonical short answer as stated in the source), rationale (1-800 characters explaining the answer per the source),",
   'and "enrichment" (OPTIONAL; include it only when the sources support one extra optional reading — an object with exactly sourcePosition (integer index into the listed sources),',
   "locator (1-120 characters naming where in that source the passage comes from) and text (1-2000 characters grounded in that source)).",
+  "Framing is the ONLY track-dependent part of your reply: sections, objectiveIndexes, recall and enrichment must not depend on the stated track in any way — every factual claim and source link stays exactly as the sources state them.",
   "Lesson titles are taken from the plan itself and are NOT part of your reply. Base every section, the recall item and any enrichment on the provided sources; when the sources do not cover something, do not invent it — teach only what they state.",
 ].join(" ");
 
 // Bounded system+user message pair over the confirmed plan's exact FULL lesson
 // list, outcomes and the acknowledged excerpts (fair byte shares as in the
-// ai-setup builder, with the truncation stated plainly in the prompt).
+// ai-setup builder, with the truncation stated plainly in the prompt). The
+// stated background rides with its DERIVED track and the per-track instruction
+// (epic-2 S4): a new data category the v7 disclosure names.
 export function buildCourseMessages(input: CourseInput) {
   const lessons = input.plan.miniCourse.lessons;
+  const track = classifyTrack(input.background);
+  const summary = backgroundSummaryOf(input.background);
   const header = [
     `Stated learning goal: ${input.goal || "(none stated)"}`,
     `Stated topic: ${input.topic || "(none stated)"}`,
+    `Stated background: ${summary || "(none stated)"}`,
+    `Derived learning track: ${track}`,
+    trackInstruction(track),
     `Mini-course title (context only): ${input.plan.miniCourse.title}`,
     "Plan lessons (index: title — taken from the plan, never returned):",
     ...lessons.map((title, index) => `lesson ${index}: ${title}`),
@@ -124,19 +141,22 @@ export function firstJsonObject(text: string): string | null {
   return null;
 }
 
-export type CourseParse = { ok: true; content: CourseContentV2 } | { ok: false };
+export type CourseParse = { ok: true; content: CourseContentV3 } | { ok: false };
 export type CourseParseSource = { extractionId: string; filename: string };
 
 // Strict validation of the processor reply against the CONFIRMED PLAN's own
 // bounds: the draft must carry EXACTLY one lessons entry per plan lesson, in
 // listed order — every lesson title is substituted from the plan itself, never
-// taken from the reply; objective indexes and source positions must resolve;
-// duplicate objective indexes and unresolved item links are rejected. Anything
-// else — prose, wrong shapes, unresolved links — is an INVALID draft that
-// fails honestly, never repaired into a course.
+// taken from the reply — with the epic-2 S4 treatment framing per lesson kept
+// OUT of the factual sections; objective indexes and source positions must
+// resolve; duplicate objective indexes and unresolved item links are rejected.
+// The adaptation record is DERIVED HERE from the stated background (pure
+// classifyTrack code, never trusted from the reply). Anything else — prose,
+// wrong shapes, a pre-2.4 draft without framing, unresolved links — is an
+// INVALID draft that fails honestly, never repaired into a course.
 export function parseCourseOutput(
   text: string,
-  bounds: { plan: Plan; sources: CourseParseSource[] },
+  bounds: { plan: Plan; sources: CourseParseSource[]; background: string },
 ): CourseParse {
   let candidate = text.trim();
   const fenced = candidate.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/u);
@@ -148,7 +168,7 @@ export function parseCourseOutput(
     if (balanced === null) return { ok: false };
     try { parsed = JSON.parse(balanced); } catch { return { ok: false }; }
   }
-  const shape = courseDraftV2Schema.safeParse(parsed);
+  const shape = courseDraftV3Schema.safeParse(parsed);
   if (!shape.success) return { ok: false };
   const draft = shape.data;
   const planLessons = bounds.plan.miniCourse.lessons;
@@ -156,9 +176,9 @@ export function parseCourseOutput(
   if (new Set(draft.objectiveIndexes).size !== draft.objectiveIndexes.length) return { ok: false };
   for (const index of draft.objectiveIndexes) if (index >= bounds.plan.outcomes.length) return { ok: false };
   const resolve = (position: number) => bounds.sources[position] ?? null;
-  const lessons: CourseContentV2["lessons"] = [];
+  const lessons: CourseContentV3["lessons"] = [];
   for (const [index, lesson] of draft.lessons.entries()) {
-    const sections: CourseContentV2["lessons"][number]["sections"] = [];
+    const sections: CourseContentV3["lessons"][number]["sections"] = [];
     for (const section of lesson.sections) {
       const source = resolve(section.sourcePosition);
       if (!source) return { ok: false };
@@ -166,13 +186,14 @@ export function parseCourseOutput(
     }
     lessons.push({
       title: planLessons[index],
+      framing: lesson.framing,
       sections,
       items: [readingItemFor(index, planLessons[index])],
     });
   }
   const recallSource = resolve(draft.recall.sourcePosition);
   if (!recallSource || draft.recall.objectiveIndex >= bounds.plan.outcomes.length) return { ok: false };
-  let enrichment: CourseContentV2["enrichment"];
+  let enrichment: CourseContentV3["enrichment"];
   if (draft.enrichment) {
     const source = resolve(draft.enrichment.sourcePosition);
     if (!source) return { ok: false };
@@ -185,20 +206,29 @@ export function parseCourseOutput(
       sourceRef: { extractionId: source.extractionId, filename: source.filename, locator: draft.enrichment.locator },
     };
   }
+  const objectives = draft.objectiveIndexes.map(index => ({ index, text: bounds.plan.outcomes[index] }));
+  const recall = {
+    objectiveIndex: draft.recall.objectiveIndex,
+    sourceRef: { extractionId: recallSource.extractionId, filename: recallSource.filename, locator: draft.recall.locator },
+    prompt: draft.recall.prompt,
+    answer: draft.recall.answer,
+    rationale: draft.recall.rationale,
+  };
   const content = {
-    contentVersion: 2 as const,
+    contentVersion: 3 as const,
     lessons,
-    objectives: draft.objectiveIndexes.map(index => ({ index, text: bounds.plan.outcomes[index] })),
-    recall: {
-      objectiveIndex: draft.recall.objectiveIndex,
-      sourceRef: { extractionId: recallSource.extractionId, filename: recallSource.filename, locator: draft.recall.locator },
-      prompt: draft.recall.prompt,
-      answer: draft.recall.answer,
-      rationale: draft.recall.rationale,
+    objectives,
+    recall,
+    adaptation: {
+      track: classifyTrack(bounds.background),
+      backgroundSummary: backgroundSummaryOf(bounds.background),
     },
+    // Factual-core digest at settle time (treatment excluded) so consumers can
+    // check cross-course fact identity cheaply.
+    factsDigest: computeFactsDigest({ lessons, objectives, recall, ...(enrichment ? { enrichment } : {}) }),
     ...(enrichment ? { enrichment } : {}),
   };
-  const settled = courseContentV2Schema.safeParse(content);
+  const settled = courseContentV3Schema.safeParse(content);
   return settled.success ? { ok: true, content: settled.data } : { ok: false };
 }
 
@@ -218,7 +248,7 @@ export function buildRecallFeedback(input: {
   rootId: string;
   revision: number;
   courseId: string;
-  content: CourseContentV2;
+  content: Pick<CourseContentServing, "recall">;
   attempted: string;
 }): RecallFeedback {
   const recall = input.content.recall;
@@ -266,7 +296,12 @@ export function syntheticCourseDraft(messages: TextCompletionRequest["messages"]
   // fail generation with a false invalid-output.
   const headerEnd = content.indexOf("Acknowledged source excerpts follow");
   const header = headerEnd >= 0 ? content.slice(0, headerEnd) : content;
-  const lessonCount = Math.max(1, Math.min(8, [...header.matchAll(/^lesson (\d+): /gmu)].length));
+  const lessonTitles = [...header.matchAll(/^lesson (\d+): (.+)$/gmu)].map(match => match[2].trim());
+  const lessonCount = Math.max(1, Math.min(8, lessonTitles.length || [...header.matchAll(/^lesson (\d+): /gmu)].length));
+  // The track is the builder's own DERIVED line (deterministic code upstream);
+  // anything missing or unrecognized stays honestly neutral.
+  const trackLine = header.match(/^Derived learning track: (\S+)$/mu)?.[1] ?? "neutral";
+  const track = isCourseTrack(trackLine) ? trackLine : "neutral";
   const outcomes = [...header.matchAll(/^outcome (\d+): (.+)$/gmu)].map(match => ({ index: Number(match[1]), text: match[2].trim() }));
   const sources = [...content.matchAll(/--- source (\d+): (.+?) ---\n([\s\S]*?)(?=\n\n(?:--- source \d+: |Note: |Return ONLY)|$)/gu)].map(match => ({
     position: Number(match[1]),
@@ -318,6 +353,15 @@ export function syntheticCourseDraft(messages: TextCompletionRequest["messages"]
       locator: "generated summary (no excerpt text reached the prompt)",
     };
   const draftLessons = buckets.map((bucket, lessonIndex) => ({
+    // Epic-2 S4 treatment framing: deterministic per-track prose over the
+    // lesson's own plan title AND outcome keyphrase — the ONLY track-dependent
+    // field; sections stay byte-identical across tracks.
+    framing: framingFor({
+      track,
+      lessonNumber: lessonIndex + 1,
+      title: lessonTitles[lessonIndex] ?? "this lesson",
+      outcome: outcomeText(lessonIndex),
+    }),
     sections: bucket.length
       ? bucket.slice(0, 8).map(source => ({ sourcePosition: source.position, ...sectionFor(source) }))
       : [fallbackSection(lessonIndex)],

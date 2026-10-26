@@ -142,10 +142,10 @@ export function declaredGapCount(plan: Plan): number {
     .length;
 }
 
-// Accepts the serving shape (epic-2 S3 storedCourseContent — v2 native or the
-// wrapped legacy single lesson); only the course-level objectives feed the
-// outcome roll.
-export function deriveGaps(plan: Plan, content: CourseContentV2): CourseGap[] {
+// Accepts the serving shape (epic-2 S3/S4 storedCourseContent — v3 native, v2
+// native or the wrapped legacy single lesson); only the course-level
+// objectives feed the outcome roll.
+export function deriveGaps(plan: Plan, content: Pick<CourseContentV2, "objectives">): CourseGap[] {
   return plan.missingExplanations
     .split(/(?<=[.!?])\s+/u)
     .map(sentence => sentence.trim())

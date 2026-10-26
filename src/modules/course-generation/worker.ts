@@ -1,5 +1,5 @@
 import type { PgBoss } from "pg-boss";
-import { COURSE_QUEUE, SUPPLEMENT_QUEUE, courseJobSchema, courseContentV2Schema, storedCourseContent, supplementJobSchema, type CourseContentV2, type CourseGap, type CourseJob, type SupplementJob } from "../../contracts/courses";
+import { COURSE_QUEUE, SUPPLEMENT_QUEUE, courseJobSchema, courseContentV3Schema, coursePreferencePinSchema, storedCourseContent, supplementJobSchema, type CourseContentServing, type CourseContentV3, type CourseGap, type CourseJob, type SupplementJob } from "../../contracts/courses";
 import { textCompletionRequestSchema, type TextCompletionPort } from "../../contracts/ai-provider";
 import type { BoundedFetchPort } from "../../adapters/source-fetch";
 import type { Plan } from "../../contracts/setup";
@@ -31,6 +31,7 @@ type Claim = {
   selectionId: string;
   goal: string;
   topic: string;
+  background: string;
   excerpts: { name: string; text: string }[];
   sources: { extractionId: string; filename: string }[];
   admissionId: string;
@@ -73,12 +74,21 @@ export async function runCourseGeneration(job: CourseJob, completion?: () => Tex
       for (const source of sources) {
         excerpts.push({ name: source.filename, text: await files.readExtracted(await copyKey(client, source.extractionId)) });
       }
-      const preference = await preferenceRow(client, identity.userId);
+      // Epic-2 S4 review fix: the pitch basis is the request-time PIN on the
+      // row, never a live preference re-read — a background edited between
+      // request and worker-run cannot re-pitch the settled course. Only rows
+      // without a valid pin (pre-review legacy rows) fall back to the current
+      // preference row.
+      const pinned = coursePreferencePinSchema.safeParse(request.preference_pin);
+      const preference = pinned.success ? null : await preferenceRow(client, identity.userId);
       return {
         planRevisionId: request.plan_revision_id,
         selectionId: request.selection_id,
-        goal: preference?.goal ?? "",
-        topic: preference?.topic ?? "",
+        goal: pinned.success ? pinned.data.goal : preference?.goal ?? "",
+        topic: pinned.success ? pinned.data.topic : preference?.topic ?? "",
+        // The stated background pitches the treatment (v7 consent category);
+        // empty/missing reads neutral downstream — no invention.
+        background: pinned.success ? pinned.data.background : preference?.background ?? "",
         excerpts,
         sources,
         admissionId: request.admission_id,
@@ -97,16 +107,16 @@ export async function runCourseGeneration(job: CourseJob, completion?: () => Tex
   // messages, zero-token usage); tests inject fakes the same way runAiDraft's
   // completion parameter does.
   const port = (completion ? completion() : createSyntheticCourseCompletion());
-  const messages = buildCourseMessages({ goal: claim.goal, topic: claim.topic, plan: claim.plan, excerpts: claim.excerpts });
+  const messages = buildCourseMessages({ goal: claim.goal, topic: claim.topic, background: claim.background, plan: claim.plan, excerpts: claim.excerpts });
   const request = textCompletionRequestSchema.safeParse({ messages, maxOutputTokens: AI_BUDGET.maxOutputTokens });
   if (!request.success) { await failRequest("invalid-input"); return; }
   const outcome = await port.complete(request.data);
   if (!outcome.ok) { await failRequest(outcome.error.code); return; }
   // Parse BEFORE settling: an unparseable or out-of-bounds draft fails
   // honestly without consuming the admission — retryable via a new command.
-  const parsed = parseCourseOutput(outcome.text, { plan: claim.plan, sources: claim.sources });
+  const parsed = parseCourseOutput(outcome.text, { plan: claim.plan, sources: claim.sources, background: claim.background });
   if (!parsed.ok) { await failRequest("invalid-output"); return; }
-  const content = courseContentV2Schema.parse(parsed.content);
+  const content: CourseContentV3 = courseContentV3Schema.parse(parsed.content);
   // Phase 3 — settlement before persistence: the existing machinery re-checks
   // everything; only an ACCEPTED settle may store any effect. The single
   // transaction CLAIMS the pending→ready transition FIRST: a row that already
@@ -185,7 +195,7 @@ type SupplementClaim = {
   lessonTitle: string;
   gaps: CourseGap[];
   outcomes: string[];
-  sections: CourseContentV2["lessons"][number]["sections"];
+  sections: CourseContentServing["lessons"][number]["sections"];
 };
 
 export async function runSupplementFetch(

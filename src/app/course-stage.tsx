@@ -323,6 +323,9 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
       const currentItem = lessonItem(shown);
       return <>
         <p><strong>AI-generated · Unreviewed</strong> — review everything against your own sources. Version {course.version} · generated {new Date(course.createdAt).toLocaleString()} · model {course.model || "unknown"} · provider-claimed tokens {course.usage?.totalTokens ?? 0} (untrusted count).</p>
+        {course.adaptation && course.adaptation.track !== "neutral" && <p className="fine">Pitched for: {course.adaptation.track === "beginner"
+          ? "a non-CS beginner — plain language, familiar examples, explicit prerequisites"
+          : "an experienced-developer level — application scenarios and trade-off depth"}{course.adaptation.backgroundSummary ? <> (from your stated background: “{course.adaptation.backgroundSummary}”)</> : null}. Only the framing is pitched; every factual claim, lesson and source link is identical across tracks, and a background that cannot be classified would generate the same course neutrally.</p>}
         {(course.historical || course.superseded) && <div className="notice">
           <p>{course.historical && "This course belongs to a previous confirmed plan version; it stays as studied until you switch. "}{course.superseded && <>A newer version of this course exists{course.supersededBy ? ` (version ${course.supersededBy}, generated from a newer confirmed plan)` : ""}; this version keeps its own tracker state until you switch.</>}</p>
           <div className="actions">
@@ -361,6 +364,7 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
           <div className="player-main">
             <article aria-label={`Lesson ${shown} of ${course.lessons.length}`}>
               <h4 ref={lessonHeading} tabIndex={-1}>{shown}. {lesson.title}</h4>
+              {lesson.framing && <p className="fine">{lesson.framing}</p>}
               {lesson.sections.map((section, index) => <div key={index} className="lesson-section">
                 <p>{section.text}</p>
                 <p className="fine">Source: {section.source.filename} · {section.source.locator}</p>

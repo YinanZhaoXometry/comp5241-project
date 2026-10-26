@@ -1,6 +1,9 @@
 import { commandSchema, uuid, type Identity, type Receipt } from "../../contracts/setup";
 import {
+  contentAdaptation,
+  contentFactsDigest,
   courseTrackerItems,
+  lessonFraming,
   markItemDoneSchema,
   requestSupplementsSchema,
   storedCourseContent,
@@ -20,6 +23,7 @@ import { admitDispatch } from "../processing-consent/service";
 import { getHandoff } from "../materials-setup/handoff";
 import { batchRow } from "../materials-setup/batches";
 import { planRevision } from "../materials-setup/repository";
+import { preferenceRow } from "../setup-preferences/repository";
 import { ledgerTotalTokens } from "../ai-setup/repository";
 import { buildRecallFeedback } from "./generation";
 import { declaredGapCount, deriveGaps } from "./supplements";
@@ -92,7 +96,13 @@ export async function requestCourseGeneration(identity: Identity, rawId: string,
     const ledger = await ledgerTotalTokens(client, identity.userId);
     if (ledger + AI_BUDGET.maxOutputTokens > AI_BUDGET.totalTokenCap) fail("AI_BUDGET_EXHAUSTED");
     const requestId = crypto.randomUUID();
-    await repository.insertCourseRequest(client, { id: requestId, rootId, ownerId: identity.userId, planRevisionId: handoff.planRevisionId, selectionId: handoff.selectionId, admissionId: admission.admissionId });
+    // Epic-2 S4 review fix: PIN the pitch-relevant preference fields at
+    // request time — the worker consumes this snapshot, never a live re-read,
+    // so a background edited between request and worker-run cannot re-pitch
+    // the settled course. No preference row yet pins the empty snapshot.
+    const preference = await preferenceRow(client, identity.userId);
+    const preferencePin = { goal: preference?.goal ?? "", topic: preference?.topic ?? "", background: preference?.background ?? "" };
+    await repository.insertCourseRequest(client, { id: requestId, rootId, ownerId: identity.userId, planRevisionId: handoff.planRevisionId, selectionId: handoff.selectionId, admissionId: admission.admissionId, preferencePin });
     await enqueueCourseGeneration(client, { schemaVersion: 1, requestId, admissionId: admission.admissionId, rootId, ownerId: identity.userId, sessionId: identity.sessionId });
     return lifecycle.receipt(client, identity, command, "request-course", hash, {
       rootId,
@@ -182,9 +192,14 @@ export async function getCourse(identity: Identity, rawId: string, requested?: s
         usage: row.usage,
         createdAt: row.created_at.toISOString(),
         settledAt: row.settled_at.toISOString(),
+        // Epic-2 S4: the stored adaptation basis (v3 rows) or null on pre-2.4
+        // rows, which serve unchanged and present neutrally.
+        adaptation: contentAdaptation(content),
+        factsDigest: contentFactsDigest(content),
         lessons: content.lessons.map((lesson, index) => ({
           number: index + 1,
           title: lesson.title,
+          framing: lessonFraming(lesson),
           sections: lesson.sections.map(section => ({ text: section.text, source: { filename: section.sourceRef.filename, locator: section.sourceRef.locator } })),
         })),
         items,

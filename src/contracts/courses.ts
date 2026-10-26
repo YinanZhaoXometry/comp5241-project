@@ -91,6 +91,27 @@ export const courseEnrichmentSchema = z.strictObject({
 });
 export type CourseEnrichment = z.infer<typeof courseEnrichmentSchema>;
 
+// Each lesson carries EXACTLY its own required reading item, identified by its
+// 1-based position in the numbered sequence (shared by content v2 and v3).
+function refinePositionalReadingItems(
+  content: { lessons: Array<{ items: CourseItem[] }> },
+  context: z.RefinementCtx,
+): void {
+  content.lessons.forEach((lesson, index) => {
+    const expected = `lesson:${index + 1}:reading`;
+    const ok = lesson.items.length === 1
+      && lesson.items[0].id === expected
+      && lesson.items[0].kind === "reading"
+      && lesson.items[0].required === true;
+    if (!ok)
+      context.addIssue({
+        code: "custom",
+        path: ["lessons", index, "items"],
+        message: `lesson ${index + 1} must carry exactly its required reading item ${expected}`,
+      });
+  });
+}
+
 export const courseContentV2Schema = z
   .strictObject({
     contentVersion: z.literal(2),
@@ -99,29 +120,72 @@ export const courseContentV2Schema = z
     recall: courseRecallSchema,
     enrichment: courseEnrichmentSchema.optional(),
   })
-  .superRefine((content, context) => {
-    // Each lesson carries EXACTLY its own required reading item, identified by
-    // its 1-based position in the numbered sequence.
-    content.lessons.forEach((lesson, index) => {
-      const expected = `lesson:${index + 1}:reading`;
-      const ok = lesson.items.length === 1
-        && lesson.items[0].id === expected
-        && lesson.items[0].kind === "reading"
-        && lesson.items[0].required === true;
-      if (!ok)
-        context.addIssue({
-          code: "custom",
-          path: ["lessons", index, "items"],
-          message: `lesson ${index + 1} must carry exactly its required reading item ${expected}`,
-        });
-    });
-  });
+  .superRefine((content, context) => refinePositionalReadingItems(content, context));
 export type CourseContentV2 = z.infer<typeof courseContentV2Schema>;
 
-// The stored-content union: v2 rows parse natively; pre-2.3 v1 rows keep their
-// exact stored shape.
-export const courseContentSchema = z.union([courseContentV2Schema, courseContentV1Schema]);
-export type CourseContent = CourseContentV2 | CourseContentV1;
+// ---------------------------------------------------------------------------
+// Epic-2 S4: content v3 — background/goal adaptation. The FACTUAL core (lesson
+// titles and order, per-section text and source links, objectives, required
+// tracker items, the recall item and the optional enrichment) is IDENTICAL
+// across tracks; only the TREATMENT differs — one framing paragraph per lesson
+// (rendered before that lesson's sections) plus the course-level adaptation
+// record. Keeping the framing OUT of the factual sections is what makes
+// "identical factual claims and source links across tracks" structurally
+// checkable (see adaptation.ts) rather than eyeballed. The track itself is
+// never processor-supplied: deterministic code derives it from the stated
+// background, exactly like lesson titles come from the confirmed plan.
+// ---------------------------------------------------------------------------
+
+export const courseTracks = ["beginner", "advanced", "neutral"] as const;
+export type CourseTrack = (typeof courseTracks)[number];
+
+// The stored adaptation basis: the deterministic track derived from the stated
+// background (empty, missing or unmatched ⇒ neutral — no invention) plus a
+// bounded summary of what was actually stated. `backgroundSummary` may be
+// empty; the served pitch line renders only for a non-neutral track.
+export const courseAdaptationSchema = z.strictObject({
+  track: z.enum(courseTracks),
+  backgroundSummary: z.string().trim().max(400),
+});
+export type CourseAdaptation = z.infer<typeof courseAdaptationSchema>;
+
+// v3 lesson = the v2 lesson shape plus the treatment framing paragraph. The
+// framing is prose only: it may pitch plain language, examples, prerequisites
+// or trade-off depth, never a factual claim its sources do not state.
+export const courseLessonV3Schema = courseLessonSchema.extend({
+  framing: z.string().trim().min(1).max(600),
+});
+
+export const courseContentV3Schema = z
+  .strictObject({
+    contentVersion: z.literal(3),
+    lessons: z.array(courseLessonV3Schema).min(1).max(8),
+    objectives: z.array(courseObjectiveSchema).min(1).max(8),
+    recall: courseRecallSchema,
+    enrichment: courseEnrichmentSchema.optional(),
+    adaptation: courseAdaptationSchema,
+    // SHA-256 hex over the FACTUAL core only (lesson titles in order, every
+    // section's text, its source's filename + locator — the study-independent
+    // ref parts — objectives, the full recall item including its answer, and
+    // the optional enrichment; everything the cross-track validator calls the
+    // factual core, a narrower digest could report false identity). Computed
+    // by the strict parser at settle time and stored with the content so any
+    // consumer (entry 7's provenance surface included) can check cross-course
+    // fact identity cheaply. Treatment (framing, adaptation) and per-upload
+    // extraction ids never enter the digest.
+    factsDigest: z.string().regex(/^[0-9a-f]{64}$/u),
+  })
+  .superRefine((content, context) => refinePositionalReadingItems(content, context));
+export type CourseContentV3 = z.infer<typeof courseContentV3Schema>;
+
+// The stored-content union: v3 rows parse natively; pre-2.4 v2 rows keep their
+// exact stored shape (no adaptation field ⇒ neutral presentation, nothing
+// invented); pre-2.3 v1 rows keep theirs and wrap at read time.
+export const courseContentSchema = z.union([courseContentV3Schema, courseContentV2Schema, courseContentV1Schema]);
+export type CourseContent = CourseContentV3 | CourseContentV2 | CourseContentV1;
+// What every settled row serves as after storedCourseContent: v3 native or v2
+// (a wrapped legacy v1 row is its own single-lesson v2 degenerate case).
+export type CourseContentServing = CourseContentV3 | CourseContentV2;
 export type CourseSection = z.infer<typeof courseSectionSchema>;
 export type CourseSourceRef = z.infer<typeof sourceRefSchema>;
 
@@ -154,12 +218,28 @@ export function wrapLegacyCourseContent(v1: CourseContentV1): CourseContentV2 {
 
 // Parse any stored content row into the serving shape; null when the stored
 // document matches neither version (the honest RETRYABLE_FAILURE path).
-export function storedCourseContent(raw: unknown): CourseContentV2 | null {
+export function storedCourseContent(raw: unknown): CourseContentServing | null {
+  const v3 = courseContentV3Schema.safeParse(raw);
+  if (v3.success) return v3.data;
   const v2 = courseContentV2Schema.safeParse(raw);
   if (v2.success) return v2.data;
   const v1 = courseContentV1Schema.safeParse(raw);
   if (v1.success) return wrapLegacyCourseContent(v1.data);
   return null;
+}
+
+// Treatment accessors over the serving union: pre-2.4 rows (v2, wrapped v1)
+// carry no adaptation and no framing — they present neutrally, exactly as
+// stored, and nothing is invented for them.
+export function contentAdaptation(content: CourseContentServing): CourseAdaptation | null {
+  return "adaptation" in content ? content.adaptation : null;
+}
+export function lessonFraming(lesson: CourseContentServing["lessons"][number]): string | null {
+  return "framing" in lesson ? lesson.framing : null;
+}
+// The stored factual-core digest (v3 rows); null on pre-2.4 rows.
+export function contentFactsDigest(content: CourseContentServing): string | null {
+  return "factsDigest" in content ? content.factsDigest : null;
 }
 
 // Flat tracker-item derivation from content (pure): required reading per
@@ -173,7 +253,7 @@ export type CourseItemServing = {
   text: string | null;
   source: { filename: string; locator: string } | null;
 };
-export function courseTrackerItems(content: CourseContentV2): CourseItemServing[] {
+export function courseTrackerItems(content: CourseContentServing): CourseItemServing[] {
   const items: CourseItemServing[] = [];
   content.lessons.forEach((lesson, index) => {
     for (const item of lesson.items)
@@ -220,6 +300,34 @@ export const courseDraftEnrichmentSchema = z.strictObject({
   locator: z.string().trim().min(1).max(120),
   text: z.string().trim().min(1).max(2000),
 });
+// Epic-2 S4 v3 draft: the v2 shape plus the per-lesson TREATMENT framing
+// paragraph. The track itself is NEVER part of the reply — deterministic code
+// derives it from the stated background (adaptation.ts) and the parser
+// substitutes the adaptation record, exactly like it substitutes lesson titles
+// from the plan.
+export const courseDraftLessonV3Schema = courseDraftLessonSchema.extend({
+  framing: z.string().trim().min(1).max(600),
+});
+export const courseDraftV3Schema = z.strictObject({
+  lessons: z.array(courseDraftLessonV3Schema).min(1).max(8),
+  objectiveIndexes: z.array(z.number().int().min(0).max(7)).min(1).max(8),
+  recall: courseDraftRecallSchema,
+  enrichment: courseDraftEnrichmentSchema.optional(),
+});
+export type CourseDraftV3 = z.infer<typeof courseDraftV3Schema>;
+
+// The legacy single-lesson draft shape (pre-2.3 processors); kept so the
+// contract record stays complete. Generation now emits and accepts v3 only.
+export const courseDraftV1Schema = z.strictObject({
+  sections: z.array(courseDraftSectionSchema).min(1).max(8),
+  objectiveIndexes: z.array(z.number().int().min(0).max(7)).min(1).max(8),
+  recall: courseDraftRecallSchema,
+});
+export type CourseDraftV1 = z.infer<typeof courseDraftV1Schema>;
+
+// The pre-2.4 multi-lesson draft shape (no framing); kept so the contract
+// record stays complete. A draft without per-lesson framing is now INVALID —
+// the v3 parser rejects it, never repairs it.
 export const courseDraftV2Schema = z.strictObject({
   lessons: z.array(courseDraftLessonSchema).min(1).max(8),
   objectiveIndexes: z.array(z.number().int().min(0).max(7)).min(1).max(8),
@@ -227,15 +335,6 @@ export const courseDraftV2Schema = z.strictObject({
   enrichment: courseDraftEnrichmentSchema.optional(),
 });
 export type CourseDraftV2 = z.infer<typeof courseDraftV2Schema>;
-
-// The legacy single-lesson draft shape (pre-2.3 processors); kept so the
-// contract record stays complete. Generation now emits and accepts v2 only.
-export const courseDraftV1Schema = z.strictObject({
-  sections: z.array(courseDraftSectionSchema).min(1).max(8),
-  objectiveIndexes: z.array(z.number().int().min(0).max(7)).min(1).max(8),
-  recall: courseDraftRecallSchema,
-});
-export type CourseDraftV1 = z.infer<typeof courseDraftV1Schema>;
 
 // Restart-safe job envelope: id = request id, one attempt (retryLimit 0), the
 // recorded owner identity re-authorizes every fence at consume time.
@@ -248,6 +347,19 @@ export const courseJobSchema = z.strictObject({
   sessionId: uuid,
 });
 export type CourseJob = z.infer<typeof courseJobSchema>;
+
+// The request-time PIN of the pitch-relevant preference fields, stored on the
+// generated_course row (migration 018's nullable preference_pin jsonb). The
+// worker consumes the pin — never a live re-read — so a background edited
+// between request and worker-run cannot re-pitch the settled course. Rows
+// without a valid pin (pre-review legacy rows) fall back to the current
+// preference row.
+export const coursePreferencePinSchema = z.strictObject({
+  goal: z.string().max(200),
+  topic: z.string().max(160),
+  background: z.string().max(400),
+});
+export type CoursePreferencePin = z.infer<typeof coursePreferencePinSchema>;
 
 // Recall submission: the plain command envelope plus the attempted recall
 // text. Feedback is computed and returned (and replayed by command key); no
@@ -282,6 +394,9 @@ export type CourseLessonView = {
   // 1-based: the numbered sequence of the player shell.
   number: number;
   title: string;
+  // Epic-2 S4 treatment paragraph rendered before this lesson's sections;
+  // null on pre-2.4 rows (no adaptation field ⇒ neutral presentation).
+  framing: string | null;
   sections: Array<{ text: string; source: { filename: string; locator: string } }>;
 };
 
@@ -310,6 +425,15 @@ export type CourseView = {
   usage: CourseUsage | null;
   createdAt: string;
   settledAt: string;
+  // Epic-2 S4 adaptation basis stored with the content (track derived
+  // deterministically from the stated background at generation time + the
+  // bounded summary of what was stated); null on pre-2.4 rows, which serve
+  // unchanged and present neutrally. A neutral track claims no track.
+  adaptation: CourseAdaptation | null;
+  // SHA-256 hex of the factual core (v3 rows) — two courses generated from
+  // the same plan and sources under different tracks share it; null on
+  // pre-2.4 rows.
+  factsDigest: string | null;
   // The full numbered lesson sequence (a stored v1 course serves as its own
   // single-lesson degenerate case through the same shape).
   lessons: CourseLessonView[];

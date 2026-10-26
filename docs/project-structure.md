@@ -32,11 +32,14 @@ project-new/
 │   │   ├── batches.ts      batch admission/selection contracts
 │   │   ├── consent.ts · preferences.ts · diagnostic.ts · export.ts   S3/S4/S7/S8 contracts
 │   │   ├── ai-provider.ts  provider-neutral text-completion port (dormant)
-│   │   └── courses.ts      epic-2 S1/S2/S3 generated-course + supplement +
-│   │                         player contracts (content v2 full-lesson set with
-│   │                         tracker items, legacy v1 union wrap, mark-done
-│   │                         command; recall answer exists only server-side +
-│   │                         feedback; verified supplement records)
+│   │   └── courses.ts      epic-2 S1–S4 generated-course + supplement +
+│   │                         player contracts (content v3 = v2 full-lesson set
+│   │                         with tracker items PLUS per-lesson treatment
+│   │                         framing and the code-derived adaptation record
+│   │                         {track, backgroundSummary}; v2/v1 legacy union
+│   │                         wrap serves unchanged; mark-done command; recall
+│   │                         answer exists only server-side + feedback;
+│   │                         verified supplement records)
 │   ├── modules/            shared web/worker services; never import app/worker/next
 │   │   ├── identity-access/    auth, sessions, role fences, synthetic provisioning
 │   │   ├── materials-setup/    uploads, extraction, batches, plans, handoff (queries/repository/service)
@@ -44,7 +47,7 @@ project-new/
 │   │   ├── setup-preferences/  resumable goal/topic/preferences with pinned revision (S4)
 │   │   ├── setup-diagnostic/   synthetic check bundles, evidence, skip path (S7 infrastructure)
 │   │   ├── setup-export/       consistent manifest snapshot + tar.gz artifacts (S8)
-│   │   ├── course-generation/  epic-2 S1–S3 tracer: confirmed-plan → generated
+│   │   ├── course-generation/  epic-2 S1–S4 tracer: confirmed-plan → generated
 │   │   │                       course (handoff-consuming service, restart-safe worker
 │   │   │                       running the local synthetic fixture behind
 │   │   │                       TextCompletionPort, versioned course/objective/source
@@ -55,7 +58,10 @@ project-new/
 │   │   │                       S2 supplements.ts — plan-gap derivation, strict proposal
 │   │   │                       parsing, deterministic passage verification/conflict and
 │   │   │                       the zero-egress fixture fetch port (see
-│   │   │                       docs/bounded-source-fetch.md)
+│   │   │                       docs/bounded-source-fetch.md); S4 adaptation.ts —
+│   │   │                       deterministic background classifier (beginner/
+│   │   │                       advanced/neutral), per-track prompt instruction and
+│   │   │                       fixture framing, cross-track fact-identity validator
 │   │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
 │   │                           derivative ports, dependencies preview (S9),
 │   │                           retention registry/scheduler + archive contract (S10)

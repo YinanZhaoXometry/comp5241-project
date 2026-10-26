@@ -8,6 +8,12 @@ import {
   syntheticCourseDraft,
 } from '../../src/modules/course-generation/generation';
 import {
+  backgroundSummaryOf,
+  classifyTrack,
+  computeFactsDigest,
+  factsIdenticalAcrossTracks,
+} from '../../src/modules/course-generation/adaptation';
+import {
   buildProposalMessages,
   claimSupported,
   conflictsWithUpload,
@@ -22,9 +28,9 @@ import {
 } from '../../src/modules/course-generation/supplements';
 import {
   courseContentV1Schema,
-  courseContentV2Schema,
+  courseContentV3Schema,
   courseDraftV1Schema,
-  courseDraftV2Schema,
+  courseDraftV3Schema,
   courseTrackerItems,
   markItemDoneSchema,
   storedCourseContent,
@@ -33,7 +39,7 @@ import {
   supplementJobSchema,
   requestSupplementsSchema,
   SUPPLEMENT_QUEUE,
-  type CourseContentV2,
+  type CourseContentServing,
 } from '../../src/contracts/courses';
 import { textCompletionRequestSchema } from '../../src/contracts/ai-provider';
 import { AI_BUDGET } from '../../src/adapters/ai-live';
@@ -41,10 +47,13 @@ import type { Plan } from '../../src/contracts/setup';
 
 // Local synthetic coverage of the epic-2 course tracer's PURE halves: bounded
 // prompt building, strict plan-bounds-checked output validation (epic-2 S3
-// content v2: the FULL plan lesson set with per-lesson sections, tracker items
-// and one labeled optional enrichment), the legacy v1 union wrap, the
-// deterministic local synthetic processor and the recall judge. No transport,
-// no network, no provider — everything here is deterministic.
+// content v2 shapes served through the epic-2 S4 content v3 union: the FULL
+// plan lesson set with per-lesson sections, tracker items and one labeled
+// optional enrichment, plus the per-track TREATMENT framing and the
+// code-derived adaptation record), the legacy v1 union wrap, the deterministic
+// local synthetic processor, the recall judge and the cross-track fact-identity
+// validator. No transport, no network, no provider — everything here is
+// deterministic.
 
 const plan: Plan = {
   topic: 'Unit testing fundamentals',
@@ -62,14 +71,15 @@ const excerpts = [
   { name: 'notes.txt', text: 'Unit testing checks a single unit of behavior. Arrange inputs, act, assert outcomes. A unit test isolates the behavior under test.' },
   { name: 'doubles.txt', text: 'A test double stands in for a dependency. Coverage reports executed lines, not assertion quality. Doubles keep tests fast.' },
 ];
-const bounds = { plan, sources };
-const input = { goal: 'Exam preparation', topic: 'unit testing', plan, excerpts };
-const flatSections = (content: CourseContentV2) => content.lessons.flatMap(lesson => lesson.sections);
+// No stated background by default: every pre-existing case generates neutrally.
+const bounds = { plan, sources, background: '' };
+const input = { goal: 'Exam preparation', topic: 'unit testing', background: '', plan, excerpts };
+const flatSections = (content: CourseContentServing) => content.lessons.flatMap(lesson => lesson.sections);
 
 const validDraft = (extra: Record<string, unknown> = {}) => JSON.stringify({
   lessons: [
-    { sections: [{ text: 'A unit test isolates one behavior and asserts its outcome.', sourcePosition: 0, locator: 'opening lines' }] },
-    { sections: [{ text: 'A test double stands in for a real dependency during the test.', sourcePosition: 1, locator: 'opening lines' }] },
+    { framing: 'Plain-language walkthrough of the first lesson.', sections: [{ text: 'A unit test isolates one behavior and asserts its outcome.', sourcePosition: 0, locator: 'opening lines' }] },
+    { framing: 'Application focus for the second lesson.', sections: [{ text: 'A test double stands in for a real dependency during the test.', sourcePosition: 1, locator: 'opening lines' }] },
   ],
   objectiveIndexes: [0, 1, 2],
   recall: { objectiveIndex: 0, sourcePosition: 0, locator: 'opening lines', prompt: 'State the three parts of the unit test structure.', answer: 'Arrange inputs, act, assert outcomes.', rationale: 'The opening of notes.txt states this directly.' },
@@ -86,6 +96,23 @@ describe('bounded course prompt building', () => {
     expect(messages[1].content).toContain('lesson 1: A second lesson for context');
     expect(messages[1].content).toContain('outcome 0: Explain arrange-act-assert');
     expect(messages[1].content).toContain('--- source 0: notes.txt ---');
+    // The framing contract rides the system prompt: treatment prose only.
+    expect(messages[0].content).toContain('framing');
+    expect(messages[0].content).toContain('ONLY track-dependent part');
+  });
+  it('rides the stated background with its derived track and the per-track instruction', () => {
+    const beginner = buildCourseMessages({ ...input, background: 'Non-CS, new to programming' });
+    expect(beginner[1].content).toContain('Stated background: Non-CS, new to programming');
+    expect(beginner[1].content).toContain('Derived learning track: beginner');
+    expect(beginner[1].content).toContain('Track instruction: BEGINNER');
+    const advanced = buildCourseMessages({ ...input, background: 'CS graduate, interview prep' });
+    expect(advanced[1].content).toContain('Derived learning track: advanced');
+    expect(advanced[1].content).toContain('Track instruction: ADVANCED');
+    // No stated background stays honestly neutral — no invention.
+    const neutral = buildCourseMessages(input);
+    expect(neutral[1].content).toContain('Stated background: (none stated)');
+    expect(neutral[1].content).toContain('Derived learning track: neutral');
+    expect(neutral[1].content).toContain('Track instruction: NEUTRAL');
   });
   it('truncates over-long excerpts fairly, keeps every source present and states the cut', () => {
     const many = Array.from({ length: 12 }, (_, index) => ({ name: `s${index}.txt`, text: 'x'.repeat(64 * 1024) }));
@@ -97,12 +124,42 @@ describe('bounded course prompt building', () => {
   });
 });
 
-describe('strict course output validation against the confirmed plan (content v2)', () => {
+describe('epic-2 S4 deterministic track classification (documented keyword families)', () => {
+  it('classifies every documented beginner keyword, case-insensitively', () => {
+    for (const background of ['non-CS background', 'complete BEGINNER', 'new to programming', 'no programming at all', 'my first time here', 'non-technical role']) {
+      expect(classifyTrack(background)).toBe('beginner');
+    }
+  });
+  it('classifies every documented advanced keyword, case-insensitively', () => {
+    for (const background of ['cs graduate', 'Computer Science Degree', 'working developer', 'software engineer', 'interview prep', 'professional background', 'experienced with code']) {
+      expect(classifyTrack(background)).toBe('advanced');
+    }
+  });
+  it('empty, whitespace and unmatched backgrounds stay neutral (no invention)', () => {
+    expect(classifyTrack('')).toBe('neutral');
+    expect(classifyTrack('   ')).toBe('neutral');
+    expect(classifyTrack('part-time ornithologist')).toBe('neutral');
+  });
+  it('leftmost keyword occurrence wins on mixed backgrounds (first match wins)', () => {
+    expect(classifyTrack('CS graduate helping new-to-programming colleagues')).toBe('advanced');
+    expect(classifyTrack('A beginner who later became a developer')).toBe('beginner');
+  });
+  it('backgroundSummaryOf collapses whitespace and bounds the stored summary at the preferences limit', () => {
+    expect(backgroundSummaryOf('  a \n\n  b ')).toBe('a b');
+    expect(backgroundSummaryOf('x'.repeat(500))).toHaveLength(400);
+  });
+});
+
+describe('strict course output validation against the confirmed plan (content v3)', () => {
   it('accepts a resolvable multi-lesson draft and substitutes every title from the plan in order', () => {
     const parsed = parseCourseOutput(validDraft(), bounds);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
+    expect(parsed.content.contentVersion).toBe(3);
     expect(parsed.content.lessons.map(lesson => lesson.title)).toEqual(plan.miniCourse.lessons); // from the plan, never the reply
+    // The treatment framing from the draft is stored per lesson, kept OUT of
+    // the factual sections.
+    expect(parsed.content.lessons.map(lesson => lesson.framing)).toEqual(['Plain-language walkthrough of the first lesson.', 'Application focus for the second lesson.']);
     expect(parsed.content.lessons[0].sections[0].sourceRef).toMatchObject({ extractionId: sources[0].extractionId, filename: 'notes.txt' });
     expect(parsed.content.lessons[1].sections[0].sourceRef.filename).toBe('doubles.txt');
     // Required tracker items: exactly one reading item per numbered lesson.
@@ -111,7 +168,19 @@ describe('strict course output validation against the confirmed plan (content v2
     expect(parsed.content.enrichment).toBeUndefined();
     expect(parsed.content.objectives.map(objective => objective.text)).toEqual(plan.outcomes);
     expect(parsed.content.recall.sourceRef.filename).toBe('notes.txt');
-    expect(courseContentV2Schema.safeParse(parsed.content).success).toBe(true);
+    expect(courseContentV3Schema.safeParse(parsed.content).success).toBe(true);
+  });
+  it('derives the adaptation record from the stated background in code, never from the reply', () => {
+    const beginner = parseCourseOutput(validDraft(), { ...bounds, background: 'non-CS, new to programming' });
+    expect(beginner.ok).toBe(true);
+    if (!beginner.ok) return;
+    expect(beginner.content.adaptation).toEqual({ track: 'beginner', backgroundSummary: 'non-CS, new to programming' });
+    const unmatched = parseCourseOutput(validDraft(), { ...bounds, background: 'part-time ornithologist' });
+    expect(unmatched.ok && unmatched.content.adaptation).toEqual({ track: 'neutral', backgroundSummary: 'part-time ornithologist' });
+    // The adaptation basis for an unstated background is neutral and empty.
+    const neutral = parseCourseOutput(validDraft(), bounds);
+    expect(neutral.ok).toBe(true);
+    if (neutral.ok) expect(neutral.content.adaptation).toEqual({ track: 'neutral', backgroundSummary: '' });
   });
   it('resolves the optional enrichment link and labels it optional and untracked', () => {
     const parsed = parseCourseOutput(validDraft({ enrichment: { sourcePosition: 1, locator: 'second paragraph', text: 'Doubles keep tests fast and deterministic.' } }), bounds);
@@ -133,26 +202,37 @@ describe('strict course output validation against the confirmed plan (content v2
     expect(parseCourseOutput(`${validDraft()}}}`, bounds).ok).toBe(true);
     expect(parseCourseOutput(`${validDraft()}\nNote: good luck!`, bounds).ok).toBe(true);
   });
-  it('rejects prose, malformed JSON, extra keys, wrong lesson counts, legacy v1 drafts and unresolved links', () => {
+  it('rejects prose, malformed JSON, extra keys, wrong lesson counts, legacy drafts and unresolved links', () => {
     expect(parseCourseOutput('Here is your lesson: ...', bounds).ok).toBe(false);
     expect(parseCourseOutput('{not json', bounds).ok).toBe(false);
     expect(parseCourseOutput(validDraft({ extra: 1 }), bounds).ok).toBe(false);
     // Fewer/more lessons than the confirmed plan declares.
-    expect(parseCourseOutput(validDraft({ lessons: [{ sections: [{ text: 'x', sourcePosition: 0, locator: 'l' }] }] }), bounds).ok).toBe(false);
-    expect(parseCourseOutput(validDraft({ lessons: [...JSON.parse(validDraft()).lessons, { sections: [{ text: 'x', sourcePosition: 0, locator: 'l' }] }] }), bounds).ok).toBe(false);
+    expect(parseCourseOutput(validDraft({ lessons: [{ framing: 'f', sections: [{ text: 'x', sourcePosition: 0, locator: 'l' }] }] }), bounds).ok).toBe(false);
+    expect(parseCourseOutput(validDraft({ lessons: [...JSON.parse(validDraft()).lessons, { framing: 'f', sections: [{ text: 'x', sourcePosition: 0, locator: 'l' }] }] }), bounds).ok).toBe(false);
     // The legacy single-lesson draft shape no longer validates.
     expect(parseCourseOutput(JSON.stringify({ sections: [{ text: 'x', sourcePosition: 0, locator: 'l' }], objectiveIndexes: [0], recall: { objectiveIndex: 0, sourcePosition: 0, locator: 'l', prompt: 'p', answer: 'a', rationale: 'r' } }), bounds).ok).toBe(false);
+    // The pre-2.4 multi-lesson draft shape (no per-lesson framing) no longer
+    // validates, and framing missing on ONE lesson is still an invalid draft.
+    const noFraming = JSON.parse(validDraft());
+    for (const lesson of noFraming.lessons) delete lesson.framing;
+    expect(parseCourseOutput(JSON.stringify(noFraming), bounds).ok).toBe(false);
+    const oneMissing = JSON.parse(validDraft());
+    delete oneMissing.lessons[1].framing;
+    expect(parseCourseOutput(JSON.stringify(oneMissing), bounds).ok).toBe(false);
+    // A processor-supplied track/adaptation is an extra key: rejected — the
+    // record is derived in code from the stated background only.
+    expect(parseCourseOutput(validDraft({ track: 'advanced' }), bounds).ok).toBe(false);
     // Objective index beyond the plan's outcomes; duplicates.
     expect(parseCourseOutput(validDraft({ objectiveIndexes: [0, 1, 3] }), bounds).ok).toBe(false);
     expect(parseCourseOutput(validDraft({ objectiveIndexes: [0, 0, 1] }), bounds).ok).toBe(false);
     // Source position beyond the selected sources (lesson section and recall).
-    expect(parseCourseOutput(validDraft({ lessons: [{ sections: [{ text: 'x', sourcePosition: 5, locator: 'l' }] }, { sections: [{ text: 'y', sourcePosition: 1, locator: 'l' }] }] }), bounds).ok).toBe(false);
+    expect(parseCourseOutput(validDraft({ lessons: [{ framing: 'f', sections: [{ text: 'x', sourcePosition: 5, locator: 'l' }] }, { framing: 'f', sections: [{ text: 'y', sourcePosition: 1, locator: 'l' }] }] }), bounds).ok).toBe(false);
     expect(parseCourseOutput(validDraft({ recall: { objectiveIndex: 0, sourcePosition: 2, locator: 'l', prompt: 'p', answer: 'a', rationale: 'r' } }), bounds).ok).toBe(false);
     // Enrichment with an unresolved source link.
     expect(parseCourseOutput(validDraft({ enrichment: { sourcePosition: 7, locator: 'l', text: 't' } }), bounds).ok).toBe(false);
     expect(parseCourseOutput('', bounds).ok).toBe(false);
     // The draft schema itself bounds the shapes the parser trusts.
-    expect(courseDraftV2Schema.safeParse({ lessons: [], objectiveIndexes: [0], recall: {} }).success).toBe(false);
+    expect(courseDraftV3Schema.safeParse({ lessons: [], objectiveIndexes: [0], recall: {} }).success).toBe(false);
     expect(courseDraftV1Schema.safeParse({ sections: [], objectiveIndexes: [0], recall: {} }).success).toBe(false);
   });
   it('rejects stored lesson items that do not match their numbered position (tracker identity is positional)', () => {
@@ -161,7 +241,7 @@ describe('strict course output validation against the confirmed plan (content v2
     if (!parsed.ok) return;
     const tampered = structuredClone(parsed.content);
     tampered.lessons[1].items[0].id = 'lesson:1:reading';
-    expect(courseContentV2Schema.safeParse(tampered).success).toBe(false);
+    expect(courseContentV3Schema.safeParse(tampered).success).toBe(false);
   });
 });
 
@@ -207,7 +287,7 @@ describe('legacy v1 stored content serves through the v2 wrap (one serving path)
   });
 });
 
-describe('deterministic local synthetic processor (content v2)', () => {
+describe('deterministic local synthetic processor (content v3)', () => {
   it('returns a strict-parseable, zero-token, deterministic draft covering every plan lesson in order', async () => {
     const port = createSyntheticCourseCompletion();
     const messages = buildCourseMessages(input);
@@ -222,8 +302,12 @@ describe('deterministic local synthetic processor (content v2)', () => {
     const parsed = parseCourseOutput(first.text, bounds);
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
+    expect(parsed.content.contentVersion).toBe(3);
     expect(parsed.content.lessons.map(lesson => lesson.title)).toEqual(plan.miniCourse.lessons);
     for (const lesson of parsed.content.lessons) expect(lesson.sections.length).toBeGreaterThanOrEqual(1);
+    // The unstated background generates neutrally with honest neutral framing.
+    expect(parsed.content.adaptation).toEqual({ track: 'neutral', backgroundSummary: '' });
+    expect(parsed.content.lessons.every(lesson => lesson.framing.length > 0)).toBe(true);
     // Fair distribution: source 0 teaches lesson 1, source 1 teaches lesson 2.
     expect(parsed.content.lessons[0].sections[0].sourceRef.filename).toBe('notes.txt');
     expect(parsed.content.lessons[1].sections[0].sourceRef.filename).toBe('doubles.txt');
@@ -246,7 +330,7 @@ describe('deterministic local synthetic processor (content v2)', () => {
     const a = syntheticCourseDraft(messages);
     const b = syntheticCourseDraft(messages);
     expect(a).toBe(b);
-    const parsed = parseCourseOutput(a, { plan: oneLessonPlan, sources: [sources[0]] });
+    const parsed = parseCourseOutput(a, { plan: oneLessonPlan, sources: [sources[0]], background: '' });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     for (const lesson of parsed.content.lessons) for (const section of lesson.sections) expect(section.text.length).toBeLessThanOrEqual(480);
@@ -256,7 +340,7 @@ describe('deterministic local synthetic processor (content v2)', () => {
     const tenSources = ten.map(excerpt => ({ extractionId: crypto.randomUUID(), filename: excerpt.name }));
     const messages = buildCourseMessages({ ...input, excerpts: ten });
     const draft = syntheticCourseDraft(messages);
-    const parsed = parseCourseOutput(draft, { plan, sources: tenSources });
+    const parsed = parseCourseOutput(draft, { plan, sources: tenSources, background: '' });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     // Fair round-robin: even positions to lesson 1, odd to lesson 2 — every
@@ -277,7 +361,7 @@ describe('deterministic local synthetic processor (content v2)', () => {
   it('keeps every plan lesson present when there are fewer sources than lessons (honest fallback)', () => {
     const single = [{ name: 'only.txt', text: 'Only source opens here. Its remainder teaches the whole course honestly.' }];
     const messages = buildCourseMessages({ ...input, excerpts: single });
-    const parsed = parseCourseOutput(syntheticCourseDraft(messages), { plan, sources: [sources[0]] });
+    const parsed = parseCourseOutput(syntheticCourseDraft(messages), { plan, sources: [sources[0]], background: '' });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(parsed.content.lessons).toHaveLength(2);
@@ -288,7 +372,7 @@ describe('deterministic local synthetic processor (content v2)', () => {
     const tenSources = ten.map(excerpt => ({ extractionId: crypto.randomUUID(), filename: excerpt.name }));
     const oneLessonPlan = { ...plan, miniCourse: { ...plan.miniCourse, lessons: ['What a unit test is'] } };
     const messages = buildCourseMessages({ ...input, plan: oneLessonPlan, excerpts: ten });
-    const parsed = parseCourseOutput(syntheticCourseDraft(messages), { plan: oneLessonPlan, sources: tenSources });
+    const parsed = parseCourseOutput(syntheticCourseDraft(messages), { plan: oneLessonPlan, sources: tenSources, background: '' });
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(parsed.content.lessons[0].sections).toHaveLength(8);
@@ -308,6 +392,90 @@ describe('deterministic local synthetic processor (content v2)', () => {
     if (!parsed.ok) return;
     expect(parsed.content.lessons).toHaveLength(plan.miniCourse.lessons.length);
     expect(parsed.content.objectives.map(objective => objective.index)).toEqual([0, 1, 2]);
+  });
+});
+
+describe('epic-2 S4 side-by-side: per-track treatment over identical facts', () => {
+  const courseUnder = (background: string) =>
+    parseCourseOutput(syntheticCourseDraft(buildCourseMessages({ ...input, background })), { ...bounds, background });
+  it('the fixture draft itself carries no track — the stored record is code-derived', () => {
+    const draft = JSON.parse(syntheticCourseDraft(buildCourseMessages({ ...input, background: 'non-CS, new to programming' })));
+    expect(draft).not.toHaveProperty('track');
+    expect(draft).not.toHaveProperty('adaptation');
+  });
+  it('beginner and advanced treatments differ while every factual section, source ref, objective, recall answer and enrichment is identical', () => {
+    const beginner = courseUnder('non-CS, new to programming');
+    const advanced = courseUnder('CS graduate, interview prep');
+    expect(beginner.ok && advanced.ok).toBe(true);
+    if (!beginner.ok || !advanced.ok) return;
+    expect(beginner.content.adaptation).toEqual({ track: 'beginner', backgroundSummary: 'non-CS, new to programming' });
+    expect(advanced.content.adaptation).toEqual({ track: 'advanced', backgroundSummary: 'CS graduate, interview prep' });
+    // Treatment differs AND DELIVERS the promised pitch, not a description of
+    // it: the beginner framing carries a concrete everyday example anchored on
+    // the lesson's own outcome text plus an explicit prerequisite line; the
+    // advanced framing carries an actual application-scenario sentence and a
+    // concrete trade-off question.
+    expect(beginner.content.lessons[0].framing).not.toBe(advanced.content.lessons[0].framing);
+    expect(beginner.content.lessons[0].framing).toContain('Everyday example:');
+    expect(beginner.content.lessons[0].framing).toContain('working toward “Explain arrange-act-assert” is like following a recipe');
+    expect(beginner.content.lessons[0].framing).toContain('Before this lesson you need:');
+    expect(beginner.content.lessons[0].framing).toContain('no prior programming assumed');
+    expect(advanced.content.lessons[0].framing).toContain('Scenario:');
+    expect(advanced.content.lessons[0].framing).toContain('“Explain arrange-act-assert” is on your critical path');
+    expect(advanced.content.lessons[0].framing).toContain('Trade-off to weigh:');
+    expect(advanced.content.lessons[0].framing).toContain('what does reaching for it anyway cost you');
+    // The factual core is byte-identical across tracks — provable, not eyeballed.
+    expect(factsIdenticalAcrossTracks(beginner.content, advanced.content)).toEqual({ identical: true, differences: [] });
+    // The stored factual-core digest makes that identity cheap for any
+    // consumer: shared across tracks, sha-256 hex, and it moves when facts do.
+    expect(beginner.content.factsDigest).toMatch(/^[0-9a-f]{64}$/u);
+    expect(beginner.content.factsDigest).toBe(advanced.content.factsDigest);
+    const driftedFacts = structuredClone(advanced.content);
+    driftedFacts.lessons[0].sections[0].text += ' A drifted fact.';
+    expect(computeFactsDigest(driftedFacts)).not.toBe(advanced.content.factsDigest);
+    // Treatment-only change keeps the digest: recompute over the drifted
+    // content's unchanged factual core reproduces the stored digest.
+    expect(beginner.content.factsDigest).toBe(computeFactsDigest(beginner.content));
+    expect(beginner.content.lessons.map(lesson => lesson.sections)).toEqual(advanced.content.lessons.map(lesson => lesson.sections));
+    expect(beginner.content.lessons.map(lesson => lesson.title)).toEqual(advanced.content.lessons.map(lesson => lesson.title));
+    expect(beginner.content.recall).toEqual(advanced.content.recall);
+    expect(beginner.content.enrichment).toEqual(advanced.content.enrichment);
+    expect(beginner.content.objectives).toEqual(advanced.content.objectives);
+  });
+  it('neutral and unmatched backgrounds claim no track and keep the same factual core', () => {
+    const empty = courseUnder('');
+    const unmatched = courseUnder('part-time ornithologist');
+    expect(empty.ok && unmatched.ok).toBe(true);
+    if (!empty.ok || !unmatched.ok) return;
+    expect(empty.content.adaptation).toEqual({ track: 'neutral', backgroundSummary: '' });
+    expect(unmatched.content.adaptation).toEqual({ track: 'neutral', backgroundSummary: 'part-time ornithologist' });
+    expect(factsIdenticalAcrossTracks(empty.content, unmatched.content).identical).toBe(true);
+    expect(empty.content.lessons.every(lesson => /no track-specific framing/i.test(lesson.framing))).toBe(true);
+  });
+  it('factsIdenticalAcrossTracks flags factual drift precisely and ignores treatment-only differences', () => {
+    const beginner = courseUnder('non-CS, new to programming');
+    const advanced = courseUnder('CS graduate, interview prep');
+    if (!beginner.ok || !advanced.ok) return;
+    // Factual drift in one section's text is named exactly.
+    const drifted = structuredClone(advanced.content);
+    drifted.lessons[1].sections[0].text += ' An extra claim appeared.';
+    const drift = factsIdenticalAcrossTracks(beginner.content, drifted);
+    expect(drift.identical).toBe(false);
+    expect(drift.differences).toContain('lessons[1].sections[0].text');
+    // A dropped source link is factual drift too.
+    const relinked = structuredClone(advanced.content);
+    relinked.lessons[0].sections[0].sourceRef.locator = 'somewhere else entirely';
+    expect(factsIdenticalAcrossTracks(beginner.content, relinked).identical).toBe(false);
+    // Treatment-only differences (framing, adaptation record) are NOT factual drift.
+    const reframed = structuredClone(advanced.content);
+    reframed.lessons[0].framing = 'A completely different framing paragraph.';
+    reframed.adaptation = { track: 'neutral', backgroundSummary: '' };
+    expect(factsIdenticalAcrossTracks(beginner.content, reframed)).toEqual({ identical: true, differences: [] });
+    // Cross-study comparison may ignore per-study extraction ids.
+    const foreign = structuredClone(advanced.content);
+    foreign.lessons[0].sections[0].sourceRef.extractionId = crypto.randomUUID();
+    expect(factsIdenticalAcrossTracks(beginner.content, foreign).identical).toBe(false);
+    expect(factsIdenticalAcrossTracks(beginner.content, foreign, { ignoreSourceIds: true }).identical).toBe(true);
   });
 });
 

@@ -372,3 +372,83 @@ test("player shell: numbered lessons, keyboard mark-done, optional enrichment, s
   expect(errors).toEqual([]);
   await page.screenshot({ path: info.outputPath("player-shell-studied.png"), fullPage: true });
 });
+
+// Epic-2 S4 adaptation journey: the learner's stated background pitches the
+// SAME synthetic sources per track through the saved preferences the goal
+// stage owns. The beginner pitch line rides the labeled ready view with
+// per-section sources and the help footer's report path intact; generation
+// and mark-done stay keyboard-complete; a background that was never stated
+// (or cannot be classified) claims no track at all. Synthetic account and
+// content only; the processor is the local synthetic fixture — zero outbound
+// requests.
+test("adaptation: stated background pitches the course, neutral claims no track; label, sources and keyboard flows unchanged", async ({ page }, info) => {
+  test.setTimeout(240000);
+  const errors: string[] = [];
+  const outbound: string[] = [];
+  page.on("pageerror", error => errors.push(error.name));
+  page.on("request", request => { if (!request.url().startsWith(origin)) outbound.push(new URL(request.url()).hostname); });
+  await page.setViewportSize({ width: 360, height: 900 });
+  await login(page, "course-adapt-a");
+  await grantConsent(page);
+  // The saved background the goal stage would save — set through the same
+  // preferences API, deterministically.
+  const saved = await (await page.request.put("/api/v1/preferences", {
+    headers: { Origin: origin },
+    data: { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0, stage: "goal", goal: null, topic: "", clarification: "", background: "Non-CS, new to programming", timePreference: null, timezone: "" },
+  })).json() as { revision: number };
+  expect(saved.revision).toBe(1);
+  const rootId = await uploadAndConfirm(page, "Coverage not assessed. No supplementary sources fetched.");
+  const panel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your mini-course", exact: true }) });
+  // Keyboard-complete generation: focus the gated action, submit with Enter.
+  const generate = panel.getByRole("button", { name: "Generate mini-course (AI)", exact: true });
+  await generate.focus();
+  await expect(generate).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(panel.getByRole("heading", { name: "1. One generated lesson", exact: true })).toBeVisible({ timeout: 60000 });
+  // The pitch line states the stored track and its basis honestly; the
+  // unreviewed label, per-section sources and the report path stay present.
+  await expect(panel.getByText(/Pitched for: a non-CS beginner — plain language, familiar examples, explicit prerequisites/)).toBeVisible();
+  await expect(panel.getByText(/from your stated background: “Non-CS, new to programming”/)).toBeVisible();
+  await expect(panel.getByText(/every factual claim, lesson and source link is identical across tracks/)).toBeVisible();
+  await expect(panel.getByText("AI-generated · Unreviewed", { exact: false })).toBeVisible();
+  await expect(panel.getByText("Source: course-0.txt ·", { exact: false }).first()).toBeVisible();
+  await expect(panel.getByText(/Help — account or recovery: contact the local operator\./)).toBeVisible();
+  // Keyboard mark-done is unchanged by adaptation.
+  const mark = panel.getByRole("button", { name: "Mark lesson 1 reading done", exact: true });
+  await mark.focus();
+  await page.keyboard.press("Enter");
+  await expect(panel.getByText(/^Done\./).first()).toBeVisible();
+  // The served payload carries the adaptation basis and per-lesson framing,
+  // keeps the answer withheld, and carries no scored semantics.
+  const adapted = await (await page.request.get(`/api/v1/studies/${rootId}/course`)).json() as {
+    course: { adaptation: { track: string; backgroundSummary: string } | null; lessons: Array<{ framing: string | null }> };
+  };
+  expect(adapted.course.adaptation).toEqual({ track: "beginner", backgroundSummary: "Non-CS, new to programming" });
+  expect(adapted.course.lessons[0].framing).toContain("Plain-language");
+  for (const banned of [canonicalAnswer, '"answer"', '"rationale"', '"score"', '"credit"', '"completion"']) expect(JSON.stringify(adapted)).not.toContain(banned);
+  // A study with no stated background generates neutrally and claims no track.
+  const cleared = await page.request.put("/api/v1/preferences", {
+    headers: { Origin: origin },
+    data: { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: saved.revision, stage: "goal", goal: null, topic: "", clarification: "", background: "", timePreference: null, timezone: "" },
+  });
+  expect(cleared.status()).toBe(200);
+  await page.getByRole("button", { name: "Back to library", exact: true }).click();
+  const neutralRoot = await uploadAndConfirm(page, "Coverage not assessed. No supplementary sources fetched.");
+  const neutralPanel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your mini-course", exact: true }) });
+  await neutralPanel.getByRole("button", { name: "Generate mini-course (AI)", exact: true }).click();
+  await expect(neutralPanel.getByRole("heading", { name: "1. One generated lesson", exact: true })).toBeVisible({ timeout: 60000 });
+  await expect(neutralPanel.getByText(/Pitched for:/)).toHaveCount(0);
+  const neutral = await (await page.request.get(`/api/v1/studies/${neutralRoot}/course`)).json() as {
+    course: { adaptation: { track: string; backgroundSummary: string } | null; lessons: Array<{ framing: string | null }> };
+  };
+  expect(neutral.course.adaptation).toEqual({ track: "neutral", backgroundSummary: "" });
+  expect(neutral.course.lessons[0].framing).toContain("no track-specific framing");
+  // Overflow-free at 360px and desktop throughout.
+  for (const width of [360, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  expect(outbound).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: info.outputPath("adapted-course-studied.png"), fullPage: true });
+});
