@@ -14,7 +14,6 @@ covers = ["R1", "R5"]
 after = ["1.3", "1.5", "1.6"]
 hitl = true
 risk = "high"
-unknown = "F-A live processor eligibility is unverified: a D5-compatible provider/model/endpoint with retention/deletion/non-training/location proof and operator authorization for synthetic non-personal tests (the epic-1 S6 blocker, re-gated for generation purpose). Synthetic-fixture development proceeds; live dispatch and live acceptance stay blocked."
 references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-grounded-mini-courses/delivery-checks.md, S1 and F-A", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Component Patterns and State Patterns"]
 
 [[entry]]
@@ -27,7 +26,6 @@ covers = ["R2"]
 after = [1]
 hitl = false
 risk = "high"
-unknown = "F-B bounded external source retrieval is unproven and unauthorized: network scope, source licensing/terms, rate limits, verification tooling and operator authorization need feasibility evidence before any live fetch."
 references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-grounded-mini-courses/delivery-checks.md, S2 and F-B", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, State Patterns"]
 
 [[entry]]
