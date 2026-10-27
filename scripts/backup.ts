@@ -125,11 +125,25 @@ export async function schemaInventory(client: PoolClient) {
   }));
 }
 
+// The physical artifact extension each registered copy carries: registration
+// stores the BARE key (backup id, files key or journal key) while the encrypted
+// artifacts on disk carry their kind-specific suffix. The epic-2 S9 sweep
+// (2026-10-27) found the purge previously removing `${storage_key}.enc` — a
+// name that never exists — so `rm(force)` silently deleted NOTHING while rows
+// turned 'purged': every backup run leaked its full artifact set into
+// `.local/backups` (the recorded 12 GB disk incident's real mechanism).
+const ARTIFACT_SUFFIX = {
+  'protective-backup-dump': '.dump.enc',
+  'protective-backup-files': '.tar.enc',
+  'protective-backup-journal': '.jsonl.enc',
+} as const;
+type BackupKind = keyof typeof ARTIFACT_SUFFIX;
+
 // Expires due snapshots honestly: registry rows are marked purged and the
 // physical encrypted files are deleted — an expiry receipt must never
 // describe bytes that still exist. Returns the backup ids fully purged.
 export async function purgeExpiredBackups(client: PoolClient): Promise<string[]> {
-  const due = await client.query<{ kind: string; storage_key: string; row_id: string }>(
+  const due = await client.query<{ kind: BackupKind; storage_key: string; row_id: string }>(
     `SELECT kind,storage_key,row_id FROM app.retention_registry
      WHERE kind IN ('protective-backup-dump','protective-backup-files','protective-backup-journal')
        AND state='active' AND expires_at<=clock_timestamp()
@@ -137,7 +151,7 @@ export async function purgeExpiredBackups(client: PoolClient): Promise<string[]>
   );
   const byBackup = new Map<string, number>();
   for (const row of due.rows) {
-    await rm(resolve(BACKUP_DIR, `${row.storage_key}.enc`), { force: true });
+    await rm(resolve(BACKUP_DIR, `${row.storage_key}${ARTIFACT_SUFFIX[row.kind]}`), { force: true });
     await client.query(
       `UPDATE app.retention_registry SET state='purged',purged_at=clock_timestamp(),updated_at=clock_timestamp()
        WHERE kind=$1 AND storage_key=$2 AND state='active'`,

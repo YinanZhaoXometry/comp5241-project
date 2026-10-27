@@ -1,9 +1,9 @@
 import { afterAll, describe, expect, it } from 'vitest';
-import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { Client, Pool } from 'pg';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
-import { BACKUP_DIR, createBackup, purgeExpiredBackups } from '../../scripts/backup';
+import { BACKUP_DIR, BACKUP_LOCK, createBackup, purgeExpiredBackups } from '../../scripts/backup';
 import {
   checkSchemaCompatibility,
   invalidateAllSessions,
@@ -132,14 +132,97 @@ const state: {
   bRoot?: string;
   bObject?: string;
   backupId?: string;
+  tamperedId?: string;
   targetName?: string;
 } = {};
 
+// Suite-start wall clock for the residue sweep below: it only ever removes
+// artifacts created DURING this run, so an operator's real backup inventory
+// (anything registered before this suite started) is never touched.
+const RUN_STARTED_AT = new Date();
+
+// Test-hygiene sweep (epic-2 S9, 2026-10-27): a failing run never reaches the
+// expiry case below, a createBackup can die between registrations (its dump
+// row stays active while nothing reclaims the artifacts), and a hard kill in
+// the plaintext staging window leaves unencrypted residue createBackup's own
+// finally cannot clean. The sweep reclaims THIS run's residue in two steps:
+// (1) the run's tracked snapshots are forced through the product purge path
+// (backdate their rows, purge), and (2) artifacts created during this run are
+// removed unless a registry row REGISTERED BEFORE this run claims them —
+// pre-run rows are the operator's real inventory and always survive. The whole
+// sweep holds the same advisory lock the product backup/restore path
+// serializes on, so a concurrent operator backup's not-yet-registered
+// artifacts can never be swept from under it. Never weakens the real-failure
+// paths above — it runs only after every assertion — and a sweep failure must
+// never mask the suite's own result, so it is honestly logged and swallowed.
+// (Interleaved restore-suite PROCESSES are not serialized by anything here —
+// the same documented cross-process fixture-race caveat as the rest of the
+// integration suites applies.)
+async function sweepRunResidue() {
+  try {
+    const client = await database().connect();
+    try {
+      await client.query('SELECT pg_advisory_lock($1)', [BACKUP_LOCK]);
+      try {
+        const tracked = [state.backupId, state.tamperedId].filter((id): id is string => !!id);
+        if (tracked.length) {
+          await client.query(
+            `UPDATE app.retention_registry SET expires_at=clock_timestamp()-interval '1 second'
+             WHERE kind IN ('protective-backup-dump','protective-backup-files','protective-backup-journal')
+               AND state='active' AND row_id=ANY($1::text[])`,
+            [tracked],
+          );
+          await purgeExpiredBackups(client);
+        }
+        const preRun = new Set(
+          (
+            await client.query<{ key: string; created_at: Date }>(
+              'SELECT storage_key AS key, created_at FROM app.retention_registry',
+            )
+          ).rows
+            .filter(row => row.created_at < RUN_STARTED_AT)
+            .map(row => row.key),
+        );
+        let entries: string[] = [];
+        try {
+          entries = await readdir(BACKUP_DIR);
+        } catch {
+          entries = [];
+        }
+        for (const name of entries) {
+          // Encrypted artifacts and manifests, plus the PLAINTEXT staging
+          // names (.dump/.tar/.jsonl) an uncatchable kill can leave behind.
+          const id = name.replace(/\.(?:dump|tar|jsonl)(?:\.enc)?$|\.json$/u, '');
+          if (id === name) continue; // not a backup artifact
+          const path = resolve(BACKUP_DIR, name);
+          try {
+            const info = await stat(path);
+            if (info.mtime >= RUN_STARTED_AT && !preRun.has(id)) await rm(path, { force: true });
+          } catch {
+            /* vanished concurrently; nothing to sweep */
+          }
+        }
+      } finally {
+        await client.query('SELECT pg_advisory_unlock($1)', [BACKUP_LOCK]).catch(() => undefined);
+      }
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error(JSON.stringify({ event: 'restore-suite-residue-sweep-pending', error: String(error) }));
+  }
+}
+
 afterAll(async () => {
-  if (loaded) await rm(loaded.stagingDir, { recursive: true, force: true });
-  if (state.targetName) await dropScratch(state.targetName);
-  await closeQueue();
-  await closeDatabase();
+  try {
+    if (loaded) await rm(loaded.stagingDir, { recursive: true, force: true });
+    if (state.targetName) await dropScratch(state.targetName);
+  } finally {
+    // The residue sweep must run even when an earlier cleanup step throws.
+    await sweepRunResidue();
+    await closeQueue();
+    await closeDatabase();
+  }
 });
 
 describe('isolated backup and protective restore', () => {
@@ -448,6 +531,7 @@ describe('isolated backup and protective restore', () => {
     // A restore whose journal ciphertext was tampered with aborts BEFORE any
     // schema is restored: the target database stays empty.
     const tampered = await createBackup();
+    state.tamperedId = tampered.backupId; // swept by afterAll if a later step fails
     const journalKey = (
       await database().query<{ storage_key: string }>(
         "SELECT storage_key FROM app.retention_registry WHERE kind='protective-backup-journal' AND row_id=$1",
@@ -479,28 +563,66 @@ describe('isolated backup and protective restore', () => {
     // AD-4 ceiling but is never deleted outright: it is the continuation the
     // next restore needs, and a prune with nothing old is a no-op.
     await expect(pruneProtectiveJournalFile(new Date(Date.now() - 1000))).resolves.toBe(0);
-    // Backdate every snapshot artifact past the class ceiling, then let the
-    // maintenance purge prove expiry physically: files deleted, rows purged,
-    // manifests removed, and a repeat purge a safe no-op.
+    // An OPERATOR-registered snapshot outside this suite (future expiry, its
+    // own bytes on disk) must survive everything below: the backdate is
+    // bounded to this suite's own snapshots, and the purge may only take
+    // what is actually due.
+    const operatorKey = crypto.randomUUID();
+    await writeFile(resolve(BACKUP_DIR, `${operatorKey}.dump.enc`), 'synthetic operator-inventory decoy');
+    const operatorRow = await database().query<{ id: string }>(
+      `INSERT INTO app.retention_registry(id,owner_id,kind,retention_class,storage_key,table_name,row_id,expires_at)
+       VALUES($1,null,'protective-backup-dump','backup-snapshot',$2,'backup_manifest',$3,clock_timestamp()+interval '30 days')
+       RETURNING id`,
+      [crypto.randomUUID(), operatorKey, crypto.randomUUID()],
+    );
+    // Backdate THIS suite's registered snapshots past the class ceiling, then
+    // let the maintenance purge prove expiry physically: files deleted, rows
+    // purged, manifests removed, and a repeat purge a safe no-op.
     await database().query(
       `UPDATE app.retention_registry SET expires_at=clock_timestamp()-interval '1 second'
-       WHERE kind IN ('protective-backup-dump','protective-backup-files','protective-backup-journal') AND state='active'`,
+       WHERE kind IN ('protective-backup-dump','protective-backup-files','protective-backup-journal')
+         AND state='active' AND row_id=ANY($1::text[])`,
+      [[state.backupId!, state.tamperedId!]],
     );
+    // The suite's own artifacts exist as real bytes right before the purge,
+    // so the ENOENT checks below are non-vacuous per artifact kind.
+    const suffixOf: Record<string, string> = {
+      'protective-backup-dump': '.dump.enc',
+      'protective-backup-files': '.tar.enc',
+      'protective-backup-journal': '.jsonl.enc',
+    };
+    const own = (
+      await database().query<{ kind: string; storage_key: string }>(
+        'SELECT kind,storage_key FROM app.retention_registry WHERE row_id=$1',
+        [state.backupId!],
+      )
+    ).rows;
+    expect(own).toHaveLength(3);
+    for (const row of own) {
+      await expect(stat(resolve(BACKUP_DIR, `${row.storage_key}${suffixOf[row.kind]}`))).resolves.toBeTruthy();
+    }
     let purged: string[] = [];
     await transaction(async client => {
       purged = await purgeExpiredBackups(client);
     });
     expect(purged).toContain(state.backupId!);
-    for (const row of (
-      await database().query<{ storage_key: string }>('SELECT storage_key FROM app.retention_registry WHERE row_id=$1', [
-        state.backupId!,
-      ])
-    ).rows) {
-      await expect(stat(resolve(BACKUP_DIR, `${row.storage_key}.enc`))).rejects.toMatchObject({ code: 'ENOENT' });
+    for (const row of own) {
+      await expect(stat(resolve(BACKUP_DIR, `${row.storage_key}${suffixOf[row.kind]}`))).rejects.toMatchObject({ code: 'ENOENT' });
     }
     await expect(stat(resolve(BACKUP_DIR, `${state.backupId!}.json`))).rejects.toMatchObject({ code: 'ENOENT' });
+    // The operator's row and bytes are untouched by the bounded purge.
+    const operator = await database().query<{ state: string }>(
+      'SELECT state FROM app.retention_registry WHERE id=$1',
+      [operatorRow.rows[0].id],
+    );
+    expect(operator.rows[0].state).toBe('active');
+    await expect(stat(resolve(BACKUP_DIR, `${operatorKey}.dump.enc`))).resolves.toBeTruthy();
     await transaction(async client => {
       await expect(purgeExpiredBackups(client)).resolves.toEqual([]);
     });
+    // Remove this test's own decoy (best-effort; the afterAll sweep's
+    // run-window rule also reclaims the file if this cleanup is not reached).
+    await rm(resolve(BACKUP_DIR, `${operatorKey}.dump.enc`), { force: true });
+    await database().query('DELETE FROM app.retention_registry WHERE id=$1', [operatorRow.rows[0].id]);
   });
 });
