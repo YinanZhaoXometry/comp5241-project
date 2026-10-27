@@ -156,7 +156,8 @@ project-new/
 │   │                       (the epic-2 S7 synthetic consumer)
 │   ├── browser/            Playwright: tracer, pages (static product pages), batches,
 │   │                       consent, preferences, handoff, check, export, lifecycle,
-│   │                       course — production build
+│   │                       course, journey (epic-2 S10 integrated study suite) —
+│   │                       production build
 │   └── fixtures/           original synthetic documents only
 ├── docs/                   guides: ai-provider-adapter, bounded-document-extraction,
 │                           bounded-source-fetch, backup-restore, lint-coverage,

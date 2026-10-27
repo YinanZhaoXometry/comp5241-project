@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from 'vitest';
+import { gunzipSync } from 'node:zlib';
 import { auth } from '../../src/modules/identity-access/auth';
 import { provisionSynthetic } from '../../src/modules/identity-access/provision';
 import { getDisclosure, decide, withdraw } from '../../src/modules/processing-consent/service';
@@ -15,7 +16,9 @@ import { requestAiDraft, requestAiCheck } from '../../src/modules/ai-setup/servi
 import { factsIdenticalAcrossTracks, computeFactsDigest } from '../../src/modules/course-generation/adaptation';
 import { contentAdaptation, contentFactsDigest, courseContentV1Schema, courseContentV3Schema, lessonFraming, practiceCardsOf, recallOf, storedCourseContent } from '../../src/contracts/courses';
 import type { BoundedFetchPort, FetchDenyReason } from '../../src/adapters/source-fetch';
-import { listExports } from '../../src/modules/setup-export/service';
+import type { Manifest } from '../../src/contracts/export';
+import { listExports, requestExport, downloadExport } from '../../src/modules/setup-export/service';
+import { runExport } from '../../src/modules/setup-export/worker';
 import { captureManifest } from '../../src/modules/setup-export/manifest';
 import { transaction, database, closeDatabase } from '../../src/adapters/postgres/database';
 import { closeQueue } from '../../src/adapters/queue';
@@ -996,6 +999,26 @@ async function supplementedStudy(identity: Identity) {
   const course = await courseRowOf(identity, study.rootId);
   await requestSupplements(identity, study.rootId, { ...command(study.revision), courseId: course.id });
   return { study, course, job: await supplementJobOf(identity, course.id) };
+}
+
+// Synthetic tar decoder mirroring the export suite's; returns name -> content.
+// Used by the S10 integrated lifecycle composition to assert the artifact's
+// real contents in one owner flow.
+function decodeArtifact(input: Buffer) {
+  if (input[0] !== 0x1f || input[1] !== 0x8b) throw new Error('Artifact is not gzip');
+  const tar = new Uint8Array(gunzipSync(input));
+  const entries = new Map<string, Uint8Array>();
+  let offset = 0;
+  while (offset < tar.length) {
+    const block = tar.subarray(offset, offset + 512);
+    offset += 512;
+    if (block.every(byte => byte === 0)) break;
+    const name = new TextDecoder().decode(block.subarray(0, 100)).replace(/\0.*$/u, '');
+    const size = parseInt(new TextDecoder().decode(block.subarray(124, 136)).replace(/\0.*/u, '').trim(), 8);
+    entries.set(name, tar.subarray(offset, offset + size));
+    offset += size + ((512 - (size % 512)) % 512);
+  }
+  return entries;
 }
 
 describe('epic-2 S2: bounded source retrieval and attributed supplementation', () => {
@@ -2258,5 +2281,122 @@ describe('epic-2 S8: generation honesty, consent denial and descendant lifecycle
     await expect(getCourse(b, other.rootId)).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
     await expect(getCourse(b, other.rootId, otherCourse.id)).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
     await expect(getProvenance(b, other.rootId, otherCourse.id)).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+  });
+
+  // -------------------------------------------------------------------------
+  // Epic-2 S10 integrated lifecycle (the integration half of the suite — the
+  // browser half carries the UI journey): ONE owner runs generate → derive
+  // (practice, supplements, why) → pin provenance → supersede → export →
+  // delete, asserting the composed invariants in a single flow: the pinned
+  // immutable block byte-stable across derivative growth AND supersession
+  // while derivatives only gain entries, the export artifact carrying the
+  // three owner classes honestly (both versions, supplements skipped with
+  // their metadata riding along, passages never entering), and root deletion
+  // purging every derivative class with post-deletion reads denied.
+  // -------------------------------------------------------------------------
+  it('the integrated owner lifecycle: pin stable across growth and supersession, artifact honest across the three owner classes, purge complete', async () => {
+    const a = await actor('s8-integrated-lifecycle');
+    await grant(a);
+    const study = await confirmedStudy(a, supplementsPlan, [textA, textB, textC]);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const v1 = await courseRowOf(a, study.rootId);
+    // The consumer snapshots the pinned document BEFORE any derivative exists.
+    const pinnedEarly = await getProvenance(a, study.rootId, v1.id);
+    expect(pinnedEarly.state).toBe('ready');
+    if (pinnedEarly.state !== 'ready') return;
+    const immutableBefore = JSON.stringify(pinnedEarly.provenance.immutable);
+    expect(pinnedEarly.provenance.derivatives.supplements).toHaveLength(0);
+    expect(pinnedEarly.provenance.derivatives.whyExplanations).toHaveLength(0);
+    // The full derivative set on v1: typed practice evidence (attempt-
+    // independent for provenance), one settled supplement pass, why depth ×2.
+    await submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: v1.id, cardId: 'practice:0', attempted: 'integrated first attempt', assisted: false });
+    await submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: v1.id, cardId: 'practice:1', attempted: 'integrated second attempt', assisted: true });
+    await requestSupplements(a, study.rootId, { ...command(study.revision), courseId: v1.id });
+    await runSupplementFetch(await supplementJobOf(a, v1.id));
+    for (const depth of [1, 2]) {
+      await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: v1.id, lessonIndex: 0, depth });
+      await runWhyStep(await whyJobOf(a, v1.id, 0, depth));
+    }
+    // PIN STABILITY across derivative growth: immutable byte-identical,
+    // derivatives only gained entries.
+    const pinnedGrown = await getProvenance(a, study.rootId, v1.id);
+    expect(pinnedGrown.state).toBe('ready');
+    if (pinnedGrown.state !== 'ready') return;
+    expect(JSON.stringify(pinnedGrown.provenance.immutable)).toBe(immutableBefore);
+    expect(pinnedGrown.provenance.derivatives.supplements.map(supplement => supplement.outcome)).toEqual(['supported', 'conflict', 'unsupported']);
+    expect(pinnedGrown.provenance.derivatives.whyExplanations).toHaveLength(2);
+    // Supersession: re-save a changed plan, re-confirm, regenerate as v2, and
+    // earn tracker state on the new version.
+    const saved = await savePlan(a, study.rootId, { ...command(study.revision), plan: { ...supplementsPlan, topic: 'Integrated, deeper' }, selectionId: study.selection!.id, extractionId: study.extractionIds[0] });
+    const reconfirmed = await confirmPlan(a, study.rootId, { ...command(saved.revision), planRevisionId: saved.planRevisionId! });
+    await requestCourseGeneration(a, study.rootId, { ...command(reconfirmed.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const v2 = await courseRowOf(a, study.rootId);
+    expect(v2.id).not.toBe(v1.id);
+    await markItemDone(a, study.rootId, { ...command(reconfirmed.revision), courseId: v2.id, itemId: 'lesson:1:reading' });
+    // PIN STABILITY across supersession: the pinned v1 immutable block is
+    // still byte-identical while the DEFAULT read moved to the new version.
+    const pinnedFinal = await getProvenance(a, study.rootId, v1.id);
+    expect(pinnedFinal.state).toBe('ready');
+    if (pinnedFinal.state !== 'ready') return;
+    expect(JSON.stringify(pinnedFinal.provenance.immutable)).toBe(immutableBefore);
+    const defaultRead = await getProvenance(a, study.rootId);
+    expect(defaultRead.state).toBe('ready');
+    if (defaultRead.state === 'ready') expect(defaultRead.provenance.immutable.course.version).toBe(2);
+    // EXPORT honesty in the same flow: the artifact carries the three owner
+    // classes for BOTH versions, supplements skip with a stated reason and
+    // their identity/location metadata riding along, passages never enter.
+    const receipt = await requestExport(a, command());
+    await runExport(receipt.operationId!);
+    const row = (await database().query<{ state: string; manifest: Manifest | null }>('SELECT state,manifest FROM app.export_request WHERE id=$1', [receipt.operationId!])).rows[0];
+    expect(row.state).toBe('ready');
+    expect(row.manifest!.entries.filter(entry => entry.category === 'generated-courses').map(entry => entry.rootId)).toEqual([study.rootId, study.rootId]);
+    expect(row.manifest!.entries.filter(entry => entry.category === 'practice-evidence')).toHaveLength(2);
+    expect(row.manifest!.entries.filter(entry => entry.category === 'why-explanations')).toHaveLength(2);
+    expect(row.manifest!.skipped.find(item => item.category === 'supplements')!.reason).toContain('external-source content');
+    const entries = decodeArtifact(Buffer.from(await (await downloadExport(a, receipt.rootId, new AbortController().signal)).arrayBuffer()));
+    const courseV1 = JSON.parse(new TextDecoder().decode(entries.get(`courses/${v1.id}.json`)!)) as { row: { content: { practice?: { cards?: Array<{ answer: string }> } } }; supplementReferences: unknown[] };
+    const courseV2 = JSON.parse(new TextDecoder().decode(entries.get(`courses/${v2.id}.json`)!)) as { row: { version: number } };
+    expect(courseV2.row.version).toBe(2);
+    expect((courseV1.row.content.practice?.cards ?? []).map(card => card.answer)).toContain(canonicalAnswer);
+    expect(courseV1.supplementReferences).toHaveLength(3);
+    const practicePayload = JSON.parse(new TextDecoder().decode(entries.get('practice/practice-evidence.json')!)) as { rows: Array<{ attempted: string; evidence_kind: string }> };
+    expect(practicePayload.rows.map(item => item.attempted).sort()).toEqual(['integrated first attempt', 'integrated second attempt']);
+    expect(practicePayload.rows.map(item => item.evidence_kind).sort()).toEqual(['assisted', 'unaided']);
+    const whyPayload = JSON.parse(new TextDecoder().decode(entries.get('why/why-explanations.json')!)) as { rows: Array<{ explanation: string | null; status: string; depth: number }> };
+    expect(whyPayload.rows.filter(item => item.status === 'ready').map(item => item.depth).sort()).toEqual([1, 2]);
+    const artifactText = new TextDecoder().decode(gunzipSync(Buffer.from(await (await downloadExport(a, receipt.rootId, new AbortController().signal)).arrayBuffer())));
+    expect(artifactText).not.toContain('not the case');
+    // ROOT DELETION purges every derivative class of the whole lifecycle.
+    await removeRoot(a, study.rootId, { ...command(reconfirmed.revision) });
+    await reconcileCopies();
+    for (const [table, query] of [
+      ['generated_course', 'SELECT count(*)::int AS count FROM app.generated_course WHERE root_id=$1'],
+      ['supplement_request', 'SELECT count(*)::int AS count FROM app.supplement_request WHERE root_id=$1'],
+      ['course_objective', 'SELECT count(*)::int AS count FROM app.course_objective WHERE course_id=ANY($1::uuid[])'],
+      ['course_source', 'SELECT count(*)::int AS count FROM app.course_source WHERE course_id=ANY($1::uuid[])'],
+      ['course_supplement', 'SELECT count(*)::int AS count FROM app.course_supplement WHERE course_id=ANY($1::uuid[])'],
+      ['why_explanation', 'SELECT count(*)::int AS count FROM app.why_explanation WHERE course_id=ANY($1::uuid[])'],
+      ['practice_attempt', 'SELECT count(*)::int AS count FROM app.practice_attempt WHERE course_id=ANY($1::uuid[])'],
+      ['course_item_state', 'SELECT count(*)::int AS count FROM app.course_item_state WHERE course_id=ANY($1::uuid[])'],
+    ] as const) {
+      const parameter = query.includes('ANY($1') ? [[v1.id, v2.id]] : [study.rootId];
+      const rows = await database().query<{ count: number }>(query, parameter);
+      expect(rows.rows[0].count, table).toBe(0);
+    }
+    // Post-deletion reads deny on default and pinned selectors across every
+    // generation surface — no leak, no resurrection.
+    for (const attempt of [
+      () => getCourse(a, study.rootId),
+      () => getCourse(a, study.rootId, v1.id),
+      () => getCourse(a, study.rootId, v2.id),
+      () => getSupplements(a, study.rootId),
+      () => getSupplements(a, study.rootId, v1.id),
+      () => getWhyState(a, study.rootId, v1.id, '0'),
+      () => getProvenance(a, study.rootId),
+      () => getProvenance(a, study.rootId, v1.id),
+      () => getProvenance(a, study.rootId, v2.id),
+    ]) await expect(attempt()).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
   });
 });
