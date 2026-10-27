@@ -60,9 +60,11 @@ export async function listExports(identity: { userId: string; sessionId: string 
                     ? 'course_supplement'
                     : category === 'practice-evidence'
                       ? 'practice_attempt'
-                      : null;
+                      : category === 'why-explanations'
+                        ? 'why_explanation'
+                        : null;
       const present = table ? await tablePresent(client, table) : false;
-      if (category === 'ai-drafts' || category === 'generated-courses' || category === 'supplements' || category === 'practice-evidence') {
+      if (category === 'ai-drafts' || category === 'generated-courses' || category === 'supplements' || category === 'practice-evidence' || category === 'why-explanations') {
         categories.push(
           present
             ? { category, label, count: null, available: true, note: 'Present; deliberately excluded from the artifact — see the manifest skip note' }

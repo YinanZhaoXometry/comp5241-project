@@ -74,12 +74,12 @@ async function grantConsent(page: Page) {
   expect(decision.status()).toBe(200);
 }
 
-async function uploadAndConfirm(page: Page, missing: string, lessons: string[] = ["One generated lesson"], outcomes: string[] = ["Recall the first source", "Explain the second source"]) {
-  await page.getByLabel("Synthetic study materials").setInputFiles(sources.map(source => ({ name: source.name, mimeType: "text/plain", buffer: Buffer.from(source.text) })));
+async function uploadAndConfirm(page: Page, missing: string, lessons: string[] = ["One generated lesson"], outcomes: string[] = ["Recall the first source", "Explain the second source"], files: { name: string; text: string }[] = sources) {
+  await page.getByLabel("Synthetic study materials").setInputFiles(files.map(source => ({ name: source.name, mimeType: "text/plain", buffer: Buffer.from(source.text) })));
   const created = page.waitForResponse(response => response.url().endsWith("/api/v1/batches") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Upload materials", exact: true }).click();
   const batch = (await (await created).json()) as Receipt;
-  for (const source of sources) {
+  for (const source of files) {
     await page.getByRole("button", { name: `Inspect preview · ${source.name}`, exact: true }).click();
     const checkbox = page.getByRole("checkbox", { name: `Acknowledge and select ${source.name}`, exact: false });
     await checkbox.waitFor({ state: "visible", timeout: 120000 });
@@ -592,4 +592,164 @@ test("practice set: multi-card keyboard-only journey, assisted label, fresh retr
   expect(outbound).toEqual([]);
   expect(errors).toEqual([]);
   await page.screenshot({ path: info.outputPath("practice-set-studied.png"), fullPage: true });
+});
+
+// Epic-2 S6 why journey: three synthetic sources acknowledged into one lesson
+// give the stored evidence that grounds two deeper levels. The whole stepper
+// runs keyboard-only — Go deeper twice, the honest exhaustion notice past the
+// evidence, the always-visible Stop control collapsing the ladder with focus
+// choreography — every level carries its visible sources and the unreviewed
+// label, depth unlocks nothing (tracker state untouched), and a depth-past-
+// evidence command returns the honest exhaustion verdict with ZERO dispatch.
+// A second study covers the exhausted-VERDICT path keyboard-only: a verified
+// supplement grows the evidence, the pass then stops being settled out-of-
+// band, and dispatching the stale offer announces the stop with focus on the
+// notice instead of unmounting the focused button into silence.
+// Synthetic account and content only; the processor is the local synthetic
+// fixture — zero outbound requests.
+test("why explorer: keyboard-only deeper ×2, exhaustion notice, stop control, unreviewed label; depth unlocks nothing", async ({ page }, info) => {
+  test.setTimeout(300000);
+  const errors: string[] = [];
+  const outbound: string[] = [];
+  page.on("pageerror", error => errors.push(error.name));
+  page.on("request", request => { if (!request.url().startsWith(origin)) outbound.push(new URL(request.url()).hostname); });
+  await page.setViewportSize({ width: 360, height: 900 });
+  const account = await login(page, "course-why-a");
+  await grantConsent(page);
+  const whySources = [
+    { name: "why-0.txt", text: "Why source zero opens the reading. Its remainder explains arrangement." },
+    { name: "why-1.txt", text: "Why source one adds conditions. The second piece carries assumptions." },
+    { name: "why-2.txt", text: "Why source two rounds the set out. A third piece grounds trade-offs." },
+  ];
+  const rootId = await uploadAndConfirm(page, "Coverage not assessed. No supplementary sources fetched.", ["One generated lesson"], ["Recall the first why source", "Explain the second why source"], whySources);
+  const panel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your mini-course", exact: true }) });
+  await panel.getByRole("button", { name: "Generate mini-course (AI)", exact: true }).click();
+  await expect(panel.getByRole("heading", { name: "1. One generated lesson", exact: true })).toBeVisible({ timeout: 60000 });
+  // The why explorer renders beside the lesson with the honest floor copy and
+  // the first level offered (the stepper never offers an ungrounded level).
+  const whyHeading = panel.getByRole("heading", { name: "Why-explorer", exact: true });
+  await expect(whyHeading).toBeVisible();
+  await expect(panel.getByText(/Depth unlocks nothing/)).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Go deeper (depth 1: Purpose)", exact: true })).toBeVisible();
+  expect(await panel.getByRole("button", { name: /Go deeper \(depth 2/ }).count()).toBe(0);
+  // Keyboard run, level 1: focus the consent-gated action, submit with Enter.
+  const deeper1 = panel.getByRole("button", { name: "Go deeper (depth 1: Purpose)", exact: true });
+  await deeper1.focus();
+  await expect(deeper1).toBeFocused();
+  await page.keyboard.press("Enter");
+  const level1 = panel.locator("#why-level-1");
+  await expect(level1).toBeVisible({ timeout: 60000 });
+  // Focus choreography: the settled level block receives focus.
+  await expect(level1).toBeFocused();
+  await expect(level1.getByText(/AI-generated · Unreviewed/)).toBeVisible();
+  await expect(level1.getByText(/Depth 1 · Purpose/)).toBeVisible();
+  // Each level cites its visible sources (lesson source lines with locators).
+  await expect(level1.getByText(/Lesson source: why-0\.txt ·/).first()).toBeVisible();
+  await expect(level1.getByText(/Lesson source: why-1\.txt ·/).first()).toBeVisible();
+  await expect(level1.getByText(/this depth unlocked nothing\./)).toBeVisible();
+  // Keyboard run, level 2: a distinct dimension with its own prose and sources.
+  const deeper2 = panel.getByRole("button", { name: "Go deeper (depth 2: Assumptions & trade-offs)", exact: true });
+  await deeper2.focus();
+  await page.keyboard.press("Enter");
+  const level2 = panel.locator("#why-level-2");
+  await expect(level2).toBeVisible({ timeout: 60000 });
+  await expect(level2).toBeFocused();
+  await expect(level2.getByText(/Depth 2 · Assumptions & trade-offs/)).toBeVisible();
+  await expect(level2.getByText(/AI-generated · Unreviewed/)).toBeVisible();
+  expect((await level1.textContent()) !== (await level2.textContent())).toBe(true);
+  // The stored evidence is exhausted past level 2: the notice states it and
+  // the stepper stops — no third Go deeper action is ever offered.
+  await expect(panel.getByText("The sources here are exhausted for this question.", { exact: false })).toBeVisible();
+  expect(await panel.getByRole("button", { name: /Go deeper/ }).count()).toBe(0);
+  // The stop control is visible at every depth and keyboard-operable: it
+  // collapses the stepper and focus moves to the why heading.
+  const stop = panel.getByRole("button", { name: "Stop exploring", exact: true });
+  await stop.focus();
+  await expect(stop).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(whyHeading).toBeFocused();
+  await expect(panel.locator("#why-level-1")).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Show why exploration", exact: true })).toBeVisible();
+  // Reopening restores the ladder exactly as settled.
+  await panel.getByRole("button", { name: "Show why exploration", exact: true }).click();
+  await expect(panel.locator("#why-level-1")).toBeVisible();
+  await expect(panel.locator("#why-level-2")).toBeVisible();
+  // A request past the available evidence (out of band, as a stale client
+  // would send): the honest exhaustion verdict with 200, and ZERO dispatch —
+  // no third row ever lands in the database.
+  const course = await (await page.request.get(`/api/v1/studies/${rootId}/course`)).json() as { course: { courseId: string; items: Array<{ done: boolean }> } };
+  const studyNow = await (await page.request.get(`/api/v1/studies/${rootId}`)).json() as { revision: number };
+  const past = await page.request.post(`/api/v1/studies/${rootId}/course/why`, {
+    headers: { Origin: origin },
+    data: { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: studyNow.revision, courseId: course.course.courseId, lessonIndex: 0, depth: 3 },
+  });
+  expect(past.status()).toBe(200);
+  expect(await past.json()).toMatchObject({ state: "exhausted", depth: 3, availableDepth: 2 });
+  // Depth unlocked nothing: exactly the two settled rows, no tracker state,
+  // no done items, and no scored semantics in the served why state.
+  const rows = await database().query<{ depth: number; status: string }>(
+    "SELECT w.depth,w.status FROM app.why_explanation w JOIN app.generated_course c ON c.id=w.course_id WHERE w.owner_id=$1 AND c.root_id=$2 ORDER BY w.depth",
+    [account.userId, rootId],
+  );
+  expect(rows.rows).toEqual([{ depth: 1, status: "ready" }, { depth: 2, status: "ready" }]);
+  expect(course.course.items.every(item => !item.done)).toBe(true);
+  expect((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.course_item_state WHERE owner_id=$1", [account.userId])).rows[0].count).toBe(0);
+  const servedWhy = await (await page.request.get(`/api/v1/studies/${rootId}/course/why?course=${course.course.courseId}&lesson=0`)).json() as unknown;
+  for (const banned of ['"score"', '"credit"', '"completion"', '"unlock"', '"attempt"']) expect(JSON.stringify(servedWhy)).not.toContain(banned);
+  // Exhausted-verdict path, keyboard-only, on a second study: a verified
+  // supplement grows the evidence to depth 2, level 1 settles, then the
+  // supplement pass is staged out-of-band as no longer settled — server-side
+  // availability shrinks back to depth 1 while this view's ladder still
+  // offers depth 2. Dispatching the stale offer returns the honest exhaustion
+  // verdict with ZERO dispatch: the focused button unmounts and focus lands
+  // on the notice (the stop is announced, never silent), and no depth-2 row
+  // ever lands.
+  await page.getByRole("button", { name: "Back to library", exact: true }).click();
+  const shrinkRoot = await uploadAndConfirm(page, "No source explains mock frameworks.", ["One generated lesson"]);
+  const shrinkPanel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your mini-course", exact: true }) });
+  await shrinkPanel.getByRole("button", { name: "Generate mini-course (AI)", exact: true }).click();
+  await expect(shrinkPanel.getByRole("heading", { name: "1. One generated lesson", exact: true })).toBeVisible({ timeout: 60000 });
+  // The keyboard supplement check verifies the plan's one gap (supported) —
+  // the stored evidence now grounds depth 2.
+  const check = shrinkPanel.getByRole("button", { name: "Check gaps against public sources (AI)", exact: true });
+  await check.focus();
+  await page.keyboard.press("Enter");
+  await expect(shrinkPanel.getByText("Supplement — external source", { exact: false }).first()).toBeVisible({ timeout: 60000 });
+  // Keyboard level 1; its settle re-read carries the grown availability, so
+  // the ladder then offers depth 2.
+  const shrinkDeeper1 = shrinkPanel.getByRole("button", { name: "Go deeper (depth 1: Purpose)", exact: true });
+  await shrinkDeeper1.focus();
+  await page.keyboard.press("Enter");
+  await expect(shrinkPanel.locator("#why-level-1")).toBeVisible({ timeout: 60000 });
+  const shrinkDeeper2 = shrinkPanel.getByRole("button", { name: "Go deeper (depth 2: Assumptions & trade-offs)", exact: true });
+  await expect(shrinkDeeper2).toBeVisible();
+  // Stage the shrink: the latest supplement pass is no longer settled, so the
+  // verified pool is empty and only depth 1 is groundable server-side.
+  const shrinkCourse = await (await page.request.get(`/api/v1/studies/${shrinkRoot}/course`)).json() as { course: { courseId: string } };
+  await database().query("UPDATE app.supplement_request SET status='failed', failure_code='timeout', settled_at=clock_timestamp() WHERE course_id=$1 AND status='ready'", [shrinkCourse.course.courseId]);
+  // Keyboard dispatch of the stale offer: the honest verdict returns, the
+  // notice renders and RECEIVES FOCUS, the offer disappears, and nothing was
+  // dispatched or stored for depth 2.
+  await shrinkDeeper2.focus();
+  await page.keyboard.press("Enter");
+  const shrinkNotice = shrinkPanel.locator("#why-exhausted-notice");
+  await expect(shrinkNotice).toBeVisible();
+  await expect(shrinkNotice).toBeFocused();
+  await expect(shrinkNotice).toContainText("The sources here are exhausted for this question.");
+  expect(await shrinkPanel.getByRole("button", { name: /Go deeper/ }).count()).toBe(0);
+  expect(await shrinkPanel.locator("#why-level-2").count()).toBe(0);
+  const shrinkRows = await database().query<{ depth: number }>(
+    "SELECT w.depth FROM app.why_explanation w WHERE w.owner_id=$1 AND w.course_id=$2 ORDER BY w.depth",
+    [account.userId, shrinkCourse.course.courseId],
+  );
+  expect(shrinkRows.rows).toEqual([{ depth: 1 }]);
+  // Keyboard-complete and overflow-free at 360px and desktop throughout.
+  for (const width of [360, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(panel.getByRole("heading", { name: "1. One generated lesson", exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  expect(outbound).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: info.outputPath("why-explorer-studied.png"), fullPage: true });
 });

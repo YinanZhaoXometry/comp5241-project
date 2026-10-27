@@ -1,5 +1,5 @@
 import type { PgBoss } from "pg-boss";
-import { COURSE_QUEUE, SUPPLEMENT_QUEUE, courseJobSchema, courseContentV4Schema, coursePreferencePinSchema, storedCourseContent, supplementJobSchema, type CourseContentServing, type CourseContentV4, type CourseGap, type CourseJob, type SupplementJob } from "../../contracts/courses";
+import { COURSE_QUEUE, SUPPLEMENT_QUEUE, WHY_QUEUE, courseJobSchema, courseContentV4Schema, coursePreferencePinSchema, lessonFraming, storedCourseContent, supplementJobSchema, whyJobSchema, type CourseContentServing, type CourseContentV4, type CourseGap, type CourseJob, type SupplementJob, type WhyJob } from "../../contracts/courses";
 import { textCompletionRequestSchema, type TextCompletionPort } from "../../contracts/ai-provider";
 import type { BoundedFetchPort } from "../../adapters/source-fetch";
 import type { Plan } from "../../contracts/setup";
@@ -22,9 +22,10 @@ import {
   parseProposalOutput,
   verifySupplement,
 } from "./supplements";
+import { availableWhyDepth, buildWhyMessages, createSyntheticWhyCompletion, parseWhyOutput } from "./why";
 import * as repository from "./repository";
 
-export { COURSE_QUEUE, SUPPLEMENT_QUEUE };
+export { COURSE_QUEUE, SUPPLEMENT_QUEUE, WHY_QUEUE };
 
 type Claim = {
   planRevisionId: string;
@@ -337,6 +338,148 @@ export async function workSupplementFetches(boss: PgBoss, completion?: () => Tex
       if (envelope.requestId !== job.id) throw new Error("Invalid job identity");
       await runSupplementFetch(envelope, completion, fetchPort);
       console.log(JSON.stringify({ event: "supplement-processed", requestId: envelope.requestId }));
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Epic-2 S6 why phase. One attempt (retryLimit 0): the why_explanation row is
+// the single durable record and lands in an honest terminal state on every
+// path. Pipeline order mirrors the supplement contract: fenced re-read (which
+// RE-COMPUTES availability — the evidence must still ground the requested
+// depth at run time) → ONE bounded explanation completion → strict parse
+// (restatement rejection, citation resolution) BEFORE settling →
+// settleDispatch → single-transaction claim-first persist + ledger. Only an
+// ACCEPTED settle may store any effect — a rejected-late result is discarded,
+// never stored. No new lifecycle object: the row fences on the course's own
+// objects and cascades with the course lineage (the 019 practice pattern).
+// ---------------------------------------------------------------------------
+
+type WhyClaim = {
+  admissionId: string;
+  courseId: string;
+  lessonIndex: number;
+  lessonTitle: string;
+  depth: number;
+  sections: CourseContentServing["lessons"][number]["sections"];
+  supplements: Array<{ outcome: string; url: string; origin: string; locator: string | null; passage: string | null }>;
+  ownTexts: string[];
+};
+
+export async function runWhyStep(job: WhyJob, completion?: () => TextCompletionPort): Promise<void> {
+  const identity = { userId: job.ownerId, sessionId: job.sessionId };
+  const failRequest = async (code: string) => {
+    await transaction(client => repository.markWhyFailed(client, job.requestId, code))
+      .catch(() => console.error(JSON.stringify({ event: "why-terminal-pending", requestId: job.requestId })));
+  };
+  // Phase 1 — fenced re-read of the SAME pinned course and level under the
+  // recorded owner. Any fence (revoked session, deleted root, invalidated
+  // lineage, an unready course, an unknown lesson, evidence that no longer
+  // grounds the requested depth, or a row re-pended under a newer admission)
+  // ends the delivery without any dispatch.
+  let claim: WhyClaim | null | "fenced";
+  try {
+    claim = await transaction(async client => {
+      await authorize(client, identity);
+      const request = await repository.whyRowById(client, identity.userId, job.requestId);
+      if (!request || request.status !== "pending") return null; // already settled by a duplicate delivery
+      if (request.admission_id !== job.admissionId) return null; // re-pended under a newer admission: this delivery is stale
+      await lifecycle.scopedRoot(client, identity.userId, job.rootId);
+      const objectIds = request.object_ids ?? [];
+      if (!(await lifecycle.objectsActive(client, identity.userId, objectIds))) return "fenced" as const;
+      const course = await repository.readyCourseById(client, identity.userId, job.rootId, job.courseId);
+      if (!course || !course.content) return "fenced" as const;
+      const settledContent = storedCourseContent(course.content);
+      if (!settledContent) return "fenced" as const;
+      const lesson = settledContent.lessons[job.lessonIndex];
+      if (!lesson) return "fenced" as const;
+      const supplements = await repository.verifiedSupplementPool(client, identity.userId, job.courseId);
+      // Availability is re-fenced at run time: if the stored evidence no
+      // longer grounds this depth (e.g. the supplement pass it counted on is
+      // no longer the settled one), the honest outcome is discard, not
+      // dispatch — a NEW command will verdict exhaustion itself.
+      if (job.depth > availableWhyDepth(settledContent, job.lessonIndex, supplements)) return "fenced" as const;
+      const framing = lessonFraming(lesson);
+      return {
+        admissionId: request.admission_id,
+        courseId: course.id,
+        lessonIndex: job.lessonIndex,
+        lessonTitle: lesson.title,
+        depth: job.depth,
+        sections: lesson.sections,
+        supplements,
+        ownTexts: [...lesson.sections.map(section => section.text), ...(framing !== null ? [framing] : [])],
+      };
+    });
+  } catch (error) {
+    const code = errorCode(error);
+    await failRequest(code === "UNAUTHENTICATED" || code === "FORBIDDEN_OR_NOT_FOUND" ? "rejected-late" : "processing-blocked");
+    return;
+  }
+  if (claim === null) return;
+  if (claim === "fenced") { await failRequest("rejected-late"); return; }
+  // Phase 2 — one bounded explanation completion through the port. Production
+  // default is the deterministic local synthetic fixture (zero-token, no I/O);
+  // a live why processor stays deferred to gate F-A.
+  const port = (completion ? completion() : createSyntheticWhyCompletion());
+  const messages = buildWhyMessages({
+    lessonIndex: claim.lessonIndex,
+    lessonTitle: claim.lessonTitle,
+    depth: claim.depth,
+    sections: claim.sections,
+    supplements: claim.supplements,
+  });
+  const request = textCompletionRequestSchema.safeParse({ messages, maxOutputTokens: AI_BUDGET.maxOutputTokens });
+  if (!request.success) { await failRequest("invalid-input"); return; }
+  const outcome = await port.complete(request.data);
+  if (!outcome.ok) { await failRequest(outcome.error.code); return; }
+  // Strict parse BEFORE settling: a restatement-shaped draft, an unparseable
+  // reply or an unresolved citation fails honestly without consuming the
+  // admission — retryable via a new command.
+  const parsed = parseWhyOutput(outcome.text, {
+    depth: claim.depth,
+    sections: claim.sections,
+    supplements: claim.supplements,
+    ownTexts: claim.ownTexts,
+  });
+  if (!parsed.ok) { await failRequest("invalid-output"); return; }
+  // Phase 3 — settlement before persistence: the existing machinery re-checks
+  // everything; only an ACCEPTED settle may store any effect. The single
+  // transaction CLAIMS the pending→ready transition atomically WITH the
+  // settled fields: a row that already reached a terminal state after phase 1
+  // (e.g. a stranded row marked failed 'timeout' by a new command) returns no
+  // claim and NOTHING is written — no explanation, no citations, no ledger
+  // row.
+  try {
+    const settled = await settleDispatch(identity, claim.admissionId);
+    if (settled.outcome !== "accepted") { await failRequest("rejected-late"); return; }
+    await transaction(async client => {
+      const claimed = await repository.claimWhyReady(client, job.requestId, {
+        dimension: parsed.explanation.dimension,
+        explanation: parsed.explanation.text,
+        sources: parsed.explanation.sources,
+        model: outcome.provenance.returnedModel,
+      });
+      if (!claimed) return; // terminal state raced this delivery: persist nothing
+      await repository.insertLedgerRow(client, job.ownerId, outcome.usage);
+    });
+  } catch (error) {
+    const code = errorCode(error);
+    await failRequest(code === "UNAUTHENTICATED" || code === "FORBIDDEN_OR_NOT_FOUND" ? "rejected-late" : "processing-blocked");
+  }
+}
+
+// One-line worker registration for the why queue, mirroring
+// workCourseGenerations: single-job batches; the queue policy matches
+// migrate.ts exactly.
+export async function workWhySteps(boss: PgBoss, completion?: () => TextCompletionPort): Promise<void> {
+  await boss.createQueue(WHY_QUEUE, { retryLimit: 0, expireInSeconds: 120, retentionSeconds: 86400 });
+  await boss.work<WhyJob>(WHY_QUEUE, { batchSize: 1, pollingIntervalSeconds: 1 }, async jobs => {
+    for (const job of jobs) {
+      const envelope = whyJobSchema.parse(job.data);
+      if (envelope.requestId !== job.id) throw new Error("Invalid job identity");
+      await runWhyStep(envelope, completion);
+      console.log(JSON.stringify({ event: "why-step-processed", requestId: envelope.requestId }));
     }
   });
 }

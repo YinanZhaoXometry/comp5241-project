@@ -186,6 +186,21 @@ export async function captureManifest(
   } else {
     skipped.push({ category: 'practice-evidence', reason: 'Table app.practice_attempt is not present in this deployment' });
   }
+  // Epic-2 S6: AI why explanations are deliberately excluded from the
+  // artifact — they are AI-generated advisory depth derived from the lesson
+  // sources and verified supplements (labeled unreviewed, never owner
+  // content), and include-vs-exclude of generated course material is the same
+  // entry 8 lifecycle-class decision. The skip line records the exclusion
+  // honestly.
+  if (await tableColumns(client, 'why_explanation')) {
+    skipped.push({
+      category: 'why-explanations',
+      reason:
+        'Deliberately excluded: why explanations are AI-generated advisory depth over the lesson sources and verified supplements, labeled unreviewed and never owner-authored content; include-vs-exclude is deferred to the lifecycle story (entry 8)',
+    });
+  } else {
+    skipped.push({ category: 'why-explanations', reason: 'Table app.why_explanation is not present in this deployment' });
+  }
 
   return {
     capturedAt,

@@ -8,8 +8,8 @@ import { runExtraction } from '../../src/modules/materials-setup/extraction';
 import { savePlan, confirmPlan, listStudies, getStudy } from '../../src/modules/materials-setup/service';
 import { removeRoot, personalRemoval } from '../../src/modules/lifecycle-platform/service';
 import { previewDerivatives } from '../../src/modules/lifecycle-platform/derivatives';
-import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements } from '../../src/modules/course-generation/service';
-import { runCourseGeneration, runSupplementFetch } from '../../src/modules/course-generation/worker';
+import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState } from '../../src/modules/course-generation/service';
+import { runCourseGeneration, runSupplementFetch, runWhyStep } from '../../src/modules/course-generation/worker';
 import { createFixtureFetchPort } from '../../src/modules/course-generation/supplements';
 import { factsIdenticalAcrossTracks, computeFactsDigest } from '../../src/modules/course-generation/adaptation';
 import { contentAdaptation, contentFactsDigest, courseContentV1Schema, courseContentV3Schema, lessonFraming, practiceCardsOf, recallOf, storedCourseContent } from '../../src/contracts/courses';
@@ -19,7 +19,7 @@ import { captureManifest } from '../../src/modules/setup-export/manifest';
 import { transaction, database, closeDatabase } from '../../src/adapters/postgres/database';
 import { closeQueue } from '../../src/adapters/queue';
 import type { Command, Identity, Plan } from '../../src/contracts/setup';
-import type { CourseJob, SupplementJob } from '../../src/contracts/courses';
+import type { CourseJob, SupplementJob, WhyJob, WhyReceipt } from '../../src/contracts/courses';
 import type { TextCompletionPort, TextCompletionResult } from '../../src/contracts/ai-provider';
 
 // LOCAL SYNTHETIC coverage of the epic-2 course tracer: confirmed plan →
@@ -46,6 +46,10 @@ const multiPlan: Plan = {
 };
 const textA = 'Unit testing checks a single unit of behavior. Arrange inputs, act, assert outcomes.';
 const textB = 'A test double stands in for a dependency. Coverage reports executed lines, not assertion quality.';
+// Epic-2 S6: a third source text — a single-lesson study acknowledged with
+// three sources carries three lesson sections, the evidence pool that grounds
+// why depth 2 (each further piece past the base reading grounds one level).
+const textC = 'A third perspective rounds the reading out. Comparison across pieces is the point of arranging them.';
 // The synthetic fixture's per-card canonical answers are the opening sentences
 // of the sources the cards draw from (round-robin over the plan's outcomes) —
 // deterministic, so withholding can be asserted against every card.
@@ -67,20 +71,17 @@ async function actor(label: string) {
   return { userId: credentials.userId, sessionId: session.rows[0].id } satisfies Identity;
 }
 
-async function confirmedStudy(identity: Identity, studyPlan: Plan = plan) {
-  const slotA = crypto.randomUUID();
-  const slotB = crypto.randomUUID();
-  const batch = await createBatch(identity, { ...command(), inputs: [
-    { slotId: slotA, filename: 'notes.txt', mime: 'text/plain', byteLength: Buffer.byteLength(textA) },
-    { slotId: slotB, filename: 'doubles.txt', mime: 'text/plain', byteLength: Buffer.byteLength(textB) },
-  ] });
-  const uploadA = await uploadSlot(identity, batch.rootId, slotA, command(), new Blob([textA]).stream());
-  await runExtraction(uploadA.operationId!);
-  const uploadB = await uploadSlot(identity, batch.rootId, slotB, command(), new Blob([textB]).stream());
-  await runExtraction(uploadB.operationId!);
+async function confirmedStudy(identity: Identity, studyPlan: Plan = plan, texts: string[] = [textA, textB]) {
+  const names = ['notes.txt', 'doubles.txt', 'third.txt'];
+  const slotIds = texts.map(() => crypto.randomUUID());
+  const batch = await createBatch(identity, { ...command(), inputs: texts.map((text, index) => ({ slotId: slotIds[index], filename: names[index], mime: 'text/plain', byteLength: Buffer.byteLength(text) })) });
+  for (const [index, text] of texts.entries()) {
+    const upload = await uploadSlot(identity, batch.rootId, slotIds[index], command(), new Blob([text]).stream());
+    await runExtraction(upload.operationId!);
+  }
   const preview = await getBatch(identity, batch.rootId);
-  const slots = preview.slots.filter(item => item.slotId === slotA || item.slotId === slotB);
-  if (slots.length !== 2 || slots.some(item => !item.extractionId)) throw new Error('fixture setup failed');
+  const slots = preview.slots.filter(item => slotIds.includes(item.slotId));
+  if (slots.length !== texts.length || slots.some(item => !item.extractionId)) throw new Error('fixture setup failed');
   await acknowledge(identity, batch.rootId, { ...command(preview.revision), selected: slots.map(item => ({ slotId: item.slotId, extractionId: item.extractionId!, acknowledged: true as const })), excluded: [] });
   const acknowledged = await getBatch(identity, batch.rootId);
   const saved = await savePlan(identity, batch.rootId, { ...command(acknowledged.revision), plan: studyPlan, extractionId: acknowledged.selection!.sources[0].extractionId, selectionId: acknowledged.selection!.id });
@@ -111,6 +112,15 @@ async function supplementJobOf(identity: Identity, courseId: string): Promise<Su
   );
   if (!row.rows[0]) throw new Error('no supplement request row');
   return { schemaVersion: 1, requestId: row.rows[0].id, admissionId: row.rows[0].admission_id, courseId, rootId: row.rows[0].root_id, ownerId: identity.userId, sessionId: identity.sessionId };
+}
+
+async function whyJobOf(identity: Identity, courseId: string, lessonIndex: number, depth: number): Promise<WhyJob> {
+  const row = await database().query<{ id: string; root_id: string; admission_id: string }>(
+    'SELECT id,root_id,admission_id FROM app.why_explanation WHERE owner_id=$1 AND course_id=$2 AND lesson_index=$3 AND depth=$4 ORDER BY created_at DESC LIMIT 1',
+    [identity.userId, courseId, lessonIndex, depth],
+  );
+  if (!row.rows[0]) throw new Error('no why row');
+  return { schemaVersion: 1, requestId: row.rows[0].id, admissionId: row.rows[0].admission_id, courseId, rootId: row.rows[0].root_id, ownerId: identity.userId, sessionId: identity.sessionId, lessonIndex, depth };
 }
 
 // The processor_configuration table is shared, ordered state (see ai-check's
@@ -1445,5 +1455,352 @@ describe('epic-2 S4: background and goal adaptation', () => {
     await grant(a); // the one honest re-grant
     const receipt = await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
     expect(receipt.state).toBe('pending');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Epic-2 S6: learner-controlled why exploration with honest stopping. The
+// default processor is the local synthetic why fixture (zero network): two
+// successive grounded levels with fixed dimensions, the structural exhaustion
+// precondition (zero dispatch, no row), replay/duplicate/self-heal
+// idempotency, the standard denial surface, restatement rejection, lifecycle
+// purge with the course lineage, the export skip, and legacy stored courses
+// deriving levels from their own evidence.
+// ---------------------------------------------------------------------------
+
+describe('epic-2 S6: learner-controlled why exploration', () => {
+  it('grounds two successive levels on a fixture lesson — distinct non-restatement dimensions, visible sources, zero unlock', async () => {
+    const a = await actor('why-happy');
+    await grant(a);
+    // One lesson acknowledged with three sources → three lesson sections: the
+    // evidence pool grounds why depth 2 (pieces − 1, capped at the two fixed
+    // dimensions).
+    const study = await confirmedStudy(a, plan, [textA, textB, textC]);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const course = await courseRowOf(a, study.rootId);
+    let state = await getWhyState(a, study.rootId, course.id, '0');
+    expect(state.availableDepth).toBe(2);
+    expect(state.levels.map(level => [level.depth, level.status, level.dimension])).toEqual([
+      [1, 'available', 'purpose'],
+      [2, 'available', 'assumptions-trade-offs'],
+    ]);
+    // Fixed sequencing: level 2 before level 1 settled is a stale-view
+    // conflict, never a skipped rung.
+    await expect(requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 2 })).rejects.toMatchObject({ code: 'CONFLICT' });
+    const first = await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 1 });
+    expect(first).toMatchObject({ state: 'pending', depth: 1, courseId: course.id, lessonIndex: 0 });
+    await runWhyStep(await whyJobOf(a, course.id, 0, 1));
+    state = await getWhyState(a, study.rootId, course.id, '0');
+    const level1 = state.levels[0];
+    expect(level1.status).toBe('ready');
+    expect(level1.explanation?.dimension).toBe('purpose');
+    expect(level1.explanation?.sources.length).toBeGreaterThanOrEqual(1);
+    const names = new Set(['notes.txt', 'doubles.txt', 'third.txt']);
+    for (const source of level1.explanation!.sources) {
+      expect(source.kind).toBe('lesson');
+      expect(names.has((source as { filename: string }).filename)).toBe(true);
+      expect((source as { locator: string }).locator.length).toBeGreaterThanOrEqual(1);
+    }
+    // Non-restatement, structurally: the settled text is none of the lesson's
+    // own section texts (the parser's sentence-containment check ran too).
+    const stored = await database().query<{ content: { lessons: Array<{ sections: Array<{ text: string }> }> } }>('SELECT content FROM app.generated_course WHERE id=$1', [course.id]);
+    const lessonTexts = stored.rows[0].content.lessons[0].sections.map(section => section.text);
+    expect(lessonTexts.includes(level1.explanation!.text)).toBe(false);
+    // Second level: a distinct dimension with distinct prose.
+    const second = await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 2 });
+    expect(second).toMatchObject({ state: 'pending', depth: 2 });
+    await runWhyStep(await whyJobOf(a, course.id, 0, 2));
+    state = await getWhyState(a, study.rootId, course.id, '0');
+    const level2 = state.levels[1];
+    expect(level2.status).toBe('ready');
+    expect(level2.explanation?.dimension).toBe('assumptions-trade-offs');
+    expect(level2.explanation?.text).not.toBe(level1.explanation?.text);
+    // Exactly one row per level; the ladder serves both.
+    const rows = await database().query<{ depth: number; status: string }>('SELECT depth,status FROM app.why_explanation WHERE course_id=$1 ORDER BY depth', [course.id]);
+    expect(rows.rows).toEqual([{ depth: 1, status: 'ready' }, { depth: 2, status: 'ready' }]);
+    // Depth unlocked NOTHING: no tracker rows, no done items, no scored
+    // semantics anywhere in the served state, and only honest provenance.
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.course_item_state WHERE course_id=$1', [course.id])).rows[0].count).toBe(0);
+    const view = await getCourse(a, study.rootId);
+    expect(view.state === 'ready' && view.course.items.every(item => !item.done)).toBe(true);
+    for (const banned of ['"score"', '"credit"', '"completion"', '"unlock"', '"attempt"']) expect(JSON.stringify(state)).not.toContain(banned);
+    expect(state.levels.every(level => level.status === 'ready')).toBe(true);
+    // Ledger honesty: one zero-token row per dispatch (generation + two why
+    // steps), tokens never fabricated.
+    const ledger = await database().query<{ count: number; tokens: number }>("SELECT count(*)::int AS count, COALESCE(sum(total_tokens),0)::int AS tokens FROM app.ai_dispatch_ledger WHERE owner_id=$1", [a.userId]);
+    expect(ledger.rows[0]).toMatchObject({ count: 3, tokens: 0 });
+  });
+
+  it('exhaustion is a precondition: past the stored evidence → honest verdict, zero dispatch, no row; verified supplements grow availability', async () => {
+    const a = await actor('why-exhaustion');
+    await grant(a);
+    // Two sources, one lesson → two sections: only depth 1 is grounded.
+    const study = await confirmedStudy(a, plan);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const course = await courseRowOf(a, study.rootId);
+    expect((await getWhyState(a, study.rootId, course.id, '0')).availableDepth).toBe(1);
+    const exhausted = await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 2 });
+    expect(exhausted).toMatchObject({ state: 'exhausted', depth: 2, availableDepth: 1, courseId: course.id });
+    // Even further past: the same honest verdict.
+    expect(await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 5 })).toMatchObject({ state: 'exhausted' });
+    // ZERO dispatch and ZERO stored response: no why row, no admission beyond
+    // the generation's, no ledger row.
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.why_explanation WHERE owner_id=$1', [a.userId])).rows[0].count).toBe(0);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.dispatch_admission WHERE owner_id=$1', [a.userId])).rows[0].count).toBe(1);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.ai_dispatch_ledger WHERE owner_id=$1', [a.userId])).rows[0].count).toBe(1);
+    // Level 1 still grounds and settles.
+    await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 1 });
+    await runWhyStep(await whyJobOf(a, course.id, 0, 1));
+    expect((await getWhyState(a, study.rootId, course.id, '0')).levels[0].status).toBe('ready');
+    // A verified supplement pass grows the evidence pool: the default plan's
+    // one declared gap resolves supported, so depth 2 becomes groundable and
+    // its settled level cites the supplement beside the lesson sources.
+    await requestSupplements(a, study.rootId, { ...command(study.revision), courseId: course.id });
+    await runSupplementFetch(await supplementJobOf(a, course.id));
+    const grown = await getWhyState(a, study.rootId, course.id, '0');
+    expect(grown.availableDepth).toBe(2);
+    expect(grown.levels[1].status).toBe('available');
+    const admitted = await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 2 });
+    expect(admitted).toMatchObject({ state: 'pending', depth: 2 });
+    await runWhyStep(await whyJobOf(a, course.id, 0, 2));
+    const settled = await getWhyState(a, study.rootId, course.id, '0');
+    expect(settled.levels[1].status).toBe('ready');
+    const supplementSource = settled.levels[1].explanation?.sources.find(source => source.kind === 'supplement');
+    expect(supplementSource).toMatchObject({ kind: 'supplement', origin: 'docs.example.org' });
+  });
+
+  it('replays one command, no-ops duplicate delivery, returns the settled explanation to a repeat command and self-heals a stranded row', async () => {
+    const a = await actor('why-replay');
+    await grant(a);
+    const study = await confirmedStudy(a, plan, [textA, textB, textC]);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const course = await courseRowOf(a, study.rootId);
+    const envelope = { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 1 };
+    const first = await requestWhyStep(a, study.rootId, envelope);
+    expect(first.state).toBe('pending');
+    expect(await requestWhyStep(a, study.rootId, envelope)).toEqual(first); // command replay
+    const job = await whyJobOf(a, course.id, 0, 1);
+    await runWhyStep(job);
+    await runWhyStep(job); // duplicate delivery: status guard no-ops
+    expect((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.why_explanation WHERE course_id=$1 AND depth=1", [course.id])).rows[0].count).toBe(1);
+    // A DIFFERENT command for the settled level returns the existing
+    // explanation's receipt without a second dispatch.
+    const repeat = await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 1 });
+    expect(repeat).toMatchObject({ state: 'ready', operationId: job.requestId, depth: 1 });
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.dispatch_admission WHERE owner_id=$1', [a.userId])).rows[0].count).toBe(2); // generation + level 1 only
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.ai_dispatch_ledger WHERE owner_id=$1', [a.userId])).rows[0].count).toBe(2);
+    // Stranded pending past the honest 120-second cap: a new command marks it
+    // failed 'timeout' and re-pends the SAME row under a fresh admission.
+    const stranded = await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 2 });
+    expect(stranded).toMatchObject({ state: 'pending' });
+    const strandedId = (stranded as WhyReceipt).operationId!;
+    await database().query("UPDATE app.why_explanation SET created_at=clock_timestamp()-interval '130 seconds' WHERE id=$1", [strandedId]);
+    const retried = await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 2 });
+    expect(retried).toMatchObject({ state: 'pending', operationId: strandedId }); // same row, fresh admission
+    await runWhyStep(await whyJobOf(a, course.id, 0, 2));
+    const healed = await database().query<{ status: string; failure_code: string | null; explanation: string | null }>('SELECT status,failure_code,explanation FROM app.why_explanation WHERE id=$1', [strandedId]);
+    expect(healed.rows[0]).toMatchObject({ status: 'ready', failure_code: null });
+    expect(healed.rows[0].explanation).not.toBeNull();
+    // A late delivery carrying a stale admission no-ops against the admission
+    // guard (the row was re-pended under a newer admission).
+    await runWhyStep({ schemaVersion: 1, requestId: strandedId, admissionId: crypto.randomUUID(), courseId: course.id, rootId: study.rootId, ownerId: a.userId, sessionId: a.sessionId, lessonIndex: 0, depth: 2 });
+    expect((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.why_explanation WHERE course_id=$1", [course.id])).rows[0].count).toBe(2);
+  });
+
+  it('denies honestly: consent, cross-owner, unknown course/lesson, stale revision, invalid bodies — zero recorded effect', async () => {
+    // Declined owner: a ready course exists, but the latest decision under the
+    // current disclosure is not granted — the why step is blocked with zero
+    // effect (the same state a lapsed grant is in).
+    const blocked = await actor('why-consent-blocked');
+    await grant(blocked);
+    const blockedStudy = await confirmedStudy(blocked, plan, [textA, textB, textC]);
+    await requestCourseGeneration(blocked, blockedStudy.rootId, { ...command(blockedStudy.revision) });
+    await runCourseGeneration(await jobOf(blocked, blockedStudy.rootId));
+    const blockedCourse = await courseRowOf(blocked, blockedStudy.rootId);
+    await decide(blocked, { ...command(), configurationVersion: (await getDisclosure(blocked)).configuration.version, decision: 'declined', acknowledgedTerms: true });
+    await expect(requestWhyStep(blocked, blockedStudy.rootId, { ...command(blockedStudy.revision), courseId: blockedCourse.id, lessonIndex: 0, depth: 1 })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.why_explanation WHERE owner_id=$1', [blocked.userId])).rows[0].count).toBe(0);
+    const a = await actor('why-denied-a');
+    await grant(a);
+    const study = await confirmedStudy(a, plan, [textA, textB, textC]);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const course = await courseRowOf(a, study.rootId);
+    const b = await actor('why-denied-b');
+    await grant(b);
+    // Cross-owner: the standard no-leak denial for both verbs.
+    await expect(requestWhyStep(b, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 1 })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    await expect(getWhyState(b, study.rootId, course.id, '0')).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    // Unknown course under the owner's own root: the same actionable state as
+    // the recall path (generate first); unknown lesson likewise.
+    await expect(requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: crypto.randomUUID(), lessonIndex: 0, depth: 1 })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 5, depth: 1 })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(getWhyState(a, study.rootId, course.id, '9')).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(getWhyState(a, study.rootId, course.id)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    // Stale expectedRevision conflicts honestly; invalid bodies never record.
+    await expect(requestWhyStep(a, study.rootId, { ...command(study.revision + 5), courseId: course.id, lessonIndex: 0, depth: 1 })).rejects.toMatchObject({ code: 'CONFLICT' });
+    for (const body of [
+      { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 0 },
+      { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 9 },
+      { ...command(study.revision), courseId: course.id, depth: 1 },
+      { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 1, extra: 1 },
+    ]) await expect(requestWhyStep(a, study.rootId, body)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.why_explanation WHERE owner_id=ANY($1::uuid[])', [[a.userId, b.userId, blocked.userId]])).rows[0].count).toBe(0);
+  });
+
+  it('rejects restatement-shaped drafts as invalid-output honestly and retries via a new command', async () => {
+    const a = await actor('why-restatement');
+    await grant(a);
+    const study = await confirmedStudy(a, plan, [textA, textB, textC]);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const course = await courseRowOf(a, study.rootId);
+    await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 1 });
+    const job = await whyJobOf(a, course.id, 0, 1);
+    // A processor that returns the lesson's OWN first section text verbatim as
+    // the explanation: restatement-shaped, rejected — not repaired.
+    const stored = await database().query<{ content: { lessons: Array<{ sections: Array<{ text: string }> }> } }>('SELECT content FROM app.generated_course WHERE id=$1', [course.id]);
+    const copied = stored.rows[0].content.lessons[0].sections[0].text;
+    const restating = portOf({ ok: true, text: JSON.stringify({ explanation: copied, citations: [{ kind: 'lesson', index: 0 }] }), provenance: { requestedModel: 'x', returnedModel: 'x-fake' }, usage });
+    await runWhyStep(job, restating);
+    const failed = await getWhyState(a, study.rootId, course.id, '0');
+    expect(failed.levels[0].status).toBe('failed');
+    expect(failed.levels[0].failureCode).toBe('invalid-output');
+    expect((await database().query<{ explanation: string | null }>('SELECT explanation FROM app.why_explanation WHERE id=$1', [job.requestId])).rows[0].explanation).toBeNull();
+    // A NEW command retries the same level (re-pend under a fresh admission)
+    // and the default fixture settles it.
+    const retried = await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 1 });
+    expect(retried).toMatchObject({ state: 'pending', operationId: job.requestId });
+    await runWhyStep(await whyJobOf(a, course.id, 0, 1));
+    const settled = await getWhyState(a, study.rootId, course.id, '0');
+    expect(settled.levels[0].status).toBe('ready');
+  });
+
+  it('discards the result when consent is withdrawn mid-flight; a claim race persists nothing', async () => {
+    const a = await actor('why-withdrawn');
+    await grant(a);
+    const study = await confirmedStudy(a, plan, [textA, textB, textC]);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const course = await courseRowOf(a, study.rootId);
+    await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 1 });
+    const job = await whyJobOf(a, course.id, 0, 1);
+    await withdraw(a, command());
+    await runWhyStep(job);
+    const failed = await getWhyState(a, study.rootId, course.id, '0');
+    expect(failed.levels[0]).toMatchObject({ status: 'failed', failureCode: 'rejected-late' });
+    expect((await database().query<{ explanation: string | null }>('SELECT explanation FROM app.why_explanation WHERE id=$1', [job.requestId])).rows[0].explanation).toBeNull();
+    // Claim race (a fresh owner — withdrawal above is terminal): a delivery
+    // whose row reached a terminal state during the completion commits no
+    // explanation and no ledger row.
+    const b = await actor('why-claim-race');
+    await grant(b);
+    const race = await confirmedStudy(b, plan, [textA, textB, textC]);
+    await requestCourseGeneration(b, race.rootId, { ...command(race.revision) });
+    await runCourseGeneration(await jobOf(b, race.rootId));
+    const raceCourse = await courseRowOf(b, race.rootId);
+    await requestWhyStep(b, race.rootId, { ...command(race.revision), courseId: raceCourse.id, lessonIndex: 0, depth: 1 });
+    const racingJob = await whyJobOf(b, raceCourse.id, 0, 1);
+    const before = (await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.ai_dispatch_ledger WHERE owner_id=$1', [b.userId])).rows[0].count;
+    const racing: () => TextCompletionPort = () => ({
+      complete: async () => {
+        await database().query("UPDATE app.why_explanation SET status='failed',failure_code='timeout',settled_at=clock_timestamp() WHERE id=$1 AND status='pending'", [racingJob.requestId]);
+        return { ok: true, text: JSON.stringify({ explanation: 'Brand new prose that carries real depth beyond the lesson text entirely.', citations: [{ kind: 'lesson', index: 0 }] }), provenance: { requestedModel: 'race-fixture', returnedModel: 'race-fixture' }, usage };
+      },
+    });
+    await runWhyStep(racingJob, racing);
+    const row = await database().query<{ status: string; failure_code: string | null; explanation: string | null }>('SELECT status,failure_code,explanation FROM app.why_explanation WHERE id=$1', [racingJob.requestId]);
+    expect(row.rows[0]).toMatchObject({ status: 'failed', failure_code: 'timeout' });
+    expect(row.rows[0].explanation).toBeNull();
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.ai_dispatch_ledger WHERE owner_id=$1', [b.userId])).rows[0].count).toBe(before);
+  });
+
+  it('serves legacy v1–v3 stored courses: levels derive from their own stored evidence', async () => {
+    const a = await actor('why-legacy');
+    await grant(a);
+    const study = await confirmedStudy(a);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const generated = await courseRowOf(a, study.rootId);
+    // A legacy v1 row with TWO stored sections: its own evidence grounds
+    // depth 1 (and only depth 1 — the stored evidence is what it is).
+    const legacyContent = {
+      lessonTitle: 'What a unit test is',
+      sections: [
+        { text: 'A legacy section states the primary behavior.', sourceRef: { extractionId: study.extractionIds[0], filename: 'legacy-a.txt', locator: 'lines 1-2' } },
+        { text: 'A second legacy section adds surrounding conditions.', sourceRef: { extractionId: study.extractionIds[1] ?? study.extractionIds[0], filename: 'legacy-b.txt', locator: 'lines 3-4' } },
+      ],
+      objectives: [{ index: 0, text: 'Explain arrange-act-assert' }],
+      recall: { objectiveIndex: 0, sourceRef: { extractionId: study.extractionIds[0], filename: 'legacy-a.txt', locator: 'lines 1-2' }, prompt: 'State the behavior.', answer: 'The primary behavior.', rationale: 'Stated in legacy-a.txt.' },
+    };
+    expect(courseContentV1Schema.safeParse(legacyContent).success).toBe(true);
+    await database().query('UPDATE app.generated_course SET content=$2 WHERE id=$1', [generated.id, legacyContent]);
+    const state = await getWhyState(a, study.rootId, generated.id, '0');
+    expect(state.availableDepth).toBe(1);
+    expect(state.lessonTitle).toBe('What a unit test is');
+    const admitted = await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: generated.id, lessonIndex: 0, depth: 1 });
+    expect(admitted).toMatchObject({ state: 'pending', depth: 1 });
+    await runWhyStep(await whyJobOf(a, generated.id, 0, 1));
+    const settled = await getWhyState(a, study.rootId, generated.id, '0');
+    expect(settled.levels[0].status).toBe('ready');
+    const filenames = settled.levels[0].explanation?.sources.map(source => (source as { filename?: string }).filename ?? '');
+    expect(filenames?.every(name => name === 'legacy-a.txt' || name === 'legacy-b.txt')).toBe(true);
+    // Depth 2 on the same stored evidence: the honest exhaustion verdict.
+    expect(await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: generated.id, lessonIndex: 0, depth: 2 })).toMatchObject({ state: 'exhausted', availableDepth: 1 });
+    // No regeneration-on-read: the stored document keeps its exact v1 shape.
+    const stored = await database().query<{ content: { lessonTitle?: string; contentVersion?: number } }>('SELECT content FROM app.generated_course WHERE id=$1', [generated.id]);
+    expect(stored.rows[0].content.lessonTitle).toBe('What a unit test is');
+    expect(stored.rows[0].content.contentVersion).toBeUndefined();
+  });
+
+  it('root deletion purges why rows with the course lineage; personal removal purges them with the owner; export records the honest skip', async () => {
+    const a = await actor('why-purge');
+    await grant(a);
+    const study = await confirmedStudy(a, plan, [textA, textB, textC]);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const course = await courseRowOf(a, study.rootId);
+    await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 1 });
+    await runWhyStep(await whyJobOf(a, course.id, 0, 1));
+    await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 2 });
+    await runWhyStep(await whyJobOf(a, course.id, 0, 2));
+    // The deletion preview counts why explanations as their own category.
+    const preview = await transaction(client => previewDerivatives(client, { ownerId: a.userId, rootIds: [study.rootId], objectIds: [], personal: false }));
+    expect(preview.find(category => category.key === 'why-explanations')).toMatchObject({ label: 'AI why explanations', count: 2 });
+    await removeRoot(a, study.rootId, { ...command(study.revision) });
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.why_explanation WHERE course_id=$1', [course.id])).rows[0].count).toBe(0);
+    // Personal removal purges why rows with the owner.
+    const b = await actor('why-purge-personal');
+    await grant(b);
+    const other = await confirmedStudy(b, plan, [textA, textB, textC]);
+    await requestCourseGeneration(b, other.rootId, { ...command(other.revision) });
+    await runCourseGeneration(await jobOf(b, other.rootId));
+    const otherCourse = await courseRowOf(b, other.rootId);
+    await requestWhyStep(b, other.rootId, { ...command(other.revision), courseId: otherCourse.id, lessonIndex: 0, depth: 1 });
+    await runWhyStep(await whyJobOf(b, otherCourse.id, 0, 1));
+    await personalRemoval(b, { ...command() });
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.why_explanation WHERE owner_id=$1', [b.userId])).rows[0].count).toBe(0);
+    // The export surface lists why-explanations as deliberately skipped with
+    // its honest reason; no explanation row ever enters the artifact.
+    const c = await actor('why-export-skip');
+    await grant(c);
+    const cstudy = await confirmedStudy(c, plan, [textA, textB, textC]);
+    await requestCourseGeneration(c, cstudy.rootId, { ...command(cstudy.revision) });
+    await runCourseGeneration(await jobOf(c, cstudy.rootId));
+    const ccourse = await courseRowOf(c, cstudy.rootId);
+    await requestWhyStep(c, cstudy.rootId, { ...command(cstudy.revision), courseId: ccourse.id, lessonIndex: 0, depth: 1 });
+    await runWhyStep(await whyJobOf(c, ccourse.id, 0, 1));
+    const exportPreview = await listExports(c);
+    const category = exportPreview.categories.find(item => item.category === 'why-explanations');
+    expect(category).toMatchObject({ available: true, count: null });
+    expect(category?.note).toContain('deliberately excluded');
+    const manifest = await transaction(client => captureManifest(client, c.userId));
+    const skip = manifest.skipped.find(item => item.category === 'why-explanations');
+    expect(skip?.reason).toContain('Deliberately excluded');
+    expect(skip?.reason).toContain('advisory depth');
+    expect(manifest.entries.every(entry => entry.category !== 'why-explanations')).toBe(true);
   });
 });

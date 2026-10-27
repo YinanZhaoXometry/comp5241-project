@@ -3,7 +3,7 @@ import type { PoolClient } from 'pg';
 import { config } from '../platform/config';
 import type { ExtractionJob } from '../contracts/setup';
 import { AI_DRAFT_QUEUE, type AiDraftJob } from '../contracts/ai-setup';
-import { COURSE_QUEUE, SUPPLEMENT_QUEUE, type CourseJob, type SupplementJob } from '../contracts/courses';
+import { COURSE_QUEUE, SUPPLEMENT_QUEUE, WHY_QUEUE, type CourseJob, type SupplementJob, type WhyJob } from '../contracts/courses';
 
 export const EXTRACTION_QUEUE = 'extract-txt-v1';
 let instance: PgBoss | undefined;
@@ -69,6 +69,17 @@ export async function enqueueCourseGeneration(client: PoolClient, job: CourseJob
 // bounded proposal + one fetch pass per delivery, job id = request id.
 export async function enqueueSupplementFetch(client: PoolClient, job: SupplementJob) {
   return transactionQueue(client).send(SUPPLEMENT_QUEUE, job, {
+    db: transactionDb(client),
+    id: job.requestId,
+    retryLimit: 0,
+    expireInSeconds: 120,
+    retentionSeconds: 86400,
+  });
+}
+// Epic-2 S6 why-step jobs: the identical single-attempt policy — one bounded
+// explanation completion per delivery, job id = request id (the why row id).
+export async function enqueueWhyStep(client: PoolClient, job: WhyJob) {
+  return transactionQueue(client).send(WHY_QUEUE, job, {
     db: transactionDb(client),
     id: job.requestId,
     retryLimit: 0,

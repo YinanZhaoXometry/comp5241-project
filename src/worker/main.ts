@@ -4,7 +4,7 @@ import { extractionJobSchema } from "../contracts/setup";
 import { runExtraction } from "../modules/materials-setup/extraction";
 import { workExports } from "../modules/setup-export/worker";
 import { workAiDrafts } from "../modules/ai-setup/worker";
-import { workCourseGenerations, workSupplementFetches } from "../modules/course-generation/worker";
+import { workCourseGenerations, workSupplementFetches, workWhySteps } from "../modules/course-generation/worker";
 import { reconcileCopies } from "../modules/lifecycle-platform/service";
 import { reconcileRetention } from "../modules/lifecycle-platform/retention";
 import { extractorExists } from "../adapters/private-files";
@@ -36,6 +36,7 @@ await workExports(boss);
 await workAiDrafts(boss);
 await workCourseGenerations(boss);
 await workSupplementFetches(boss);
+await workWhySteps(boss);
 let maintaining = false;
 const maintenance = setInterval(() => {
   if (maintaining) return;

@@ -18,15 +18,21 @@ project-new/
 │   │   ├── page.tsx · study-app.tsx · plan-editor.tsx · materials.tsx    private tracer UI
 │   │   ├── privacy-panel.tsx · goal-stage.tsx · check-stage.tsx ·        S3/S4/S7 stage panels
 │   │   │   export-panel.tsx · danger-zone.tsx                            S8/S9 panels
-│   │   │   course-stage.tsx                                              epic-2 S1–S5 player shell: numbered
+│   │   │   course-stage.tsx                                              epic-2 S1–S6 player shell: numbered
 │   │   │                                                                 lesson sequence, sticky sidebar (<850px
 │   │   │                                                                 top nav), content-item tracker with explicit
 │   │   │                                                                 per-version mark-done + optional enrichment,
-│   │   │                                                                 and the S5 practice set — per-card recall
+│   │   │                                                                 the S5 practice set — per-card recall
 │   │   │                                                                 cards with attempt-before-answer, typed
 │   │   │                                                                 feedback blocks (correctness, canonical
 │   │   │                                                                 answer, rationale, source, evidence kind),
-│   │   │                                                                 assisted-declaration toggle and fresh retries
+│   │   │                                                                 assisted-declaration toggle and fresh
+│   │   │                                                                 retries — and the S6 why-explorer per
+│   │   │                                                                 lesson: successive deeper levels (purpose,
+│   │   │                                                                 assumptions/trade-offs) grounded in visible
+│   │   │                                                                 sources, always-visible keyboard stop
+│   │   │                                                                 control, honest exhaustion past the stored
+│   │   │                                                                 evidence (zero dispatch) and no unlock
 │   │   ├── shell/          product + instructor page shells (sidebar/topnav, honesty label)
 │   │   ├── screens/        static styled screen content (library, course, practice, …)
 │   │   └── library·course·practice·progress·recovery·roadmap·review·why·       static product pages
@@ -37,17 +43,21 @@ project-new/
 │   │   ├── batches.ts      batch admission/selection contracts
 │   │   ├── consent.ts · preferences.ts · diagnostic.ts · export.ts   S3/S4/S7/S8 contracts
 │   │   ├── ai-provider.ts  provider-neutral text-completion port (dormant)
-│   │   └── courses.ts      epic-2 S1–S5 generated-course + supplement +
-│   │                         player contracts (content v4 = v3 full-lesson set
-│   │                         with per-lesson treatment framing and the
-│   │                         code-derived adaptation record PLUS the practice
-│   │                         set: one recall card per plan objective,
-│   │                         answers/rationales withheld server-side and
-│   │                         released only in per-card submission feedback
-│   │                         with the learner-declared evidence kind; v3/v2/v1
-│   │                         legacy union wrap serves unchanged — the stored
-│   │                         single recall becomes the one-card set view;
-│   │                         mark-done command; verified supplement records)
+│   │   └── courses.ts      epic-2 S1–S6 generated-course + supplement +
+│   │                         player + why contracts (content v4 = v3
+│   │                         full-lesson set with per-lesson treatment
+│   │                         framing and the code-derived adaptation record
+│   │                         PLUS the practice set: one recall card per plan
+│   │                         objective, answers/rationales withheld
+│   │                         server-side and released only in per-card
+│   │                         submission feedback with the learner-declared
+│   │                         evidence kind; v3/v2/v1 legacy union wrap serves
+│   │                         unchanged — the stored single recall becomes the
+│   │                         one-card set view; mark-done command; verified
+│   │                         supplement records; S6 why exploration — WHY_QUEUE
+│   │                         jobs, per-(course, lesson, depth) explanation
+│   │                         derivatives with fixed dimension sequencing and
+│   │                         the honest exhaustion verdict as a serving state)
 │   ├── modules/            shared web/worker services; never import app/worker/next
 │   │   ├── identity-access/    auth, sessions, role fences, synthetic provisioning
 │   │   ├── materials-setup/    uploads, extraction, batches, plans, handoff (queries/repository/service)
@@ -55,7 +65,7 @@ project-new/
 │   │   ├── setup-preferences/  resumable goal/topic/preferences with pinned revision (S4)
 │   │   ├── setup-diagnostic/   synthetic check bundles, evidence, skip path (S7 infrastructure)
 │   │   ├── setup-export/       consistent manifest snapshot + tar.gz artifacts (S8)
-│   │   ├── course-generation/  epic-2 S1–S5 tracer: confirmed-plan → generated
+│   │   ├── course-generation/  epic-2 S1–S6 tracer: confirmed-plan → generated
 │   │   │                       course (handoff-consuming service, restart-safe worker
 │   │   │                       running the local synthetic fixture behind
 │   │   │                       TextCompletionPort, versioned course/objective/source
@@ -75,7 +85,14 @@ project-new/
 │   │   │                       withheld answers, submitPracticeCard (assisted flag,
 │   │   │                       fresh retries, replay-idempotent feedback) and typed
 │   │   │                       practice evidence rows (019 app.practice_attempt)
-│   │   │                       cascading with the course lineage
+│   │   │                       cascading with the course lineage; S6 why.ts — pure
+│   │   │                       evidence availability (sections + verified supplements,
+│   │   │                       the structural exhaustion precondition), the bounded
+│   │   │                       why prompt, the strict parser (restatement rejection,
+│   │   │                       global-index citation resolution) and the synthetic
+│   │   │                       why fixture, with one explanation derivative per
+│   │   │                       (owner, course version, lesson, depth) in 020
+│   │   │                       app.why_explanation cascading with the course
 │   │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
 │   │                           derivative ports, dependencies preview (S9),
 │   │                           retention registry/scheduler + archive contract (S10)

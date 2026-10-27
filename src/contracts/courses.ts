@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { commandSchema, uuid } from "./setup";
+import { commandSchema, uuid, type Receipt } from "./setup";
 
 // Epic-2 S1 (confirmed-plan-to-generated-course tracer) contracts. A generated
 // course is a VERSIONED derivative of the exact confirmed plan revision: one
@@ -725,3 +725,153 @@ export type SupplementsState = {
   failureCode?: string | null;
   gaps: GapResolution[];
 };
+
+// ---------------------------------------------------------------------------
+// Epic-2 S6: learner-controlled why exploration with honest stopping. A
+// per-lesson "Go deeper" command dispatches ONE generation through the existing
+// admission/settle machinery and persists a why-explanation derivative: one row
+// per (owner, course version, lesson index, depth) whose dimension is FIXED BY
+// SEQUENCING (level 1 purpose, level 2 assumptions/trade-offs) so "beyond
+// restatement" stays deterministically checkable. Evidence availability is pure
+// server-side code over the stored course/supplement material computed BEFORE
+// any dispatch — a request past it gets an honest exhaustion verdict and zero
+// dispatch (no invented cause). Depth NEVER unlocks content, credit, tracker
+// state or completion anywhere; every response carries the AI-generated ·
+// Unreviewed label and cascades with the course lineage.
+// ---------------------------------------------------------------------------
+
+export const WHY_QUEUE = "why-step-v1";
+// The synthetic why fixture's honest model provenance: local, deterministic,
+// zero-token. A live processor (gate F-A) would record its own model string.
+export const SYNTHETIC_WHY_MODEL = "local-synthetic-why-fixture-v1";
+
+export const whyDimensions = ["purpose", "assumptions-trade-offs"] as const;
+export type WhyDimension = (typeof whyDimensions)[number];
+// The release's fixed dimension ladder: exactly two levels, so the stepper
+// never offers a level it cannot ground and availability caps structurally.
+export const MAX_WHY_DEPTH = 2;
+
+// Fixed dimension sequencing (level 1 purpose, level 2 assumptions/trade-offs)
+// — derived from the depth in code, never trusted from processor output.
+export function whyDimensionForDepth(depth: number): WhyDimension {
+  if (depth === 1) return "purpose";
+  if (depth === 2) return "assumptions-trade-offs";
+  throw new Error("why depth out of range");
+}
+
+// The "Go deeper" command: the command envelope plus the exact ready course
+// version, the 0-based lesson index and the requested depth. Anything past the
+// server-computed availability returns the honest exhaustion verdict — an
+// honest state, not an error — with zero dispatch and zero stored response.
+export const requestWhySchema = commandSchema.extend({
+  courseId: uuid,
+  lessonIndex: z.number().int().min(0).max(7),
+  depth: z.number().int().min(1).max(8),
+});
+export type RequestWhy = z.infer<typeof requestWhySchema>;
+
+// Restart-safe job envelope: id = request id (the why_explanation row id), one
+// attempt (retryLimit 0), the recorded owner identity re-authorizes every fence
+// at consume time. lessonIndex/depth ride the envelope so the worker re-derives
+// the same bounds it re-fences.
+export const whyJobSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  requestId: uuid,
+  admissionId: uuid,
+  courseId: uuid,
+  rootId: uuid,
+  ownerId: uuid,
+  sessionId: uuid,
+  lessonIndex: z.number().int().min(0).max(7),
+  depth: z.number().int().min(1).max(2),
+});
+export type WhyJob = z.infer<typeof whyJobSchema>;
+
+// A level's visible-source citation. Lesson citations name the lesson's own
+// source excerpt (filename + locator); supplement citations name a VERIFIED
+// S2 supplement record (origin + url + its locator inside the fetched source).
+export const whySourceLessonSchema = z.strictObject({
+  kind: z.literal("lesson"),
+  filename: z.string().trim().min(1).max(184),
+  locator: z.string().trim().min(1).max(120),
+});
+export const whySourceSupplementSchema = z.strictObject({
+  kind: z.literal("supplement"),
+  origin: z.string().trim().min(1).max(253),
+  url: z.string().trim().min(8).max(512),
+  locator: z.string().trim().min(1).max(200),
+});
+export const whySourceSchema = z.discriminatedUnion("kind", [whySourceLessonSchema, whySourceSupplementSchema]);
+export type WhySource = z.infer<typeof whySourceSchema>;
+
+// The stored/served explanation: prose beyond restatement plus at least one
+// resolved visible-source citation. The dimension is derived from the depth.
+export const whyExplanationSchema = z.strictObject({
+  depth: z.number().int().min(1).max(MAX_WHY_DEPTH),
+  dimension: z.enum(whyDimensions),
+  text: z.string().trim().min(1).max(2000),
+  sources: z.array(whySourceSchema).min(1).max(4),
+});
+export type WhyExplanation = z.infer<typeof whyExplanationSchema>;
+
+export type WhyExplanationView = WhyExplanation & {
+  model: string;
+  createdAt: string;
+};
+
+export type WhyLevelStatus = "available" | "exhausted" | "pending" | "failed" | "ready";
+// One ladder rung per fixed dimension (depth 1..MAX_WHY_DEPTH). `available`
+// means groundable-but-not-requested; `exhausted` means past the evidence —
+// the stepper never offers it; `pending`/`failed`/`ready` mirror the row.
+export type WhyLevelView = {
+  depth: number;
+  dimension: WhyDimension;
+  status: WhyLevelStatus;
+  requestId?: string;
+  failureCode?: string | null;
+  explanation?: WhyExplanationView;
+};
+
+// Owner-scoped why state for ONE lesson of ONE ready course version.
+export type WhyState = {
+  rootId: string;
+  revision: number;
+  courseId: string;
+  version: number;
+  lessonIndex: number;
+  lessonTitle: string;
+  // The server-computed evidence availability (0..MAX_WHY_DEPTH) — pure over
+  // the stored course content plus the verified supplements of the latest
+  // settled supplement pass, computed before any dispatch.
+  availableDepth: number;
+  levels: WhyLevelView[];
+};
+
+// The honest exhaustion verdict: zero dispatch, zero writes, no stored
+// response — deterministic, so an identical retry verdicts identically.
+export type WhyExhausted = {
+  rootId: string;
+  revision: number;
+  courseId: string;
+  lessonIndex: number;
+  depth: number;
+  state: "exhausted";
+  availableDepth: number;
+};
+export type WhyReceipt = Receipt & { courseId: string; lessonIndex: number; depth: number };
+
+// The processor's DRAFT shape: prose + index links only. Citation indexes are
+// GLOBAL piece indexes into the prompt's evidence listing (the lesson's own
+// sections first, the verified supplements continuing after them). Everything
+// that identifies a real source is resolved against that listing by the strict
+// parser — never trusted from output — and restatement-shaped prose is
+// rejected, never repaired.
+export const whyCitationDraftSchema = z.strictObject({
+  kind: z.enum(["lesson", "supplement"]),
+  index: z.number().int().min(0).max(15),
+});
+export const whyDraftSchema = z.strictObject({
+  explanation: z.string().trim().min(1).max(2000),
+  citations: z.array(whyCitationDraftSchema).min(1).max(4),
+});
+export type WhyDraft = z.infer<typeof whyDraftSchema>;

@@ -11,7 +11,7 @@ import { getPreferences, savePreferences } from "../../../../modules/setup-prefe
 import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finishCheck, flagUnclear } from "../../../../modules/setup-diagnostic/service";
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
-import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements } from "../../../../modules/course-generation/service";
+import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState } from "../../../../modules/course-generation/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -90,6 +90,24 @@ async function handle(request: Request, context: Context) {
     // command envelope).
     if (path[0] === "studies" && path[2] === "course" && path[3] === "track" && path.length === 4 && request.method === "POST") {
       return Response.json(await markItemDone(identity, path[1], await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-2 S6 why exploration: GET serves one lesson's ladder of one ready
+    // course version (?course=<uuid|version> optional selector, ?lesson=<0-7>
+    // required); POST is the consent-gated "Go deeper" command. A request past
+    // the server-computed evidence availability returns the honest exhaustion
+    // verdict — 200 with zero dispatch — while an admitted step is 202.
+    if (path[0] === "studies" && path[2] === "course" && path[3] === "why" && path.length === 4) {
+      if (request.method === "GET") {
+        const parameters = new URL(request.url).searchParams;
+        const requested = parameters.get("course") ?? undefined;
+        const lesson = parameters.get("lesson") ?? undefined;
+        const why = await getWhyState(identity, path[1], requested, lesson);
+        return protectedResponse(identity, path[1], why, request.signal, false, why.objectIds);
+      }
+      if (request.method === "POST") {
+        const result = await requestWhyStep(identity, path[1], await jsonBody(request));
+        return Response.json(result, { status: result.state === "exhausted" ? 200 : 202, headers: privateHeaders });
+      }
     }
     if (path[0] === "studies" && path[2] === "check" && path.length >= 3 && path.length <= 5) {
       const rootId = path[1];

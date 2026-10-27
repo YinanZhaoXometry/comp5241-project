@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, command, json } from "./client";
 import type { Command } from "../contracts/setup";
-import type { CourseItemView, CourseState, CourseView, PracticeFeedback, SupplementsState } from "../contracts/courses";
+import type { CourseItemView, CourseState, CourseView, PracticeFeedback, SupplementsState, WhyDimension, WhyExhausted, WhyReceipt, WhyState } from "../contracts/courses";
 import type { Study } from "../modules/materials-setup/service";
 
 type Props = { study: Study; busy: boolean; onBusy: (value: boolean) => void; onFailure: (error: unknown) => void; onCourseReady?: () => void };
 type Disclosure = { configuration: { eligibility: "eligible" | "ineligible"; provider: string }; decision: "none" | "granted" | "declined" | "withdrawn" };
 type CourseResponse = CourseState & { objectIds: string[] };
 type SupplementsResponse = SupplementsState & { objectIds: string[] };
+type WhyResponse = WhyState & { objectIds: string[] };
 
 const failureCopy: Record<string, string> = {
   "invalid-output": "The generated draft did not validate against your confirmed plan and sources — rejected, not repaired. Nothing was saved.",
@@ -33,6 +34,19 @@ function supplementFailureText(code: string | null | undefined): string {
   return supplementFailureCopy[code ?? ""] ?? `Reason: ${code ?? "unknown"}. Nothing was saved.`;
 }
 
+const whyFailureCopy: Record<string, string> = {
+  "invalid-output": "The drafted explanation restated the lesson or failed validation against the visible sources — rejected, not repaired. Nothing was saved.",
+  "rejected-late": "Consent or your course lineage changed while explaining; the result was discarded. Nothing was saved.",
+  "processing-blocked": "The why step could not finish. Nothing was saved; retry when available.",
+  timeout: "The why step is taking longer than 120 seconds. It was not retried; you can request it again.",
+};
+function whyFailureText(code: string | null | undefined): string {
+  return whyFailureCopy[code ?? ""] ?? `Reason: ${code ?? "unknown"}. Nothing was saved.`;
+}
+function whyDimensionLabel(dimension: WhyDimension): string {
+  return dimension === "purpose" ? "Purpose" : "Assumptions & trade-offs";
+}
+
 // Epic-2 S3 player shell over the S1 tracer stage: the course view became the
 // spine's player — numbered lesson sequence, sticky sidebar collapsing under
 // 850px, and a content-item tracker whose done state is ONLY the learner's
@@ -51,6 +65,13 @@ function supplementFailureText(code: string | null | undefined): string {
 // by the learner at submission and labeled separately from unaided (never
 // conflated), and a retry affordance that always starts a FRESH attempt — no
 // scores, no completion effects anywhere.
+// Epic-2 S6 adds the why-explorer to every lesson: successive deeper levels
+// (purpose first, assumptions and trade-offs beneath) each grounded in its
+// visible sources with the AI-generated · Unreviewed label, an always-visible
+// keyboard-operable stop control that collapses the stepper, honest
+// exhaustion past the server-computed evidence availability (zero dispatch, no
+// invented cause) and NO unlock effect anywhere — depth never touches the
+// tracker, credit or completion.
 export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: Props) {
   const [state, setState] = useState<CourseResponse | null>(null);
   const [notice, setNotice] = useState("");
@@ -76,6 +97,20 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
   const [supplementing, setSupplementing] = useState(false);
   const [supplementReload, setSupplementReload] = useState(0);
   const [supplementLoadFailedFor, setSupplementLoadFailedFor] = useState<string | null>(null);
+  // Epic-2 S6 why-explorer state, read per (ready course version, lesson): the
+  // ladder of levels with their server-computed availability, the collapsed
+  // flag the always-visible Stop control drives, and the per-attempt command
+  // envelope (a lost response replays the same command; an explicit retry
+  // mints a fresh one — the only path that may dispatch again).
+  const [why, setWhy] = useState<WhyResponse | null>(null);
+  const [whyReload, setWhyReload] = useState(0);
+  const [whyFailedFor, setWhyFailedFor] = useState<string | null>(null);
+  const [whyCollapsed, setWhyCollapsed] = useState(false);
+  const [deepening, setDeepening] = useState(false);
+  // The block that should receive focus next — a settled level's explanation
+  // or the exhaustion notice (post-settle / post-verdict choreography), set as
+  // STATE and focused in the effect below.
+  const [whyFocus, setWhyFocus] = useState<{ kind: "level"; depth: number } | { kind: "notice" } | { kind: "heading" } | null>(null);
   // The selected lesson is derived state keyed by the ready course id: a new
   // course version resets the player to lesson 1 with no synchronous reset
   // effect (each version carries its own tracker state).
@@ -107,10 +142,23 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
   const supPoll = useRef<ReturnType<typeof setInterval> | null>(null);
   const intentKey = useRef<ReturnType<typeof command> | null>(null);
   const supKey = useRef<ReturnType<typeof command> | null>(null);
+  // Per-DEPTH command envelopes: a lost response replays the SAME command for
+  // that level only, and no two levels ever share a commandKey (their bodies
+  // differ by depth, so a shared key would conflict honestly). An explicit
+  // retry after failure mints a fresh command — the only path that may
+  // dispatch again.
+  // The per-depth envelope cache lives in STATE (not a ref): handlers fired
+  // from the ready-view render must be ref-free for the react-hooks compiler
+  // rules — the tracker/practice caches use the same shape.
+  const [whyKeys, setWhyKeys] = useState(new Map<number, ReturnType<typeof command>>());
+  // Cancellation for the why wait: the always-operable Stop control ends the
+  // pending poll/wait immediately (a ref-flag so a stopped dispatch neither
+  // re-opens the collapsed stepper nor steals focus back on settle).
   const heading = useRef<HTMLHeadingElement>(null);
   const lessonHeading = useRef<HTMLHeadingElement>(null);
   const trackerStatus = useRef<HTMLParagraphElement>(null);
   const supHeading = useRef<HTMLHeadingElement>(null);
+  const whyHeading = useRef<HTMLHeadingElement>(null);
   const failureRef = useRef(onFailure);
   const courseReadyRef = useRef(onCourseReady);
   const rootId = study.rootId;
@@ -162,6 +210,69 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
   const supplementsView = supplements && supplements.courseId === readyCourseId ? supplements : null;
   const supplementsLoadFailed = !!readyCourseId && !supplementsView && supplementLoadFailedFor === readyCourseId;
   const selectedLesson = readyCourseId !== null && lessonSelection.courseId === readyCourseId ? lessonSelection.number : 1;
+  // Epic-2 S6: the why state is read for exactly the ready course version and
+  // lesson being displayed; a state fetched for another version/lesson is
+  // simply not rendered (no synchronous reset needed). A failed read is
+  // recorded per version/lesson and surfaced honestly with a re-read action
+  // instead of an eternal "loading" state.
+  const whyLessonIndex = selectedLesson - 1;
+  useEffect(() => {
+    if (!readyCourseId) return;
+    let live = true;
+    void api<WhyResponse>(`studies/${rootId}/course/why?course=${readyCourseId}&lesson=${whyLessonIndex}`)
+      .then(value => { if (live) { setWhy(value); setWhyFailedFor(null); } })
+      .catch(() => { if (live) setWhyFailedFor(`${readyCourseId}:${whyLessonIndex}`); });
+    return () => { live = false; };
+  }, [rootId, readyCourseId, whyLessonIndex, whyReload]);
+  const whyView = why && why.courseId === readyCourseId && why.lessonIndex === whyLessonIndex ? why : null;
+  const whyLoadFailed = !!readyCourseId && !whyView && whyFailedFor === `${readyCourseId}:${whyLessonIndex}`;
+  // Epic-2 S6 ladder truth — a PURE derivation of the served why state,
+  // matching the server's sequencing fence: ready levels are a contiguous
+  // prefix, the offered depth is the rung right after it, a pending or failed
+  // level blocks every deeper offer until it resolves (a failed depth shows
+  // ITS retry, never a deeper offer), and exhaustion is a claim about the
+  // EVIDENCE only — never about a processing failure — so the notice renders
+  // only when every depth the stored evidence grounds is settled.
+  const whyLevels = whyView?.levels ?? [];
+  const whyPendingIndex = whyLevels.findIndex(level => level.status === "pending");
+  const whyPendingLevel = whyPendingIndex === -1 ? null : whyLevels[whyPendingIndex];
+  const whyFailedIndex = whyLevels.findIndex(level => level.status === "failed");
+  const whyFailedLevel = whyFailedIndex === -1 ? null : whyLevels[whyFailedIndex];
+  const whyFirstUnsettled = whyLevels.findIndex(level => level.status !== "ready");
+  const whySettledDepth = whyFirstUnsettled === -1 ? whyLevels.length : whyFirstUnsettled;
+  const whyAvailableDepth = whyView?.availableDepth ?? 0;
+  const whyOfferedDepth = whyPendingLevel === null && whyFailedLevel === null && whySettledDepth < whyLevels.length && whySettledDepth + 1 <= whyAvailableDepth ? whySettledDepth + 1 : null;
+  const whyExhausted = whyPendingLevel === null && whyFailedLevel === null && whySettledDepth >= whyAvailableDepth;
+  // The why WAIT, owned by this effect so the dispatch handler stays pure:
+  // one poll loop per pending level, ending on settle, on stop (the stepper
+  // collapsing clears it) or the honest 120-second cap; focus moves to the
+  // settled level; polling never steals focus. Scalar deps only — an object
+  // dep would reset the interval (and its clock) on every server read.
+  const whyPendingDepth = whyPendingLevel?.depth ?? null;
+  useEffect(() => {
+    if (whyPendingDepth === null || !readyCourseId || whyCollapsed) return;
+    const lesson = whyLessonIndex;
+    const started = Date.now();
+    let done = false;
+    const timer = setInterval(() => {
+      void api<WhyResponse>(`studies/${rootId}/course/why?course=${readyCourseId}&lesson=${lesson}`).then(value => {
+        if (done) return;
+        const level = value.levels.find(candidate => candidate.depth === whyPendingDepth);
+        if (level?.status === "pending") {
+          if (Date.now() - started > 120_000) {
+            done = true;
+            setWhy(value);
+            setNotice("The why step is taking longer than 120 seconds. It was not retried; you can return later or request it again.");
+          }
+          return;
+        }
+        done = true;
+        setWhy(value);
+        setWhyFocus({ kind: "level", depth: whyPendingDepth });
+      }).catch(() => { /* the loop retries; the load-failed path covers hard failures */ });
+    }, 1000);
+    return () => { done = true; clearInterval(timer); };
+  }, [whyPendingDepth, readyCourseId, whyLessonIndex, whyCollapsed, rootId]);
   // When the pinned view is superseded, the offered newer version is fetched
   // once so the switch can SHOW what changed before the learner moves (D1).
   const supersededOffer = state?.state === "ready" && state.course.superseded && state.course.supersededBy !== null ? state.course.supersededBy : null;
@@ -251,6 +362,49 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
       failureRef.current(error);
     } finally { onBusy(false); setSupplementing(false); }
   };
+
+  // Epic-2 S6 "Go deeper": dispatch exactly ONE level — the depth the caller
+  // names (the next offerable rung, or a failed level's own retry; a retry
+  // never dispatches some other level). The stepper only ever offers rungs the
+  // served ladder grounds, a level past the evidence never renders as an
+  // action, and an exhaustion verdict that arrives between the served ladder
+  // and this command re-reads and moves focus onto the honest notice. The
+  // WAIT — polling, the 120-second honest cap, settle focus — is owned by the
+  // effect below, so this handler stays ref-free and impure-free (the
+  // react-hooks rules hold by construction). Depth unlocks nothing.
+  const deepen = async (depth: number, fresh: boolean) => {
+    if (!readyCourseId || !whyView) return;
+    const target = whyView.levels.find(level => level.depth === depth && level.status !== "ready");
+    if (!target) return;
+    // Reuse the per-depth envelope within one attempt (a lost response
+    // replays the SAME command for that level); an explicit retry mints a
+    // NEW command — generate's envelope rule, per depth, held in state.
+    const minted = fresh || !whyKeys.get(depth) ? command(study.revision) : whyKeys.get(depth)!;
+    if (minted !== whyKeys.get(depth)) setWhyKeys(previous => new Map(previous).set(depth, minted));
+    onBusy(true); setDeepening(true); setNotice(""); setWhyCollapsed(false);
+    try {
+      const dispatched = await api<WhyReceipt | WhyExhausted>(`studies/${rootId}/course/why`, json({ ...minted, courseId: readyCourseId, lessonIndex: whyView.lessonIndex, depth }));
+      // Re-read the server-authoritative ladder; the polling effect owns the
+      // pending wait and moves focus when the level settles.
+      setWhy(await api<WhyResponse>(`studies/${rootId}/course/why?course=${readyCourseId}&lesson=${whyView.lessonIndex}`));
+      if (dispatched.state === "exhausted") setWhyFocus({ kind: "notice" });
+    } catch (error) {
+      onFailure(error);
+    } finally { onBusy(false); setDeepening(false); }
+  };
+
+  // The failed level's OWN retry dispatches exactly the failed depth, never
+  // another rung (the JSX action names it directly; see deepen).
+
+  // The always-visible, keyboard-operable stop control — a LOCAL UI action,
+  // never gated on busy, so it stays operable at every depth and through the
+  // whole dispatch window: collapsing the stepper ends the polling effect's
+  // wait immediately, and focus returns to the heading (the spine's focus
+  // choreography).
+  function stopExploring() {
+    setWhyCollapsed(true);
+    setWhyFocus({ kind: "heading" });
+  }
 
   // Epic-2 S5 per-card practice submission. The cached envelope replays the
   // SAME command only when the current body is byte-identical to the pinned
@@ -348,6 +502,14 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
   useEffect(() => {
     if (practiceFocus) requestAnimationFrame(() => document.getElementById(`feedback-${practiceFocus}`)?.focus());
   }, [practiceFocus]);
+  // Why focus choreography (effect, never a render read): a settled level
+  // moves focus onto its explanation block, and an exhaustion verdict moves
+  // focus onto the notice — both addressed by stable DOM ids.
+  useEffect(() => {
+    if (!whyFocus) return;
+    const id = whyFocus.kind === "level" ? `why-level-${whyFocus.depth}` : whyFocus.kind === "notice" ? "why-exhausted-notice" : "why-explorer-heading";
+    requestAnimationFrame(() => document.getElementById(id)?.focus());
+  }, [whyFocus]);
 
     if (!state) return null;
     const granted = disclosure?.configuration.eligibility === "eligible" && disclosure.decision === "granted";
@@ -435,6 +597,48 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
               </div>}
               <output className="fine tracker-status" aria-label="Content-item tracker status">{trackerNotice}</output>
             </article>
+              <h4 id="why-explorer-heading" ref={whyHeading} tabIndex={-1}>Why-explorer</h4>
+              <p className="fine">Ask for the why beneath this lesson: successive deeper explanations — purpose first, assumptions and trade-offs beneath — each tied to its visible sources (lesson sources and verified supplements) and labeled as AI-generated, unreviewed text. Depth unlocks nothing: no tracker, credit or completion effect exists, and when the sources run out the stepper says so and stops — no invented cause.</p>
+              {!whyView && !whyLoadFailed && <p className="fine">Loading why state…</p>}
+              {whyLoadFailed && <>
+                <p>Why state could not be loaded. Your lesson, tracker and practice work are unchanged.</p>
+                <div className="actions"><button disabled={busy || deepening} onClick={() => { setWhyReload(value => value + 1); }}>Re-read why state</button></div>
+              </>}
+              {whyView && (whyCollapsed
+                ? <div className="actions"><button className="secondary" disabled={busy} onClick={() => { setWhyCollapsed(false); requestAnimationFrame(() => whyHeading.current?.focus()); }}>Show why exploration</button></div>
+                : <>
+                  {whyView.levels.filter(level => level.status === "ready").map(level => level.explanation ? <div key={level.depth} className="tracker-row" id={`why-level-${level.depth}`} tabIndex={-1}>
+                    <p><strong>Depth {level.depth} · {whyDimensionLabel(level.explanation.dimension)}</strong> <span className="fine">· AI-generated · Unreviewed</span></p>
+                    <p>{level.explanation.text}</p>
+                    <ul>
+                      {level.explanation.sources.map((source, index) => <li key={index} className="fine">
+                        {source.kind === "lesson"
+                          ? <>Lesson source: {source.filename} · {source.locator}</>
+                          : <>Supplement — external source: {source.origin} ({source.url}) · {source.locator}</>}
+                      </li>)}
+                    </ul>
+                    <p className="fine">Depth {level.explanation.depth} of lesson {whyView.lessonIndex + 1} · course version {whyView.version} · model {level.explanation.model || "unknown"} · generated {new Date(level.explanation.createdAt).toLocaleString()} · this depth unlocked nothing.</p>
+                  </div> : null)}
+                  {whyPendingLevel && <p>Going deeper — you can return later. {whyPendingLevel.requestId ? <>Reference {whyPendingLevel.requestId.slice(0, 8)}… </> : null}(at most 120 seconds).</p>}
+                  {whyFailedLevel && <div className="tracker-row">
+                    <p><strong>Depth {whyFailedLevel.depth} failed — nothing was saved.</strong> {whyFailureText(whyFailedLevel.failureCode)}</p>
+                    <div className="actions"><button disabled={busy || deepening} onClick={() => { void deepen(whyFailedLevel.depth, true); }}>Retry depth {whyFailedLevel.depth}</button></div>
+                    <p className="fine">This depth stays the one under exploration — deeper levels wait until it is retried and settles; the ladder never skips a rung.</p>
+                  </div>}
+                  {whyOfferedDepth !== null && <>
+                    <div className="actions">
+                      <button disabled={busy || deepening || !granted} onClick={() => { void deepen(whyOfferedDepth, false); }}>{deepening ? "Going deeper…" : `Go deeper (depth ${whyOfferedDepth}: ${whyDimensionLabel(whyLevels[whyOfferedDepth - 1].dimension)})`}</button>
+                    </div>
+                    <p className="fine">{granted
+                      ? "One bounded explanation runs the local synthetic fixture on this machine — no external dispatch in this version (live admission is deferred). Each level is one command; replaying it returns the same explanation, never a second dispatch."
+                      : "Allow processing for the current disclosure in the Privacy & data panel below first; nothing is explained while processing is not allowed and your lesson stays fully readable."}</p>
+                  </>}
+                  {whyExhausted && <p className="notice" id="why-exhausted-notice" tabIndex={-1}><strong>The sources here are exhausted for this question.</strong> Deeper levels would have no evidence to stand on — none is invented, and the stop is final for this lesson&apos;s stored evidence.</p>}
+                  <div className="actions">
+                    <button className="secondary" onClick={stopExploring}>Stop exploring</button>
+                  </div>
+                </>)}
+
             {shown === course.lessons.length && optionalItems.length > 0 && optionalItems.map(item => <TrackerOptionalRow key={item.id} item={item} />)}
             <fieldset>
               <legend>Practice set · answers withheld until you submit</legend>

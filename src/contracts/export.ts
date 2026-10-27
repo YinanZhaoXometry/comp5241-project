@@ -21,6 +21,7 @@ export const exportCategories = [
   'generated-courses',
   'supplements',
   'practice-evidence',
+  'why-explanations',
 ] as const;
 export type ExportCategory = typeof exportCategories[number];
 export const exportCategoryLabels: Record<ExportCategory, string> = {
@@ -36,6 +37,7 @@ export const exportCategoryLabels: Record<ExportCategory, string> = {
   'generated-courses': 'Generated mini-courses',
   supplements: 'Verified source supplements',
   'practice-evidence': 'Practice evidence',
+  'why-explanations': 'AI why explanations',
 };
 // Categories whose entries are lifecycle objects; only these may appear in the
 // artifact object's parent_ids so the recursive fences cover the export.

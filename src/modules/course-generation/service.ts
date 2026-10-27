@@ -1,5 +1,6 @@
 import { commandSchema, uuid, type Command, type Identity, type Receipt } from "../../contracts/setup";
 import {
+  MAX_WHY_DEPTH,
   contentAdaptation,
   contentFactsDigest,
   courseTrackerItems,
@@ -8,18 +9,24 @@ import {
   practiceCardsOf,
   recallOf,
   requestSupplementsSchema,
+  requestWhySchema,
   storedCourseContent,
   submitPracticeSchema,
   submitRecallSchema,
+  whyDimensionForDepth,
   type CourseState,
   type EvidenceKind,
   type GapResolution,
   type PracticeFeedback,
   type SupplementOutcome,
   type SupplementsState,
+  type WhyExhausted,
+  type WhyLevelView,
+  type WhyReceipt,
+  type WhyState,
 } from "../../contracts/courses";
 import { transaction } from "../../adapters/postgres/database";
-import { enqueueCourseGeneration, enqueueSupplementFetch } from "../../adapters/queue";
+import { enqueueCourseGeneration, enqueueSupplementFetch, enqueueWhyStep } from "../../adapters/queue";
 import { AI_BUDGET } from "../../adapters/ai-live";
 import { authorize } from "../identity-access/access";
 import * as lifecycle from "../lifecycle-platform/repository";
@@ -31,6 +38,7 @@ import { preferenceRow } from "../setup-preferences/repository";
 import { ledgerTotalTokens } from "../ai-setup/repository";
 import { buildPracticeFeedback } from "./generation";
 import { declaredGapCount, deriveGaps } from "./supplements";
+import { availableWhyDepth } from "./why";
 import * as repository from "./repository";
 import { fail } from "../../platform/errors";
 import { parse, requestHash } from "../../platform/commands";
@@ -553,5 +561,200 @@ export async function getSupplements(identity: Identity, rawId: string, requeste
       };
     });
     return { ...base, state: "ready" as const, requestId: request.id, gaps: resolutions, objectIds };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Epic-2 S6: learner-controlled why exploration with honest stopping. The
+// "Go deeper" command runs against ONE ready course version and ONE lesson:
+// evidence availability is computed HERE, from the stored course content plus
+// the verified supplements of the latest settled pass, BEFORE any admission —
+// a request past it returns the honest exhaustion verdict with ZERO dispatch,
+// zero writes and no stored response (the verdict is deterministic, so an
+// identical retry verdicts identically). An admitted level enqueues one
+// restart-safe job; the row is one per (owner, course version, lesson, depth),
+// so a repeat command replays the settled explanation instead of dispatching,
+// a stranded pending row past the honest 120-second cap self-heals, and an
+// honest retry after failure re-pends the row under a fresh admission. Depth
+// NEVER unlocks anything: no tracker, credit, completion or content effect
+// exists on any path below. The processor is never called here — only the
+// worker settles, and only after the settlement fences still hold.
+// ---------------------------------------------------------------------------
+
+export async function requestWhyStep(identity: Identity, rawId: string, raw: unknown): Promise<WhyReceipt | WhyExhausted> {
+  const rootId = parse(uuid, rawId);
+  const command = parse(requestWhySchema, raw);
+  const outcome = await transaction(async client => {
+    await authorize(client, identity);
+    await lifecycle.scopedRoot(client, identity.userId, rootId);
+    const hash = requestHash({ rootId, command });
+    const repeated = await lifecycle.replay(client, identity.userId, command, "request-why", hash);
+    if (repeated) return repeated as WhyReceipt;
+    const item = await batchRow(client, rootId);
+    if (item.revision !== command.expectedRevision) fail("CONFLICT");
+    // A why step requires a studyable course for THIS owner and root — the
+    // same actionable state as every other study verb (generate first).
+    const course = await repository.readyCourseById(client, identity.userId, rootId, command.courseId);
+    if (!course || !course.content || !course.object_id) fail("CONFLICT");
+    const content = storedCourseContent(course.content);
+    if (!content) fail("RETRYABLE_FAILURE");
+    const lesson = content.lessons[command.lessonIndex];
+    if (!lesson) fail("CONFLICT"); // unknown lesson for this course version
+    // Availability is a PRECONDITION, not a worker outcome: past the stored
+    // evidence the answer is the honest exhaustion verdict — zero dispatch,
+    // zero writes (the transaction below this point is all reads so far).
+    const supplements = await repository.verifiedSupplementPool(client, identity.userId, command.courseId);
+    const available = availableWhyDepth(content, command.lessonIndex, supplements);
+    if (command.depth > available) {
+      return {
+        rootId,
+        revision: item.revision,
+        courseId: command.courseId,
+        lessonIndex: command.lessonIndex,
+        depth: command.depth,
+        state: "exhausted" as const,
+        availableDepth: available,
+      };
+    }
+    // Successive levels: the level below must be settled ready first (fixed
+    // dimension sequencing — the ladder never skips a rung).
+    if (command.depth > 1) {
+      const prior = await repository.whyRowFor(client, identity.userId, command.courseId, command.lessonIndex, command.depth - 1);
+      if (!prior || prior.status !== "ready") fail("CONFLICT");
+    }
+    // Same-level replay: a repeat command returns the settled explanation; a
+    // stranded pending row past the honest 120-second cap is failed 'timeout'
+    // (a late delivery no-ops against the status/admission guards) and this
+    // command proceeds to a fresh admission.
+    const existing = await repository.whyRowFor(client, identity.userId, command.courseId, command.lessonIndex, command.depth);
+    if (existing && existing.status === "ready") {
+      const recorded: WhyReceipt = {
+        rootId,
+        operationId: existing.id,
+        revision: item.revision,
+        state: "ready",
+        courseId: command.courseId,
+        lessonIndex: command.lessonIndex,
+        depth: command.depth,
+      };
+      await lifecycle.receipt(client, identity, command, "request-why", hash, recorded);
+      return recorded;
+    }
+    if (existing && existing.status === "pending") {
+      if (Date.now() - existing.created_at.getTime() <= 120_000) {
+        const recorded: WhyReceipt = {
+          rootId,
+          operationId: existing.id,
+          revision: item.revision,
+          state: "pending",
+          courseId: command.courseId,
+          lessonIndex: command.lessonIndex,
+          depth: command.depth,
+        };
+        await lifecycle.receipt(client, identity, command, "request-why", hash, recorded);
+        return recorded;
+      }
+      await repository.markWhyFailed(client, existing.id, "timeout");
+    }
+    // Admission fence scope: the course's own lifecycle object plus its exact
+    // generation lineage — bounded by the dispatch scope's 16-object cap.
+    const objectIds = [course.object_id, ...(course.object_ids ?? [])].filter((id): id is string => !!id).slice(0, 16);
+    const admission = await admitDispatch(client, identity, { commandKey: command.commandKey, objectIds });
+    if (admission.outcome !== "admitted") return { blocked: admission.outcome } as const;
+    // Budget pre-check covers the explanation completion's maximum output; a
+    // declined or lapsed consent never reaches this point (zero dispatch, no
+    // row — the transaction rolls back).
+    const ledger = await ledgerTotalTokens(client, identity.userId);
+    if (ledger + AI_BUDGET.maxOutputTokens > AI_BUDGET.totalTokenCap) fail("AI_BUDGET_EXHAUSTED");
+    const rowId = existing?.id ?? crypto.randomUUID();
+    await repository.upsertWhyRequest(client, { id: rowId, rootId, ownerId: identity.userId, courseId: command.courseId, lessonIndex: command.lessonIndex, depth: command.depth, admissionId: admission.admissionId });
+    await enqueueWhyStep(client, { schemaVersion: 1, requestId: rowId, admissionId: admission.admissionId, courseId: command.courseId, rootId, ownerId: identity.userId, sessionId: identity.sessionId, lessonIndex: command.lessonIndex, depth: command.depth });
+    const recorded: WhyReceipt = {
+      rootId,
+      operationId: rowId,
+      revision: item.revision,
+      state: "pending",
+      courseId: command.courseId,
+      lessonIndex: command.lessonIndex,
+      depth: command.depth,
+    };
+    await lifecycle.receipt(client, identity, command, "request-why", hash, recorded);
+    return recorded;
+  });
+  if ("blocked" in outcome)
+    fail(outcome.blocked === "blocked-quota" ? "RATE_LIMITED" : "FORBIDDEN_OR_NOT_FOUND");
+  return outcome;
+}
+
+// Owner-scoped, lineage-fenced why state for ONE lesson of one ready course
+// version. The optional `requested` selector (course id uuid or per-root
+// version number) mirrors getCourse's explicit prior-version read path; the
+// 0-based `lesson` index selects the lesson whose ladder is served. The
+// server-computed availableDepth rides along so the stepper never offers a
+// level it cannot ground; settled levels serve their explanation, citations
+// and model provenance; and no field anywhere carries a tracker, credit,
+// completion or unlock semantic.
+export async function getWhyState(identity: Identity, rawId: string, requested?: string, rawLesson?: string): Promise<WhyState & { objectIds: string[] }> {
+  const rootId = parse(uuid, rawId);
+  if (requested !== undefined && !uuid.safeParse(requested).success && !/^[1-9]\d*$/u.test(requested)) fail("INVALID_INPUT");
+  if (rawLesson === undefined || !/^[0-7]$/u.test(rawLesson)) fail("INVALID_INPUT");
+  const lessonIndex = Number(rawLesson);
+  return transaction(async client => {
+    await authorize(client, identity);
+    await lifecycle.scopedRoot(client, identity.userId, rootId);
+    const item = await batchRow(client, rootId);
+    const revision = item.revision;
+    let row: repository.CourseWithScope | null = null;
+    if (requested !== undefined) {
+      row = uuid.safeParse(requested).success
+        ? await repository.readyCourseById(client, identity.userId, rootId, requested)
+        : await repository.readyCourseByVersion(client, identity.userId, rootId, Number(requested));
+      if (!row || !row.content) fail("FORBIDDEN_OR_NOT_FOUND");
+    } else {
+      const current = item.confirmed_id ? await repository.courseForPlan(client, rootId, item.confirmed_id) : null;
+      row = current ?? await repository.latestReadyCourse(client, identity.userId, rootId);
+    }
+    if (!row || !row.content) fail("CONFLICT"); // nothing studyable yet — confirm and generate first
+    const content = storedCourseContent(row.content);
+    if (!content) fail("RETRYABLE_FAILURE");
+    const lesson = content.lessons[lessonIndex];
+    if (!lesson) fail("CONFLICT"); // unknown lesson for this course version
+    const supplements = await repository.verifiedSupplementPool(client, identity.userId, row.id);
+    const available = availableWhyDepth(content, lessonIndex, supplements);
+    const rows = await repository.whyRowsForLesson(client, identity.userId, row.id, lessonIndex);
+    const byDepth = new Map(rows.map(row => [row.depth, row]));
+    const levels: WhyLevelView[] = Array.from({ length: MAX_WHY_DEPTH }, (_, position) => position + 1).map(depth => {
+      const dimension = whyDimensionForDepth(depth);
+      const record = byDepth.get(depth);
+      if (!record)
+        return { depth, dimension, status: depth <= available ? ("available" as const) : ("exhausted" as const) };
+      if (record.status === "pending") return { depth, dimension, status: "pending" as const, requestId: record.id };
+      if (record.status === "failed") return { depth, dimension, status: "failed" as const, requestId: record.id, failureCode: record.failure_code };
+      return {
+        depth,
+        dimension,
+        status: "ready" as const,
+        requestId: record.id,
+        explanation: {
+          depth: record.depth,
+          dimension: record.dimension!,
+          text: record.explanation!,
+          sources: record.sources ?? [],
+          model: record.model ?? "",
+          createdAt: (record.settled_at ?? record.created_at).toISOString(),
+        },
+      };
+    });
+    return {
+      rootId,
+      revision,
+      courseId: row.id,
+      version: row.version ?? 1,
+      lessonIndex,
+      lessonTitle: lesson.title,
+      availableDepth: available,
+      levels,
+      objectIds: [row.object_id, ...(row.object_ids ?? [])].filter((id): id is string => !!id),
+    };
   });
 }

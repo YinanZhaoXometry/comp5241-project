@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import type { AdmissionOutcome } from "../../contracts/consent";
-import type { CourseContent, CoursePreferencePin, CourseUsage, SupplementOutcome } from "../../contracts/courses";
+import type { CourseContent, CoursePreferencePin, CourseUsage, SupplementOutcome, WhyDimension, WhySource } from "../../contracts/courses";
 
 // Module-owned rows for the epic-2 course tracer. Write ownership: only
 // this module writes app.generated_course, app.course_objective,
@@ -21,6 +21,11 @@ import type { CourseContent, CoursePreferencePin, CourseUsage, SupplementOutcome
 // submission event (owner, course version, card, attempted text, outcome,
 // learner-declared evidence kind) with NO attempt semantics — cascading from
 // the course lineage exactly like the tracker rows.
+// Epic-2 S6 adds app.why_explanation (migration 020): one why-explanation
+// derivative per (owner, course version, lesson index, depth) — the row is
+// both the tracked command (pending→ready/failed, claim-first) and its
+// settled result, cascading from the course lineage with NO tracker, credit,
+// completion or unlock columns anywhere (depth unlocks nothing).
 
 export type GeneratedCourseRow = {
   id: string;
@@ -354,4 +359,117 @@ export async function insertSupplementRow(
     "INSERT INTO app.course_supplement(id,request_id,course_id,position,outcome,url,origin,locator,passage,content_hash,retrieved_at,claim,upload_excerpt,upload_source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
     [crypto.randomUUID(), row.requestId, row.courseId, row.position, row.outcome, row.url, row.origin, row.locator, row.passage, row.contentHash, row.retrievedAt, row.claim, row.uploadExcerpt, row.uploadSource],
   );
+}
+
+// ---------------------------------------------------------------------------
+// Epic-2 S6 why rows (migration 020 app.why_explanation). One row per
+// (owner, course version, lesson index, depth): the UNIQUE constraint makes
+// one explanation per level structural. Statuses are terminal-monotonic from
+// 'pending'; an honest retry after failure (or a stranded pending row past the
+// 120-second cap, first marked failed 'timeout' by the service) RE-PENDS the
+// same row under a fresh admission — the guarded upsert below is the only
+// pending-entry point, and a row that raced to pending/ready concurrently
+// makes the update a no-op so the newer delivery owns the level.
+// ---------------------------------------------------------------------------
+
+export type WhyExplanationRow = {
+  id: string;
+  root_id: string;
+  owner_id: string;
+  course_id: string;
+  lesson_index: number;
+  depth: number;
+  admission_id: string;
+  status: "pending" | "ready" | "failed";
+  failure_code: string | null;
+  dimension: WhyDimension | null;
+  explanation: string | null;
+  sources: WhySource[] | null;
+  model: string | null;
+  created_at: Date;
+  settled_at: Date | null;
+};
+export type WhyRowWithScope = WhyExplanationRow & { object_ids: string[] };
+
+// (Re-)pend one level under a fresh admission. The guard keeps a concurrently
+// pended/settled row untouched; the service has already verified the row is
+// absent or terminal before calling.
+export async function upsertWhyRequest(
+  client: PoolClient,
+  row: { id: string; rootId: string; ownerId: string; courseId: string; lessonIndex: number; depth: number; admissionId: string },
+) {
+  await client.query(
+    `INSERT INTO app.why_explanation(id,root_id,owner_id,course_id,lesson_index,depth,admission_id,status)
+     VALUES($1,$2,$3,$4,$5,$6,$7,'pending')
+     ON CONFLICT (owner_id,course_id,lesson_index,depth) DO UPDATE SET
+       status='pending', admission_id=EXCLUDED.admission_id, failure_code=NULL,
+       dimension=NULL, explanation=NULL, sources=NULL, model=NULL,
+       created_at=clock_timestamp(), settled_at=NULL
+     WHERE app.why_explanation.status='failed'`,
+    [row.id, row.rootId, row.ownerId, row.courseId, row.lessonIndex, row.depth, row.admissionId],
+  );
+}
+const whyColumns = 'w.id,w.root_id,w.owner_id,w.course_id,w.lesson_index,w.depth,w.admission_id,w.status,w.failure_code,w.dimension,w.explanation,w.sources,w.model,w.created_at,w.settled_at,a.object_ids';
+export async function whyRowById(client: PoolClient, ownerId: string, requestId: string): Promise<WhyRowWithScope | null> {
+  const result = await client.query<WhyRowWithScope>(
+    `SELECT ${whyColumns} FROM app.why_explanation w JOIN app.dispatch_admission a ON a.id=w.admission_id WHERE w.id=$1 AND w.owner_id=$2`,
+    [requestId, ownerId],
+  );
+  return result.rows[0] ?? null;
+}
+export async function whyRowFor(client: PoolClient, ownerId: string, courseId: string, lessonIndex: number, depth: number): Promise<WhyRowWithScope | null> {
+  const result = await client.query<WhyRowWithScope>(
+    `SELECT ${whyColumns} FROM app.why_explanation w JOIN app.dispatch_admission a ON a.id=w.admission_id WHERE w.course_id=$1 AND w.owner_id=$2 AND w.lesson_index=$3 AND w.depth=$4`,
+    [courseId, ownerId, lessonIndex, depth],
+  );
+  return result.rows[0] ?? null;
+}
+export async function whyRowsForLesson(client: PoolClient, ownerId: string, courseId: string, lessonIndex: number): Promise<WhyExplanationRow[]> {
+  const result = await client.query<WhyExplanationRow>(
+    "SELECT id,root_id,owner_id,course_id,lesson_index,depth,admission_id,status,failure_code,dimension,explanation,sources,model,created_at,settled_at FROM app.why_explanation WHERE course_id=$1 AND owner_id=$2 AND lesson_index=$3 ORDER BY depth",
+    [courseId, ownerId, lessonIndex],
+  );
+  return result.rows;
+}
+// Claim-first terminal transition (the claimReady/claimSupplementReady
+// contract), ATOMIC with the settled fields because the table's cross-column
+// CHECK only admits a ready row that already carries its explanation: the
+// single status-guarded UPDATE either lands the whole terminal state or
+// nothing (a raced terminal row matches zero rows), so a raced delivery
+// persists nothing.
+export async function claimWhyReady(
+  client: PoolClient,
+  requestId: string,
+  settled: { dimension: WhyDimension; explanation: string; sources: WhySource[]; model: string },
+): Promise<string | null> {
+  const result = await client.query<{ id: string }>(
+    "UPDATE app.why_explanation SET status='ready',settled_at=clock_timestamp(),dimension=$2,explanation=$3,sources=$4,model=$5 WHERE id=$1 AND status='pending' RETURNING id",
+    // The jsonb citations column takes the JSON text form explicitly — node-pg
+    // would otherwise serialize a JS array as a Postgres array literal.
+    [requestId, settled.dimension, settled.explanation, JSON.stringify(settled.sources), settled.model],
+  );
+  return result.rows[0]?.id ?? null;
+}
+export async function markWhyFailed(client: PoolClient, requestId: string, failureCode: string) {
+  await client.query(
+    "UPDATE app.why_explanation SET status='failed',failure_code=$2,settled_at=clock_timestamp() WHERE id=$1 AND status='pending'",
+    [requestId, failureCode],
+  );
+}
+
+// The VERIFIED supplement pool of one course version's latest SETTLED pass —
+// the same records the course view shows (supported/conflict carry a checked
+// passage; unsupported rows never ground why depth). Feeds both the service's
+// availability pre-check and the worker's re-fenced recomputation.
+export async function verifiedSupplementPool(
+  client: PoolClient,
+  ownerId: string,
+  courseId: string,
+): Promise<Array<{ outcome: string; url: string; origin: string; locator: string | null; passage: string | null }>> {
+  const request = await latestSupplementRequest(client, ownerId, courseId);
+  if (!request || request.status !== "ready") return [];
+  const rows = await supplementsForRequest(client, request.id);
+  return rows
+    .filter(row => row.outcome === "supported" || row.outcome === "conflict")
+    .map(row => ({ outcome: row.outcome, url: row.url, origin: row.origin, locator: row.locator, passage: row.passage }));
 }
