@@ -6,11 +6,12 @@ import { savePreferences } from '../../src/modules/setup-preferences/service';
 import { createBatch, uploadSlot, acknowledge, getBatch } from '../../src/modules/materials-setup/batches';
 import { runExtraction } from '../../src/modules/materials-setup/extraction';
 import { savePlan, confirmPlan, listStudies, getStudy } from '../../src/modules/materials-setup/service';
-import { removeRoot, personalRemoval } from '../../src/modules/lifecycle-platform/service';
+import { removeRoot, personalRemoval, reconcileCopies } from '../../src/modules/lifecycle-platform/service';
 import { previewDerivatives } from '../../src/modules/lifecycle-platform/derivatives';
-import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState } from '../../src/modules/course-generation/service';
+import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState, getProvenance } from '../../src/modules/course-generation/service';
 import { runCourseGeneration, runSupplementFetch, runWhyStep } from '../../src/modules/course-generation/worker';
 import { createFixtureFetchPort } from '../../src/modules/course-generation/supplements';
+import { requestAiDraft, requestAiCheck } from '../../src/modules/ai-setup/service';
 import { factsIdenticalAcrossTracks, computeFactsDigest } from '../../src/modules/course-generation/adaptation';
 import { contentAdaptation, contentFactsDigest, courseContentV1Schema, courseContentV3Schema, lessonFraming, practiceCardsOf, recallOf, storedCourseContent } from '../../src/contracts/courses';
 import type { BoundedFetchPort, FetchDenyReason } from '../../src/adapters/source-fetch';
@@ -460,21 +461,34 @@ describe('epic-2 S1: confirmed-plan-to-generated-course tracer', () => {
     expect(ledger.rows[0].count).toBe(0);
   });
 
-  it('the export surface declares generated-courses as deliberately skipped with its reason', async () => {
+  it('the export surface includes generated courses as owner derivative content (the S8 scope decision)', async () => {
     const a = await actor('course-export-skip');
     await grant(a);
     const study = await confirmedStudy(a);
     await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
-    await runCourseGeneration(await jobOf(a, study.rootId));
+    const job = await jobOf(a, study.rootId);
+    await runCourseGeneration(job);
     const preview = await listExports(a);
     const category = preview.categories.find(item => item.category === 'generated-courses');
-    expect(category).toMatchObject({ available: true, count: null });
-    expect(category?.note).toContain('deliberately excluded');
+    expect(category).toMatchObject({ available: true, count: 1 });
+    expect(category?.note).toBeUndefined();
     const manifest = await transaction(client => captureManifest(client, a.userId));
-    const skip = manifest.skipped.find(item => item.category === 'generated-courses');
-    expect(skip?.reason).toContain('Deliberately excluded');
-    expect(skip?.reason).toContain('recall');
-    expect(manifest.entries.every(entry => entry.category !== 'generated-courses')).toBe(true);
+    expect(manifest.skipped.every(item => item.category !== 'generated-courses')).toBe(true);
+    const entry = manifest.entries.find(item => item.category === 'generated-courses');
+    expect(entry?.objectId).toBe(job.requestId);
+    expect(entry?.rootId).toBe(study.rootId);
+    // The payload carries the full stored content — recall answers included:
+    // owner derivative content the owner can already reveal by submitting.
+    const payload = manifest.payloads.find(item => item.name === `courses/${job.requestId}.json`);
+    expect(payload).toBeDefined();
+    const serialized = JSON.stringify(payload?.value);
+    expect(serialized).toContain(canonicalAnswer);
+    // Supplements have no settled pass here: the course's provenance context
+    // carries an empty supplement-reference list, and the class skip still
+    // records its deliberate reason.
+    const coursePayload = payload?.value as { supplementReferences: unknown[] };
+    expect(coursePayload.supplementReferences).toEqual([]);
+    expect(manifest.skipped.find(item => item.category === 'supplements')?.reason).toContain('external-source content');
   });
 });
 
@@ -929,8 +943,9 @@ describe('epic-2 S5: practice set and typed feedback', () => {
     await submitPracticeCard(b, other.rootId, { ...command(other.revision), courseId: otherCourse.id, cardId: 'practice:0', attempted: 'one', assisted: false });
     await personalRemoval(b, { ...command() });
     expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.practice_attempt WHERE owner_id=$1', [b.userId])).rows[0].count).toBe(0);
-    // The export surface lists practice-evidence as deliberately skipped with
-    // its honest reason; no evidence row ever enters the artifact.
+    // The export surface includes practice evidence as owner content (the S8
+    // scope decision): live count, manifest entries and the attempted text in
+    // the artifact payload.
     const c = await actor('practice-export-skip');
     await grant(c);
     const cstudy = await confirmedStudy(c, multiPlan);
@@ -940,13 +955,13 @@ describe('epic-2 S5: practice set and typed feedback', () => {
     await submitPracticeCard(c, cstudy.rootId, { ...command(cstudy.revision), courseId: ccourse.id, cardId: 'practice:0', attempted: 'one', assisted: false });
     const exportPreview = await listExports(c);
     const category = exportPreview.categories.find(item => item.category === 'practice-evidence');
-    expect(category).toMatchObject({ available: true, count: null });
-    expect(category?.note).toContain('deliberately excluded');
+    expect(category).toMatchObject({ available: true, count: 1 });
+    expect(category?.note).toBeUndefined();
     const manifest = await transaction(client => captureManifest(client, c.userId));
-    const skip = manifest.skipped.find(item => item.category === 'practice-evidence');
-    expect(skip?.reason).toContain('Deliberately excluded');
-    expect(skip?.reason).toContain('answer keys');
-    expect(manifest.entries.every(entry => entry.category !== 'practice-evidence')).toBe(true);
+    expect(manifest.skipped.every(item => item.category !== 'practice-evidence')).toBe(true);
+    expect(manifest.entries.filter(item => item.category === 'practice-evidence')).toHaveLength(1);
+    const payload = manifest.payloads.find(item => item.name === 'practice/practice-evidence.json')!;
+    expect((payload.value as { rows: Array<{ attempted: string }> }).rows.map(row => row.attempted)).toEqual(['one']);
   });
 });
 
@@ -1214,9 +1229,9 @@ describe('epic-2 S2: bounded source retrieval and attributed supplementation', (
     expect(state.gaps.every(resolution => resolution.outcome === 'unaddressed')).toBe(true);
   });
 
-  it('the export surface declares supplements as deliberately skipped with its reason', async () => {
+  it('the export surface keeps supplements as the one deliberate class skip; identity/location metadata rides along (S8)', async () => {
     const a = await actor('supplement-export-skip');
-    const { job } = await supplementedStudy(a);
+    const { course, job } = await supplementedStudy(a);
     await runSupplementFetch(job);
     const preview = await listExports(a);
     const category = preview.categories.find(item => item.category === 'supplements');
@@ -1225,8 +1240,22 @@ describe('epic-2 S2: bounded source retrieval and attributed supplementation', (
     const manifest = await transaction(client => captureManifest(client, a.userId));
     const skip = manifest.skipped.find(item => item.category === 'supplements');
     expect(skip?.reason).toContain('Deliberately excluded');
-    expect(skip?.reason).toContain('external-source passages');
+    expect(skip?.reason).toContain('external-source content');
+    expect(skip?.reason).toContain('not owner material');
     expect(manifest.entries.every(entry => entry.category !== 'supplements')).toBe(true);
+    // The passages never ride along, but their identity/location metadata does
+    // — inside the exported course's provenance context, exactly the S7
+    // derivative shape (no passage, no upload excerpt, no claim).
+    const payload = manifest.payloads.find(item => item.name === `courses/${course.id}.json`)!;
+    const references = (payload.value as { supplementReferences: Array<Record<string, unknown>> }).supplementReferences;
+    expect(references).toHaveLength(3);
+    expect(references.map(item => item.outcome)).toEqual(['supported', 'conflict', 'unsupported']);
+    for (const reference of references) {
+      expect(Object.keys(reference).sort()).toEqual(['contentHash', 'locator', 'origin', 'outcome', 'position', 'retrievedAt', 'url']);
+      expect(reference.url).toMatch(/^https:\/\//u);
+    }
+    expect(JSON.stringify(references)).not.toContain('mock frameworks');
+    expect(JSON.stringify(references)).not.toContain('not the case');
   });
 });
 
@@ -1783,8 +1812,9 @@ describe('epic-2 S6: learner-controlled why exploration', () => {
     await runWhyStep(await whyJobOf(b, otherCourse.id, 0, 1));
     await personalRemoval(b, { ...command() });
     expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.why_explanation WHERE owner_id=$1', [b.userId])).rows[0].count).toBe(0);
-    // The export surface lists why-explanations as deliberately skipped with
-    // its honest reason; no explanation row ever enters the artifact.
+    // The export surface includes why explanations as owner derivative
+    // content (the S8 scope decision): live count, manifest entries and the
+    // settled explanation text in the artifact payload.
     const c = await actor('why-export-skip');
     await grant(c);
     const cstudy = await confirmedStudy(c, plan, [textA, textB, textC]);
@@ -1795,12 +1825,438 @@ describe('epic-2 S6: learner-controlled why exploration', () => {
     await runWhyStep(await whyJobOf(c, ccourse.id, 0, 1));
     const exportPreview = await listExports(c);
     const category = exportPreview.categories.find(item => item.category === 'why-explanations');
-    expect(category).toMatchObject({ available: true, count: null });
-    expect(category?.note).toContain('deliberately excluded');
+    expect(category).toMatchObject({ available: true, count: 1 });
+    expect(category?.note).toBeUndefined();
     const manifest = await transaction(client => captureManifest(client, c.userId));
-    const skip = manifest.skipped.find(item => item.category === 'why-explanations');
-    expect(skip?.reason).toContain('Deliberately excluded');
-    expect(skip?.reason).toContain('advisory depth');
-    expect(manifest.entries.every(entry => entry.category !== 'why-explanations')).toBe(true);
+    expect(manifest.skipped.every(item => item.category !== 'why-explanations')).toBe(true);
+    expect(manifest.entries.filter(item => item.category === 'why-explanations')).toHaveLength(1);
+    const payload = manifest.payloads.find(item => item.name === 'why/why-explanations.json')!;
+    const rows = (payload.value as { rows: Array<{ explanation: string | null; status: string }> }).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('ready');
+    expect(rows[0].explanation).toContain('Purpose of this reading');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Epic-2 S8: generation honesty, consent denial and descendant lifecycle — the
+// integration entry. The per-entry behaviors above exist; this set proves them
+// AS A SET: jobs already past phase 1 commit nothing when deletion lands,
+// purges complete inside the seven-day deadline, declined consent and
+// ineligible processors degrade to honest AI-unavailable states with zero
+// external effect while manual study stands, duplicate/retry commands yield
+// one tracked effect across the four families, the 120-second honesty cap
+// covers every job class, and post-deletion reads deny on default and pinned
+// selectors alike.
+// ---------------------------------------------------------------------------
+
+// A valid v4 draft (the claim-race fixture shape) for course-family races: the
+// draft must parse so the ONLY thing standing between it and persistence is
+// the settlement fence.
+const raceDraftJson = JSON.stringify({
+  lessons: [{ framing: 'Plain-language walkthrough of the lesson.', sections: [
+    { text: 'A unit test isolates one behavior and asserts its outcome.', sourcePosition: 0, locator: 'opening lines' },
+    { text: 'A test double stands in for a real dependency during the test.', sourcePosition: 1, locator: 'opening lines' },
+  ] }],
+  objectiveIndexes: [0, 1, 2],
+  cards: [
+    { objectiveIndex: 0, sourcePosition: 0, locator: 'opening lines', prompt: 'State the three parts of a unit test.', answer: 'Arrange, act, assert.', rationale: 'Stated in the opening of notes.txt.' },
+    { objectiveIndex: 1, sourcePosition: 1, locator: 'opening lines', prompt: 'Name the double.', answer: 'A test double.', rationale: 'Stated in the opening of doubles.txt.' },
+    { objectiveIndex: 2, sourcePosition: 0, locator: 'second sentence', prompt: 'State what coverage reports.', answer: 'Executed lines.', rationale: 'Stated in notes.txt.' },
+  ],
+});
+
+// One-shot gate: resolves `entered` when the injected port first runs, waits
+// on `resume` until the test releases it — the delivery is HELD mid-phase-2/3
+// while the test lands the deletion.
+function gate() {
+  let release!: () => void;
+  let entered!: () => void;
+  return {
+    entered: new Promise<void>(resolve => { entered = resolve; }),
+    resume: new Promise<void>(resolve => { release = resolve; }),
+    arrive: entered,
+    open: release,
+  };
+}
+
+describe('epic-2 S8: generation honesty, consent denial and descendant lifecycle', () => {
+  it('jobs already past phase 1 commit nothing when root deletion lands mid-flight; late deliveries no-op', async () => {
+    // Course family: held inside the completion (phase 2), deletion lands,
+    // settlement must reject and nothing may persist.
+    const courseOwner = await actor('s8-race-course');
+    await grant(courseOwner);
+    const courseStudy = await confirmedStudy(courseOwner, plan, [textA, textB]);
+    await requestCourseGeneration(courseOwner, courseStudy.rootId, { ...command(courseStudy.revision) });
+    const courseJob = await jobOf(courseOwner, courseStudy.rootId);
+    const courseGate = gate();
+    const coursePort = (): TextCompletionPort => ({
+      complete: async () => {
+        courseGate.arrive();
+        await courseGate.resume;
+        return { ok: true, text: raceDraftJson, provenance: { requestedModel: 'race-fixture', returnedModel: 'race-fixture' }, usage };
+      },
+    });
+    const courseRunning = runCourseGeneration(courseJob, coursePort);
+    await courseGate.entered;
+    await removeRoot(courseOwner, courseStudy.rootId, { ...command(courseStudy.revision) });
+    courseGate.open();
+    await courseRunning;
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.generated_course WHERE root_id=$1', [courseStudy.rootId])).rows[0].count).toBe(0);
+    expect((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.lifecycle_object WHERE root_id=$1 AND kind='course'", [courseStudy.rootId])).rows[0].count).toBe(0);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.ai_dispatch_ledger WHERE owner_id=$1', [courseOwner.userId])).rows[0].count).toBe(0);
+    // The late delivery of the expired job cannot resurrect anything.
+    await runCourseGeneration(courseJob);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.generated_course WHERE root_id=$1', [courseStudy.rootId])).rows[0].count).toBe(0);
+
+    // Supplement family: held inside the bounded fetch (phase 3, past the
+    // proposal parse) while deletion lands.
+    const supplementOwner = await actor('s8-race-supplement');
+    const sup = await supplementedStudy(supplementOwner);
+    const fixture = createFixtureFetchPort();
+    const supGate = gate();
+    const gatedFetch = (): BoundedFetchPort => ({
+      fetch: async (target: string) => {
+        supGate.arrive();
+        await supGate.resume;
+        return fixture.fetch(target);
+      },
+    });
+    const supRunning = runSupplementFetch(sup.job, undefined, gatedFetch);
+    await supGate.entered;
+    await removeRoot(supplementOwner, sup.study.rootId, { ...command(sup.study.revision) });
+    supGate.open();
+    await supRunning;
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.supplement_request WHERE root_id=$1', [sup.study.rootId])).rows[0].count).toBe(0);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.course_supplement WHERE course_id=$1', [sup.course.id])).rows[0].count).toBe(0);
+    expect((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.lifecycle_object WHERE root_id=$1 AND kind='supplement'", [sup.study.rootId])).rows[0].count).toBe(0);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.ai_dispatch_ledger WHERE owner_id=$1', [supplementOwner.userId])).rows[0].count).toBe(1); // the generation only
+    await runSupplementFetch(sup.job, undefined, gatedFetch);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.supplement_request WHERE root_id=$1', [sup.study.rootId])).rows[0].count).toBe(0);
+
+    // Why family: held inside the completion (phase 2) while deletion lands.
+    const whyOwner = await actor('s8-race-why');
+    await grant(whyOwner);
+    const whyStudy = await confirmedStudy(whyOwner, plan, [textA, textB, textC]);
+    await requestCourseGeneration(whyOwner, whyStudy.rootId, { ...command(whyStudy.revision) });
+    await runCourseGeneration(await jobOf(whyOwner, whyStudy.rootId));
+    const whyCourse = await courseRowOf(whyOwner, whyStudy.rootId);
+    await requestWhyStep(whyOwner, whyStudy.rootId, { ...command(whyStudy.revision), courseId: whyCourse.id, lessonIndex: 0, depth: 1 });
+    const whyJob = await whyJobOf(whyOwner, whyCourse.id, 0, 1);
+    const whyGate = gate();
+    const whyPort = (): TextCompletionPort => ({
+      complete: async () => {
+        whyGate.arrive();
+        await whyGate.resume;
+        return { ok: true, text: JSON.stringify({ explanation: 'Brand new prose that carries real depth beyond the lesson text entirely.', citations: [{ kind: 'lesson', index: 0 }] }), provenance: { requestedModel: 'race-fixture', returnedModel: 'race-fixture' }, usage };
+      },
+    });
+    const whyRunning = runWhyStep(whyJob, whyPort);
+    await whyGate.entered;
+    await removeRoot(whyOwner, whyStudy.rootId, { ...command(whyStudy.revision) });
+    whyGate.open();
+    await whyRunning;
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.why_explanation WHERE root_id=$1', [whyStudy.rootId])).rows[0].count).toBe(0);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.generated_course WHERE root_id=$1', [whyStudy.rootId])).rows[0].count).toBe(0);
+    await runWhyStep(whyJob);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.why_explanation WHERE root_id=$1', [whyStudy.rootId])).rows[0].count).toBe(0);
+  });
+
+  it('whole-personal removal racing a job past phase 1 commits nothing late and purges every derivative class inside the deadline', async () => {
+    const a = await actor('s8-race-personal');
+    await grant(a);
+    // Root 1: the full settled derivative set (course, supplement, why,
+    // practice, tracker). Root 2: a generation job that will be held past
+    // phase 1 when the removal lands.
+    const first = await supplementedStudy(a); // plan uses the S2 gap markers
+    await runSupplementFetch(first.job);
+    await submitPracticeCard(a, first.study.rootId, { ...command(first.study.revision), courseId: first.course.id, cardId: 'practice:0', attempted: 'one', assisted: false });
+    await markItemDone(a, first.study.rootId, { ...command(first.study.revision), courseId: first.course.id, itemId: 'lesson:1:reading' });
+    const second = await confirmedStudy(a, plan, [textA, textB]);
+    await requestCourseGeneration(a, second.rootId, { ...command(second.revision) });
+    const job = await jobOf(a, second.rootId);
+    const held = gate();
+    const port = (): TextCompletionPort => ({
+      complete: async () => {
+        held.arrive();
+        await held.resume;
+        return { ok: true, text: raceDraftJson, provenance: { requestedModel: 'race-fixture', returnedModel: 'race-fixture' }, usage };
+      },
+    });
+    const running = runCourseGeneration(job, port);
+    await held.entered;
+    // Root 3: a ready course whose SUPPLEMENT and WHY jobs are held past
+    // phase 1 alongside root 2's generation when the removal lands — the
+    // personal-removal race covers every generation family mid-flight.
+    const third = await supplementedStudy(a);
+    const supHeld = gate();
+    const supPort = (): TextCompletionPort => ({
+      complete: async () => {
+        supHeld.arrive();
+        await supHeld.resume;
+        return { ok: false, error: { code: 'timeout', message: 'held past the removal', outcome: 'not-dispatched' }, provenance: { requestedModel: 'race-fixture', returnedModel: 'race-fixture' }, usage };
+      },
+    });
+    const supRunning = runSupplementFetch(third.job, supPort);
+    await supHeld.entered;
+    // The why job needs its own single-lesson course (two source sections on
+    // one lesson ground depth 1 without any settled supplement).
+    const fourth = await confirmedStudy(a, plan, [textA, textB, textC]);
+    await requestCourseGeneration(a, fourth.rootId, { ...command(fourth.revision) });
+    await runCourseGeneration(await jobOf(a, fourth.rootId));
+    const fourthCourse = await courseRowOf(a, fourth.rootId);
+    await requestWhyStep(a, fourth.rootId, { ...command(fourth.revision), courseId: fourthCourse.id, lessonIndex: 0, depth: 1 });
+    const whyJob = await whyJobOf(a, fourthCourse.id, 0, 1);
+    const whyHeld = gate();
+    const whyPort = (): TextCompletionPort => ({
+      complete: async () => {
+        whyHeld.arrive();
+        await whyHeld.resume;
+        return { ok: false, error: { code: 'timeout', message: 'held past the removal', outcome: 'not-dispatched' }, provenance: { requestedModel: 'race-fixture', returnedModel: 'race-fixture' }, usage };
+      },
+    });
+    const whyRunning = runWhyStep(whyJob, whyPort);
+    await whyHeld.entered;
+    const removalKey = command();
+    const receipt = await personalRemoval(a, removalKey);
+    expect(receipt).toMatchObject({ state: 'pending' });
+    const span = Date.parse((receipt as { deadlineAt: string }).deadlineAt) - Date.parse((receipt as { acceptedAt: string }).acceptedAt);
+    expect(Math.abs(span - 7 * 24 * 60 * 60 * 1000)).toBeLessThan(5000); // the seven-day deadline covers the derivative purge
+    held.open(); supHeld.open(); whyHeld.open();
+    await Promise.all([running, supRunning, whyRunning]);
+    // Nothing committed late: no course rows anywhere for this owner.
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.generated_course WHERE owner_id=$1', [a.userId])).rows[0].count).toBe(0);
+    await runCourseGeneration(job); // late delivery no-ops
+    await runSupplementFetch(third.job); // late delivery no-ops
+    await runWhyStep(whyJob); // late delivery no-ops
+    // The reconciler completes the purge of every derivative class under
+    // normal operation (well inside the recorded deadline).
+    await reconcileCopies();
+    await reconcileCopies();
+    for (const [table, where] of [
+      ['app.generated_course', 'owner_id=$1'],
+      ['app.course_objective o JOIN app.generated_course c ON c.id=o.course_id', 'c.owner_id=$1'],
+      ['app.course_source s JOIN app.generated_course c ON c.id=s.course_id', 'c.owner_id=$1'],
+      ['app.supplement_request', 'owner_id=$1'],
+      ['app.course_supplement x JOIN app.generated_course c ON c.id=x.course_id', 'c.owner_id=$1'],
+      ['app.course_item_state', 'owner_id=$1'],
+      ['app.practice_attempt', 'owner_id=$1'],
+      ['app.why_explanation', 'owner_id=$1'],
+    ] as const) {
+      expect((await database().query<{ count: number }>(`SELECT count(*)::int AS count FROM ${table} WHERE ${where}`, [a.userId])).rows[0].count).toBe(0);
+    }
+    expect(await personalRemoval(a, removalKey)).toMatchObject({ state: 'purged' });
+  });
+
+  it('declined consent and ineligible processors degrade to honest AI-unavailable states with zero external effect while manual study stands', async () => {
+    // Never-granted owner: every AI verb is honestly unavailable with zero
+    // dispatch, zero fetch and zero request rows, while the manual path
+    // (upload → acknowledge → save → confirm) stands unchanged.
+    const none = await actor('s8-consent-none');
+    const noneStudy = await confirmedStudy(none, plan, [textA, textB]);
+    await expect(requestCourseGeneration(none, noneStudy.rootId, { ...command(noneStudy.revision) })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    await expect(requestAiDraft(none, noneStudy.rootId, { ...command(noneStudy.revision) })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    await expect(requestAiCheck(none, noneStudy.rootId, { ...command(noneStudy.revision) })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.generated_course WHERE owner_id=$1', [none.userId])).rows[0].count).toBe(0);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.ai_draft_request WHERE owner_id=$1', [none.userId])).rows[0].count).toBe(0);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.ai_dispatch_ledger WHERE owner_id=$1', [none.userId])).rows[0].count).toBe(0);
+    expect((await getStudy(none, noneStudy.rootId)).revision).toBe(noneStudy.revision); // manual study intact
+
+    // Declined-after-grant owner: a ready course exists (built WITHOUT a
+    // pending supplement/why request so the denial path is reachable), the
+    // latest decision is 'declined' — supplements and why are honestly
+    // unavailable with zero effect, while manual study (read, mark-done,
+    // practice) stands.
+    const declined = await actor('s8-consent-declined');
+    await grant(declined);
+    const declinedSetup = await confirmedStudy(declined, supplementsPlan);
+    await requestCourseGeneration(declined, declinedSetup.rootId, { ...command(declinedSetup.revision) });
+    await runCourseGeneration(await jobOf(declined, declinedSetup.rootId));
+    const declinedCourse = await courseRowOf(declined, declinedSetup.rootId);
+    await decide(declined, { ...command(), configurationVersion: (await getDisclosure(declined)).configuration.version, decision: 'declined', acknowledgedTerms: true });
+    await expect(requestSupplements(declined, declinedSetup.rootId, { ...command(declinedSetup.revision), courseId: declinedCourse.id })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    await expect(requestWhyStep(declined, declinedSetup.rootId, { ...command(declinedSetup.revision), courseId: declinedCourse.id, lessonIndex: 0, depth: 1 })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.supplement_request WHERE owner_id=$1', [declined.userId])).rows[0].count).toBe(0);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.why_explanation WHERE owner_id=$1', [declined.userId])).rows[0].count).toBe(0);
+    const stillReady = await getCourse(declined, declinedSetup.rootId);
+    expect(stillReady.state).toBe('ready');
+    const marked = await markItemDone(declined, declinedSetup.rootId, { ...command(declinedSetup.revision), courseId: declinedCourse.id, itemId: 'lesson:1:reading' });
+    expect(marked.state).toBe('done');
+    const practice = await submitPracticeCard(declined, declinedSetup.rootId, { ...command(declinedSetup.revision), courseId: declinedCourse.id, cardId: 'practice:0', attempted: 'manual study works without consent', assisted: false });
+    expect(practice.outcome).toBeDefined();
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.practice_attempt WHERE owner_id=$1', [declined.userId])).rows[0].count).toBe(1);
+
+    // Ineligible processor: disclosure versions are append-only and immutable,
+    // so ineligibility is pinned the honest way — a new ineligible version on
+    // top becomes current (the grant helper's mirror), and the finally block
+    // appends a fresh eligible version to restore an eligible current.
+    const appendConfiguration = async (eligibility: 'eligible' | 'ineligible') => {
+      const max = await database().query<{ max: number }>('SELECT max(version) AS max FROM app.processor_configuration');
+      await database().query(
+        `INSERT INTO app.processor_configuration(id,version,provider,purpose,categories,retention_notice,eligibility,synthetic_test,daily_admission_limit)
+         VALUES($1,$2,'Synthetic test spy (fixture — not compliant live AI)','Boundary test purpose','["synthetic excerpts"]'::jsonb,'Synthetic test fixture; nothing leaves this machine.',$3,true,20)`,
+        [crypto.randomUUID(), max.rows[0].max + 1, eligibility],
+      );
+    };
+    const eligibleOwner = await actor('s8-ineligible');
+    await grant(eligibleOwner);
+    const eligibleStudy = await confirmedStudy(eligibleOwner, supplementsPlan);
+    await requestCourseGeneration(eligibleOwner, eligibleStudy.rootId, { ...command(eligibleStudy.revision) });
+    await runCourseGeneration(await jobOf(eligibleOwner, eligibleStudy.rootId));
+    const eligibleCourse = await courseRowOf(eligibleOwner, eligibleStudy.rootId);
+    // A second confirmed revision with NO course yet: the generation denial
+    // path (a ready course would short-circuit to its receipt).
+    const reSaved = await savePlan(eligibleOwner, eligibleStudy.rootId, { ...command(eligibleStudy.revision), plan: { ...supplementsPlan, topic: 'Ineligible probe' }, selectionId: eligibleStudy.selection!.id, extractionId: eligibleStudy.extractionIds[0] });
+    const reConfirmed = await confirmPlan(eligibleOwner, eligibleStudy.rootId, { ...command(reSaved.revision), planRevisionId: reSaved.planRevisionId! });
+    try {
+      await appendConfiguration('ineligible');
+      expect((await getDisclosure(eligibleOwner)).configuration.eligibility).toBe('ineligible');
+      await expect(requestCourseGeneration(eligibleOwner, eligibleStudy.rootId, { ...command(reConfirmed.revision) })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+      await expect(requestSupplements(eligibleOwner, eligibleStudy.rootId, { ...command(reConfirmed.revision), courseId: eligibleCourse.id })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+      await expect(requestWhyStep(eligibleOwner, eligibleStudy.rootId, { ...command(reConfirmed.revision), courseId: eligibleCourse.id, lessonIndex: 0, depth: 1 })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+      await expect(requestAiDraft(eligibleOwner, eligibleStudy.rootId, { ...command(reConfirmed.revision) })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+      // Zero new tracked effects: the settled course stands, nothing pending.
+      expect((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.generated_course WHERE owner_id=$1 AND status<>'ready'", [eligibleOwner.userId])).rows[0].count).toBe(0);
+      expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.supplement_request WHERE owner_id=$1', [eligibleOwner.userId])).rows[0].count).toBe(0);
+      expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.why_explanation WHERE owner_id=$1', [eligibleOwner.userId])).rows[0].count).toBe(0);
+      expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.ai_draft_request WHERE owner_id=$1', [eligibleOwner.userId])).rows[0].count).toBe(0);
+      expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.ai_dispatch_ledger WHERE owner_id=$1', [eligibleOwner.userId])).rows[0].count).toBe(1); // the generation only
+      // Manual study stands under ineligibility too.
+      expect((await getCourse(eligibleOwner, eligibleStudy.rootId)).state).toBe('ready');
+    } finally {
+      await appendConfiguration('eligible');
+    }
+  });
+
+  it('the idempotency set: replay, duplicate and retry commands across the four families yield exactly one tracked effect each', async () => {
+    const a = await actor('s8-idempotency');
+    await grant(a);
+    const study = await confirmedStudy(a, plan, [textA, textB, textC]);
+    // Course: replayed command returns one receipt; duplicate delivery no-ops.
+    const courseEnvelope = { ...command(study.revision) };
+    const courseFirst = await requestCourseGeneration(a, study.rootId, courseEnvelope);
+    expect(await requestCourseGeneration(a, study.rootId, courseEnvelope)).toEqual(courseFirst);
+    const courseJob = await jobOf(a, study.rootId);
+    await runCourseGeneration(courseJob);
+    await runCourseGeneration(courseJob);
+    expect((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.generated_course WHERE root_id=$1 AND status='ready'", [study.rootId])).rows[0].count).toBe(1);
+    // Supplement: same set on the ready course.
+    const supplementEnvelope = { ...command(study.revision), courseId: courseJob.requestId };
+    const supplementFirst = await requestSupplements(a, study.rootId, supplementEnvelope);
+    expect(await requestSupplements(a, study.rootId, supplementEnvelope)).toEqual(supplementFirst);
+    const supplementJob = await supplementJobOf(a, courseJob.requestId);
+    await runSupplementFetch(supplementJob);
+    await runSupplementFetch(supplementJob);
+    expect((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.supplement_request WHERE course_id=$1 AND status='ready'", [courseJob.requestId])).rows[0].count).toBe(1);
+    // Why: same set on depth 1.
+    const whyEnvelope = { ...command(study.revision), courseId: courseJob.requestId, lessonIndex: 0, depth: 1 };
+    const whyFirst = await requestWhyStep(a, study.rootId, whyEnvelope);
+    expect(await requestWhyStep(a, study.rootId, whyEnvelope)).toEqual(whyFirst);
+    const whyJob = await whyJobOf(a, courseJob.requestId, 0, 1);
+    await runWhyStep(whyJob);
+    await runWhyStep(whyJob);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.why_explanation WHERE course_id=$1', [courseJob.requestId])).rows[0].count).toBe(1);
+    // Practice: a replayed submission returns the identical feedback and
+    // records exactly one evidence row; a RETRY is a fresh command and a
+    // fresh row (fresh attempt, never double-counted as anything).
+    const practiceEnvelope = { ...command(study.revision), courseId: courseJob.requestId, cardId: 'practice:0', attempted: 'one tracked effect', assisted: false };
+    const practiceFirst = await submitPracticeCard(a, study.rootId, practiceEnvelope);
+    expect(await submitPracticeCard(a, study.rootId, practiceEnvelope)).toEqual(practiceFirst);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.practice_attempt WHERE owner_id=$1', [a.userId])).rows[0].count).toBe(1);
+    await submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: courseJob.requestId, cardId: 'practice:0', attempted: 'a fresh retry', assisted: false });
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.practice_attempt WHERE owner_id=$1', [a.userId])).rows[0].count).toBe(2);
+    // Exactly three admitted dispatches (generation, supplement, why) and
+    // three zero-token ledger rows — nothing double-tracked.
+    expect((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.dispatch_admission WHERE owner_id=$1 AND outcome='admitted'", [a.userId])).rows[0].count).toBe(3);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.ai_dispatch_ledger WHERE owner_id=$1', [a.userId])).rows[0].count).toBe(3);
+  });
+
+  it('the 120-second honesty set: stranded pending rows age to failed timeout across course, supplement and why; practice is synchronous', async () => {
+    const a = await actor('s8-timeout-set');
+    await grant(a);
+    const study = await confirmedStudy(a, plan, [textA, textB, textC]);
+    // Start all three job families and age every row past the honest cap.
+    const courseStranded = await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId)); // settle the course so supplements/why have a base
+    const course = await courseRowOf(a, study.rootId);
+    const supplementStranded = await requestSupplements(a, study.rootId, { ...command(study.revision), courseId: course.id });
+    const whyStranded = await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 1 });
+    expect(courseStranded.state).toBe('pending'); // superseded immediately below, still one command
+    await database().query("UPDATE app.supplement_request SET created_at=clock_timestamp()-interval '130 seconds' WHERE id=$1", [supplementStranded.operationId]);
+    await database().query("UPDATE app.why_explanation SET created_at=clock_timestamp()-interval '130 seconds' WHERE id=$1", [(whyStranded as WhyReceipt).operationId]);
+    // A new command per family marks the stranded row failed 'timeout' —
+    // never success-by-timeout — and proceeds under a fresh admission.
+    const supplementRetried = await requestSupplements(a, study.rootId, { ...command(study.revision), courseId: course.id });
+    expect(supplementRetried.state).toBe('pending');
+    expect(supplementRetried.operationId).not.toBe(supplementStranded.operationId);
+    expect((await database().query<{ status: string; failure_code: string }>('SELECT status,failure_code FROM app.supplement_request WHERE id=$1', [supplementStranded.operationId])).rows[0]).toMatchObject({ status: 'failed', failure_code: 'timeout' });
+    const whyRetried = await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 1 });
+    expect(whyRetried).toMatchObject({ state: 'pending', operationId: (whyStranded as WhyReceipt).operationId }); // same row re-pended
+    expect((await database().query<{ status: string }>('SELECT status FROM app.why_explanation WHERE id=$1', [(whyStranded as WhyReceipt).operationId])).rows[0].status).toBe('pending');
+    // The course family's stranded shape (the S1 suite pins it in full): age
+    // the pending row of a NEW confirmed revision and self-heal the same way.
+    const saved = await savePlan(a, study.rootId, { ...command(study.revision), plan: { ...plan, topic: 'Timeout honesty' }, selectionId: study.selection!.id, extractionId: study.extractionIds[0] });
+    const reconfirmed = await confirmPlan(a, study.rootId, { ...command(saved.revision), planRevisionId: saved.planRevisionId! });
+    const courseStranded2 = await requestCourseGeneration(a, study.rootId, { ...command(reconfirmed.revision) });
+    await database().query("UPDATE app.generated_course SET created_at=clock_timestamp()-interval '130 seconds' WHERE id=$1", [courseStranded2.operationId]);
+    const courseRetried = await requestCourseGeneration(a, study.rootId, { ...command(reconfirmed.revision) });
+    expect(courseRetried.state).toBe('pending');
+    expect(courseRetried.operationId).not.toBe(courseStranded2.operationId);
+    expect((await database().query<{ status: string; failure_code: string }>('SELECT status,failure_code FROM app.generated_course WHERE id=$1', [courseStranded2.operationId])).rows[0]).toMatchObject({ status: 'failed', failure_code: 'timeout' });
+    // The retried jobs settle honestly with the default fixtures.
+    await runSupplementFetch(await supplementJobOf(a, course.id));
+    await runWhyStep(await whyJobOf(a, course.id, 0, 1));
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    expect((await getSupplements(a, study.rootId, course.id)).state).toBe('ready');
+    expect((await getWhyState(a, study.rootId, course.id, '0')).levels[0].status).toBe('ready');
+    expect((await getCourse(a, study.rootId)).state).toBe('ready');
+    // Practice has NO job and NO pending state: submission is synchronous —
+    // the feedback is complete at return time (never pending, never
+    // success-by-timeout) and a replay writes nothing new.
+    const before = (await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.practice_attempt WHERE owner_id=$1', [a.userId])).rows[0].count;
+    const practiceEnvelope = { ...command(reconfirmed.revision), courseId: course.id, cardId: 'practice:1', attempted: 'synchronous feedback', assisted: false };
+    const feedback = await submitPracticeCard(a, study.rootId, practiceEnvelope);
+    expect(feedback.outcome).toBeDefined();
+    expect(await submitPracticeCard(a, study.rootId, practiceEnvelope)).toEqual(feedback);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.practice_attempt WHERE owner_id=$1', [a.userId])).rows[0].count).toBe(before + 1);
+  });
+
+  it('post-deletion reads deny on default and pinned selectors across every generation surface (no-leak)', async () => {
+    const a = await actor('s8-post-deletion');
+    await grant(a);
+    const study = await confirmedStudy(a, plan, [textA, textB, textC]);
+    await requestCourseGeneration(a, study.rootId, { ...command(study.revision) });
+    await runCourseGeneration(await jobOf(a, study.rootId));
+    const course = await courseRowOf(a, study.rootId);
+    await requestSupplements(a, study.rootId, { ...command(study.revision), courseId: course.id });
+    await runSupplementFetch(await supplementJobOf(a, course.id));
+    await requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 1 });
+    await runWhyStep(await whyJobOf(a, course.id, 0, 1));
+    await removeRoot(a, study.rootId, { ...command(study.revision) });
+    // Default reads deny; pinned ids of the purged version deny identically.
+    for (const attempt of [
+      () => getCourse(a, study.rootId),
+      () => getCourse(a, study.rootId, course.id),
+      () => getCourse(a, study.rootId, '1'),
+      () => getSupplements(a, study.rootId),
+      () => getSupplements(a, study.rootId, course.id),
+      () => getWhyState(a, study.rootId, course.id, '0'),
+      () => getWhyState(a, study.rootId, '1', '0'),
+      () => getProvenance(a, study.rootId),
+      () => getProvenance(a, study.rootId, course.id),
+      () => submitPracticeCard(a, study.rootId, { ...command(study.revision), courseId: course.id, cardId: 'practice:0', attempted: 'x', assisted: false }),
+      () => requestWhyStep(a, study.rootId, { ...command(study.revision), courseId: course.id, lessonIndex: 0, depth: 2 }),
+    ]) await expect(attempt()).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    // Whole-personal removal denies the same way for a second owner.
+    const b = await actor('s8-post-deletion-personal');
+    await grant(b);
+    const other = await confirmedStudy(b, plan, [textA, textB, textC]);
+    await requestCourseGeneration(b, other.rootId, { ...command(other.revision) });
+    await runCourseGeneration(await jobOf(b, other.rootId));
+    const otherCourse = await courseRowOf(b, other.rootId);
+    await personalRemoval(b, command());
+    await expect(getCourse(b, other.rootId)).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    await expect(getCourse(b, other.rootId, otherCourse.id)).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    await expect(getProvenance(b, other.rootId, otherCourse.id)).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
   });
 });

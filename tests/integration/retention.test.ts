@@ -4,8 +4,12 @@ import { auth } from '../../src/modules/identity-access/auth';
 import { provisionSynthetic } from '../../src/modules/identity-access/provision';
 import { database, closeDatabase, transaction } from '../../src/adapters/postgres/database';
 import { closeQueue } from '../../src/adapters/queue';
-import { upload, getStudy } from '../../src/modules/materials-setup/service';
+import { upload, getStudy, savePlan, confirmPlan } from '../../src/modules/materials-setup/service';
+import { createBatch, uploadSlot, acknowledge, getBatch } from '../../src/modules/materials-setup/batches';
 import { runExtraction } from '../../src/modules/materials-setup/extraction';
+import { getDisclosure, decide } from '../../src/modules/processing-consent/service';
+import { requestCourseGeneration, submitPracticeCard, requestWhyStep } from '../../src/modules/course-generation/service';
+import { runCourseGeneration, runWhyStep } from '../../src/modules/course-generation/worker';
 import { dependenciesPreview, personalRemoval, reconcileCopies } from '../../src/modules/lifecycle-platform/service';
 import {
   createCourseArchiveFixture,
@@ -18,7 +22,8 @@ import {
 import { requestExport, downloadExport } from '../../src/modules/setup-export/service';
 import { runExport } from '../../src/modules/setup-export/worker';
 import { config } from '../../src/platform/config';
-import type { Command, Identity } from '../../src/contracts/setup';
+import type { Command, Identity, Plan } from '../../src/contracts/setup';
+import type { CourseJob, WhyJob } from '../../src/contracts/courses';
 
 // Synthetic fixtures only: every account, copy, receipt and course-controller
 // record below is generated for this suite. No live AI, external calls, real
@@ -26,7 +31,7 @@ import type { Command, Identity } from '../../src/contracts/setup';
 // timestamps with SQL UPDATEs exactly like the existing suites — never the
 // system clock.
 
-const command = (): Command => ({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0 });
+const command = (revision = 0): Command => ({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: revision });
 const text = 'Synthetic retention fixture: bounded copies only. <script>inert</script>';
 const stream = (value = text) => new Blob([value]).stream();
 const DAY = 24 * 60 * 60 * 1000;
@@ -285,6 +290,93 @@ describe('bounded retention registry and synthetic archive contract', () => {
     expect((await database().query('SELECT 1 FROM app.retention_registry WHERE id=$1', [done.id])).rowCount).toBe(0);
     await expect(getStudy(a, uploaded.rootId)).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
     expect((await readdir(config().storagePath)).some(copy => keys.includes(copy))).toBe(false);
+  });
+
+  // Epic-2 S8: the seven-day deletion deadline covers the course derivative
+  // classes. The ports purge them with the reconciler (proven as a set in the
+  // course-generation suite); this test pins the inventory side — the
+  // registered deletion-request class records the deadline that covers the
+  // derivative purge, the reconciler completes the purge inside it under
+  // normal operation, and the registry follows to purged.
+  it('the seven-day deletion class covers course derivatives: the registry records the deadline and the reconciler completes the purge', async () => {
+    const a = await actor('retention-course-deadline');
+    // Pin this test's own clearly-labeled synthetic fixture configuration:
+    // suite order can leave a low-quota fixture current (ai-draft's quota
+    // probe inserts a one-request limit), and this test admits several
+    // dispatches under one owner.
+    const maxVersion = await database().query<{ max: number }>('SELECT max(version) AS max FROM app.processor_configuration');
+    await database().query(
+      `INSERT INTO app.processor_configuration(id,version,provider,purpose,categories,retention_notice,eligibility,synthetic_test,daily_admission_limit)
+       VALUES($1,$2,'Synthetic test spy (fixture — not compliant live AI)','Boundary test purpose','["synthetic excerpts"]'::jsonb,'Synthetic test fixture; nothing leaves this machine.','eligible',true,100)`,
+      [crypto.randomUUID(), maxVersion.rows[0].max + 1],
+    );
+    const disclosure = await getDisclosure(a);
+    await decide(a, { ...command(), configurationVersion: disclosure.configuration.version, decision: 'granted', acknowledgedTerms: true });
+    // A confirmed study with the full course derivative set.
+    const texts = [
+      'Unit testing checks a single unit of behavior. Arrange inputs, act, assert outcomes.',
+      'A test double stands in for a dependency. Coverage reports executed lines, not assertion quality.',
+      'A third perspective rounds the reading out for deeper levels.',
+    ];
+    const slotIds = texts.map(() => crypto.randomUUID());
+    const batch = await createBatch(a, { ...command(), inputs: texts.map((value, index) => ({ slotId: slotIds[index], filename: `deadline-${index}.txt`, mime: 'text/plain', byteLength: Buffer.byteLength(value) })) });
+    for (const [index, value] of texts.entries()) {
+      const up = await uploadSlot(a, batch.rootId, slotIds[index], command(), new Blob([value]).stream());
+      await runExtraction(up.operationId!);
+    }
+    const preview = await getBatch(a, batch.rootId);
+    const slots = preview.slots.filter(slot => slotIds.includes(slot.slotId));
+    await acknowledge(a, batch.rootId, { ...command(preview.revision), selected: slots.map(slot => ({ slotId: slot.slotId, extractionId: slot.extractionId!, acknowledged: true as const })), excluded: [] });
+    const acknowledged = await getBatch(a, batch.rootId);
+    const derivativePlan: Plan = {
+      topic: 'Unit testing', goal: 'Understand a topic', clarification: '',
+      outcomes: ['Explain arrange-act-assert'],
+      miniCourse: { title: 'Deadline', lessons: ['What a unit test is'], practice: 'Write one test', estimatedMinutes: 15 },
+      missingExplanations: 'Sources do not cover mock frameworks. A conflicting statement about coverage appears in public documentation. One unverifiable claim exists about coverage.',
+    };
+    const saved = await savePlan(a, batch.rootId, { ...command(acknowledged.revision), plan: derivativePlan, extractionId: acknowledged.selection!.sources[0].extractionId, selectionId: acknowledged.selection!.id });
+    const confirmed = await confirmPlan(a, batch.rootId, { ...command(saved.revision), planRevisionId: saved.planRevisionId! });
+    await requestCourseGeneration(a, batch.rootId, { ...command(confirmed.revision) });
+    const courseJob = (await database().query<{ id: string; root_id: string; admission_id: string }>(
+      'SELECT id,root_id,admission_id FROM app.generated_course WHERE root_id=$1 ORDER BY created_at DESC LIMIT 1', [batch.rootId],
+    )).rows[0];
+    await runCourseGeneration({ schemaVersion: 1, requestId: courseJob.id, admissionId: courseJob.admission_id, rootId: courseJob.root_id, ownerId: a.userId, sessionId: a.sessionId } satisfies CourseJob);
+    const courseId = (await database().query<{ id: string }>("SELECT id FROM app.generated_course WHERE root_id=$1 AND status='ready'", [batch.rootId])).rows[0].id;
+    await submitPracticeCard(a, batch.rootId, { ...command(confirmed.revision), courseId, cardId: 'practice:0', attempted: 'deadline coverage', assisted: false });
+    await requestWhyStep(a, batch.rootId, { ...command(confirmed.revision), courseId, lessonIndex: 0, depth: 1 });
+    const whyJob = (await database().query<{ id: string; root_id: string; admission_id: string }>(
+      'SELECT id,root_id,admission_id FROM app.why_explanation WHERE course_id=$1 AND lesson_index=0 AND depth=1', [courseId],
+    )).rows[0];
+    await runWhyStep({ schemaVersion: 1, requestId: whyJob.id, admissionId: whyJob.admission_id, courseId, rootId: whyJob.root_id, ownerId: a.userId, sessionId: a.sessionId, lessonIndex: 0, depth: 1 } satisfies WhyJob);
+    // Whole-personal removal: the accepted request carries the seven-day
+    // deadline the derivative purge rides.
+    const removalKey = command();
+    const receipt = (await personalRemoval(a, removalKey)) as { requestId: string; state: string; deadlineAt: string };
+    expect(receipt.state).toBe('pending');
+    await reconcileRetention();
+    const registry = await registryRow('deletion-request', receipt.requestId);
+    expect(registry.retention_class).toBe('deletion-active-purge');
+    expect(registry.state).toBe('active');
+    expect(Math.abs(registry.expires_at.getTime() - Date.parse(receipt.deadlineAt))).toBeLessThan(5000);
+    // The reconciler completes the derivative purge under normal operation,
+    // well inside the recorded deadline.
+    await reconcileCopies();
+    for (const [table, where] of [
+      ['app.generated_course', 'owner_id=$1'],
+      ['app.supplement_request', 'owner_id=$1'],
+      ['app.course_item_state', 'owner_id=$1'],
+      ['app.practice_attempt', 'owner_id=$1'],
+      ['app.why_explanation', 'owner_id=$1'],
+    ] as const) {
+      expect((await database().query<{ count: number }>(`SELECT count(*)::int AS count FROM ${table} WHERE ${where}`, [a.userId])).rows[0].count).toBe(0);
+    }
+    expect(((await personalRemoval(a, removalKey)) as { state: string }).state).toBe('purged');
+    // The registry follows once past its recorded expiry: the class member is
+    // marked purged and the deadline receipt never resurrects anything.
+    await database().query("UPDATE app.retention_registry SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1", [registry.id]);
+    await reconcileRetention();
+    expect((await registryRow('deletion-request', receipt.requestId)).state).toBe('purged');
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.generated_course WHERE owner_id=$1', [a.userId])).rows[0].count).toBe(0);
   });
 
   it('expires content-free metadata and receipts at thirty days without touching real data', async () => {

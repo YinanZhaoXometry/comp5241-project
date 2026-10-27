@@ -93,9 +93,11 @@ describe('export contracts', () => {
     expect(exportJobSchema.safeParse({ schemaVersion: 1, requestId: crypto.randomUUID(), extra: 1 }).success).toBe(false);
     // S6 added the advisory 'ai-drafts' category, epic-2 S1 added
     // 'generated-courses', epic-2 S2 added 'supplements', epic-2 S5 added
-    // 'practice-evidence' and epic-2 S6 added 'why-explanations' (all five
-    // deliberately excluded from the artifact; listed so owners see the
-    // exclusion).
+    // 'practice-evidence' and epic-2 S6 added 'why-explanations'. The epic-2
+    // S8 scope decision flipped generated-courses, practice-evidence and
+    // why-explanations INTO the artifact (owner derivative content); only
+    // ai-drafts and fetched supplement passages stay deliberately excluded
+    // (listed so owners see the exclusion).
     expect(exportCategories).toHaveLength(13);
     expect(MAX_EXPORT_BYTES).toBe(512 * 1024 * 1024);
   });

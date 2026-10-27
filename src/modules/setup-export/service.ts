@@ -30,18 +30,24 @@ export async function listExports(identity: { userId: string; sessionId: string 
   return transaction(async (client) => {
     await authorize(client, identity);
     const counts = await activeCounts(client, identity.userId);
-    const objectCounts: Partial<Record<ExportCategory, number>> = {
+    const objectCounts: Partial<Record<ExportCategory, number | null>> = {
       originals: counts.originals,
       extractions: counts.extractions,
       selections: counts.selections,
       plans: counts.plans,
       confirmations: counts.confirmations,
+      // Epic-2 S8 flipped classes carry live owner counts now that the
+      // artifact includes them; null (absent table) falls through to the
+      // table-driven branch below.
+      'generated-courses': counts.courses,
+      'practice-evidence': counts.practice,
+      'why-explanations': counts.why,
     };
     const categories: ExportCategoryInfo[] = [];
     for (const category of exportCategories) {
       const label = exportCategoryLabels[category];
       const direct = objectCounts[category];
-      if (direct !== undefined) {
+      if (direct !== undefined && direct !== null) {
         categories.push({ category, label, count: direct, available: true });
         continue;
       }
@@ -64,7 +70,7 @@ export async function listExports(identity: { userId: string; sessionId: string 
                         ? 'why_explanation'
                         : null;
       const present = table ? await tablePresent(client, table) : false;
-      if (category === 'ai-drafts' || category === 'generated-courses' || category === 'supplements' || category === 'practice-evidence' || category === 'why-explanations') {
+      if (category === 'ai-drafts' || category === 'supplements') {
         categories.push(
           present
             ? { category, label, count: null, available: true, note: 'Present; deliberately excluded from the artifact — see the manifest skip note' }

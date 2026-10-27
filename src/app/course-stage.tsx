@@ -508,7 +508,14 @@ export function CourseStage({ study, busy, onBusy, onFailure, onCourseReady }: P
   useEffect(() => {
     if (!whyFocus) return;
     const id = whyFocus.kind === "level" ? `why-level-${whyFocus.depth}` : whyFocus.kind === "notice" ? "why-exhausted-notice" : "why-explorer-heading";
-    requestAnimationFrame(() => document.getElementById(id)?.focus());
+    // A few frames of retry: under load the settle render can land between
+    // frames and a concurrent re-render may briefly steal focus back.
+    const focusIt = (attempt: number) => {
+      const element = document.getElementById(id);
+      if (element) element.focus();
+      if (!document.activeElement?.id && attempt < 5) requestAnimationFrame(() => focusIt(attempt + 1));
+    };
+    requestAnimationFrame(() => focusIt(0));
   }, [whyFocus]);
 
     if (!state) return null;

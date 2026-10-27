@@ -68,7 +68,13 @@ project-new/
 │   │   ├── processing-consent/ versioned disclosure, owner consent, dispatch admission (S3)
 │   │   ├── setup-preferences/  resumable goal/topic/preferences with pinned revision (S4)
 │   │   ├── setup-diagnostic/   synthetic check bundles, evidence, skip path (S7 infrastructure)
-│   │   ├── setup-export/       consistent manifest snapshot + tar.gz artifacts (S8)
+│   │   ├── setup-export/       consistent manifest snapshot + tar.gz artifacts (S8; the
+│   │                       epic-2 S8 scope decision flips generated-course
+│   │                       content, practice evidence and why explanations
+│   │                       INTO the artifact as owner derivative content,
+│   │                       keeps fetched supplement passages the one honest
+│   │                       class skip — identity/location metadata only rides
+│   │                       along inside each exported course)
 │   │   ├── course-generation/  epic-2 S1–S6 tracer: confirmed-plan → generated
 │   │   │                       course (handoff-consuming service, restart-safe worker
 │   │   │                       running the local synthetic fixture behind
@@ -142,8 +148,12 @@ project-new/
 │   ├── unit/               contracts, documents, adapter transport (vitest)
 │   ├── integration/        real PostgreSQL: tracer, batches, documents, migrations,
 │   │                       parser stack, consent, preferences, handoff, diagnostic,
-│   │                       export, lifecycle, retention, restore, course-generation,
-│   │                       provenance (the epic-2 S7 synthetic consumer)
+│   │                       export, lifecycle, retention, restore, course-generation
+│   │                       (incl. the epic-2 S8 integration set: mid-flight
+│   │                       deletion races, consent-denial/ineligibility,
+│   │                       four-family idempotency, the 120-second honesty
+│   │                       set and post-deletion read denials), provenance
+│   │                       (the epic-2 S7 synthetic consumer)
 │   ├── browser/            Playwright: tracer, pages (static product pages), batches,
 │   │                       consent, preferences, handoff, check, export, lifecycle,
 │   │                       course — production build
