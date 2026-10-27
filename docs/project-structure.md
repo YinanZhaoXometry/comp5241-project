@@ -42,6 +42,10 @@ project-new/
 │   │   ├── documents.ts    bounded document/extraction contracts
 │   │   ├── batches.ts      batch admission/selection contracts
 │   │   ├── consent.ts · preferences.ts · diagnostic.ts · export.ts   S3/S4/S7/S8 contracts
+│   │   ├── provenance.ts   epic-2 S7 versioned provenance + downstream
+│   │   │                       handoff document contract (immutable-per-version
+│   │   │                       block + monotonic derivatives block;
+│   │   │                       attempt-independent by construction)
 │   │   ├── ai-provider.ts  provider-neutral text-completion port (dormant)
 │   │   └── courses.ts      epic-2 S1–S6 generated-course + supplement +
 │   │                         player + why contracts (content v4 = v3
@@ -93,6 +97,9 @@ project-new/
 │   │   │                       why fixture, with one explanation derivative per
 │   │   │                       (owner, course version, lesson, depth) in 020
 │   │   │                       app.why_explanation cascading with the course
+│   │   │                       lineage; S7 getProvenance — the read-only, owner-
+│   │   │                       scoped, lineage-fenced provenance handoff document
+│   │   │                       (pinned reads byte-stable across supersession)
 │   │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
 │   │                           derivative ports, dependencies preview (S9),
 │   │                           retention registry/scheduler + archive contract (S10)
@@ -135,7 +142,8 @@ project-new/
 │   ├── unit/               contracts, documents, adapter transport (vitest)
 │   ├── integration/        real PostgreSQL: tracer, batches, documents, migrations,
 │   │                       parser stack, consent, preferences, handoff, diagnostic,
-│   │                       export, lifecycle, retention, restore, course-generation
+│   │                       export, lifecycle, retention, restore, course-generation,
+│   │                       provenance (the epic-2 S7 synthetic consumer)
 │   ├── browser/            Playwright: tracer, pages (static product pages), batches,
 │   │                       consent, preferences, handoff, check, export, lifecycle,
 │   │                       course — production build

@@ -11,7 +11,7 @@ import { getPreferences, savePreferences } from "../../../../modules/setup-prefe
 import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finishCheck, flagUnclear } from "../../../../modules/setup-diagnostic/service";
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
-import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState } from "../../../../modules/course-generation/service";
+import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState, getProvenance } from "../../../../modules/course-generation/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -163,6 +163,22 @@ async function handle(request: Request, context: Context) {
           const requested = new URL(request.url).searchParams.get("course") ?? undefined;
           const supplements = await getSupplements(identity, rootId, requested);
           return protectedResponse(identity, rootId, supplements, request.signal, false, supplements.objectIds);
+        }
+        if (action === "provenance") {
+          // Epic-2 S7 versioned provenance handoff surface: optional
+          // ?course=<uuid|version> pins one ready course version (immutable
+          // block byte-stable across superseding revisions and derivative
+          // growth); optional ?fields=<a,b> declares the consumer's intended
+          // contract fields — a name outside the contract (answers, attempts)
+          // is INVALID_INPUT before anything is read. EVERY value of a
+          // repeated ?fields= parameter is joined into the declaration, so no
+          // non-contract name can hide behind a first valid one.
+          const parameters = new URL(request.url).searchParams;
+          const requested = parameters.get("course") ?? undefined;
+          const fieldValues = parameters.getAll("fields");
+          const fields = fieldValues.length ? fieldValues.join(",") : undefined;
+          const provenance = await getProvenance(identity, rootId, requested, fields);
+          return protectedResponse(identity, rootId, provenance, request.signal, false, provenance.objectIds);
         }
       }
       if (request.method === "POST") {

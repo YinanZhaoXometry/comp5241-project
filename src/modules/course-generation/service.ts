@@ -28,6 +28,7 @@ import {
 import { transaction } from "../../adapters/postgres/database";
 import { enqueueCourseGeneration, enqueueSupplementFetch, enqueueWhyStep } from "../../adapters/queue";
 import { AI_BUDGET } from "../../adapters/ai-live";
+import { parseProvenanceFields, type ProvenanceDocument, type ProvenanceState } from "../../contracts/provenance";
 import { authorize } from "../identity-access/access";
 import * as lifecycle from "../lifecycle-platform/repository";
 import { admitDispatch } from "../processing-consent/service";
@@ -756,5 +757,129 @@ export async function getWhyState(identity: Identity, rawId: string, requested?:
       levels,
       objectIds: [row.object_id, ...(row.object_ids ?? [])].filter((id): id is string => !!id),
     };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Epic-2 S7: the versioned provenance and downstream handoff surface. A
+// read-only owner-scoped, lineage-fenced document over the SAME rows the
+// player views use (course row + stored content through storedCourseContent,
+// course_objective/course_source lineage tables, the course's settled
+// supplement pass and its why rows) — one serving truth, no parallel copies.
+// Version pinning mirrors the course reads exactly: the optional `requested`
+// selector (course id uuid or per-root version number) resolves one READY
+// version whose IMMUTABLE block (course lineage, objectives, units, practice
+// items, tracker inventory) is byte-stable across superseding revisions AND
+// across the version's own derivative growth — every immutable field is
+// immutable row data, which is also why no live supersession pointer exists
+// in the contract. Supplements and why explanations attach to any ready
+// version — a pinned prior one included — so they live in the documented
+// MONOTONIC derivatives block: their passes may only ADD entries for a
+// version, never rewrite or drop one. Absent a selector, the current
+// confirmed revision's row wins in ANY status (honest pending/failed/none
+// states), falling back to the latest ready course only when no
+// current-confirmed row exists. The contract is attempt-independent by
+// construction: answers, rationales, attempt content and done state have no
+// fields anywhere, and a `fields=` scope declaration naming one is
+// INVALID_INPUT before anything is read.
+// ---------------------------------------------------------------------------
+export async function getProvenance(identity: Identity, rawId: string, requested?: string, rawFields?: string): Promise<ProvenanceState & { objectIds: string[] }> {
+  const rootId = parse(uuid, rawId);
+  if (requested !== undefined && !uuid.safeParse(requested).success && !/^[1-9]\d*$/u.test(requested)) fail("INVALID_INPUT");
+  // The scope declaration is checked against the contract FIRST: any name
+  // outside it (answers, attempts, anything invented) denies the request
+  // before a single row is read — the surface structurally cannot serve it.
+  if (rawFields !== undefined && !parseProvenanceFields(rawFields).ok) fail("INVALID_INPUT");
+  return transaction(async client => {
+    await authorize(client, identity);
+    await lifecycle.scopedRoot(client, identity.userId, rootId);
+    const item = await batchRow(client, rootId);
+    const revision = item.revision;
+    const objectIdsOf = (row: repository.CourseWithScope | null) =>
+      row ? [row.object_id, ...(row.object_ids ?? [])].filter((id): id is string => !!id) : [];
+    let row: repository.CourseWithScope | null = null;
+    if (requested !== undefined) {
+      // The pinned prior-version read: only a READY course of this owner
+      // resolves; anything else is the same no-leak denial as every view.
+      row = uuid.safeParse(requested).success
+        ? await repository.readyCourseById(client, identity.userId, rootId, requested)
+        : await repository.readyCourseByVersion(client, identity.userId, rootId, Number(requested));
+      if (!row) fail("FORBIDDEN_OR_NOT_FOUND");
+    } else {
+      // Mirrors getCourse: the current confirmed revision's own row in any
+      // status, falling back to the latest ready course only when it has none.
+      const current = item.confirmed_id ? await repository.courseForPlan(client, rootId, item.confirmed_id) : null;
+      row = current ?? null;
+      if (!row) row = await repository.latestReadyCourse(client, identity.userId, rootId);
+    }
+    if (!row) return { state: "none" as const, rootId, revision, objectIds: [] };
+    if (row.status === "pending") return { state: "pending" as const, rootId, revision, requestId: row.id, objectIds: objectIdsOf(row) };
+    if (row.status === "failed") return { state: "failed" as const, rootId, revision, requestId: row.id, failureCode: row.failure_code, objectIds: objectIdsOf(row) };
+    if (!row.content || !row.settled_at) fail("RETRYABLE_FAILURE");
+    const content = storedCourseContent(row.content);
+    if (!content) fail("RETRYABLE_FAILURE");
+    const version = row.version ?? 1;
+    // One serving truth: the immutable lineage tables feed objectives and the
+    // extraction ids; the stored content (through the same helpers as the
+    // player views, legacy wrap included) feeds units, practice items and the
+    // tracker inventory; the course's own settled rows feed supplements/why.
+    const objectiveRows = await repository.courseObjectiveRows(client, row.id);
+    const sourceRows = await repository.courseSourceRows(client, row.id);
+    const supplementRequest = await repository.latestSupplementRequest(client, identity.userId, row.id);
+    const supplementRows = supplementRequest?.status === "ready" ? await repository.supplementsForRequest(client, supplementRequest.id) : [];
+    const whyRows = (await repository.whyRowsForCourse(client, identity.userId, row.id)).filter(why => why.status === "ready");
+    const provenance: ProvenanceDocument = {
+      immutable: {
+        course: {
+          id: row.id,
+          version,
+          lineage: {
+            planRevisionId: row.plan_revision_id,
+            selectionId: row.selection_id,
+            extractionIds: sourceRows.map(source => source.extraction_id),
+            objectId: row.object_id,
+            admissionId: row.admission_id,
+          },
+          model: row.model ?? "",
+          factsDigest: contentFactsDigest(content),
+          adaptation: contentAdaptation(content),
+          createdAt: row.created_at.toISOString(),
+          settledAt: row.settled_at.toISOString(),
+        },
+        objectives: objectiveRows.map(objective => ({ position: objective.position, text: objective.objective, version })),
+        units: content.lessons.flatMap((lesson, lessonIndex) =>
+          lesson.sections.map((section, position) => ({
+            lesson: lessonIndex + 1,
+            title: lesson.title,
+            position,
+            text: section.text,
+            sourceRef: { extractionId: section.sourceRef.extractionId, filename: section.sourceRef.filename, locator: section.sourceRef.locator },
+          }))),
+        practiceItems: practiceCardsOf(content).map(card => ({
+          id: card.id,
+          objectiveIndex: card.objectiveIndex,
+          sourceRef: { extractionId: card.sourceRef.extractionId, filename: card.sourceRef.filename, locator: card.sourceRef.locator },
+        })),
+        trackerItems: courseTrackerItems(content).map(tracker => ({ id: tracker.id, required: tracker.required, title: tracker.title })),
+      },
+      derivatives: {
+        supplements: supplementRows.map(supplement => ({
+          position: supplement.position,
+          outcome: supplement.outcome,
+          url: supplement.url,
+          origin: supplement.origin,
+          locator: supplement.locator,
+          hash: supplement.content_hash,
+          retrievedAt: supplement.retrieved_at?.toISOString() ?? null,
+        })),
+        whyExplanations: whyRows.map(why => ({
+          lesson: why.lesson_index + 1,
+          depth: why.depth,
+          dimension: why.dimension!,
+          sources: why.sources ?? [],
+        })),
+      },
+    };
+    return { state: "ready" as const, rootId, revision, provenance, objectIds: objectIdsOf(row) };
   });
 }

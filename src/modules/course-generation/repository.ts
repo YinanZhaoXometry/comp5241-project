@@ -234,6 +234,25 @@ export async function insertSources(client: PoolClient, courseId: string, source
     await client.query("INSERT INTO app.course_source(id,course_id,position,extraction_id,filename) VALUES($1,$2,$3,$4,$5)", [crypto.randomUUID(), courseId, source.position, source.extractionId, source.filename]);
   }
 }
+// ---------------------------------------------------------------------------
+// Epic-2 S7 provenance reads over the versioned lineage tables (015 created
+// them for exactly this surface). Read-only, course-version-scoped: the rows
+// are immutable once written, which is what keeps pinned documents stable.
+// ---------------------------------------------------------------------------
+export async function courseObjectiveRows(client: PoolClient, courseId: string): Promise<Array<{ position: number; objective: string }>> {
+  const result = await client.query<{ position: number; objective: string }>(
+    "SELECT position,objective FROM app.course_objective WHERE course_id=$1 ORDER BY position",
+    [courseId],
+  );
+  return result.rows;
+}
+export async function courseSourceRows(client: PoolClient, courseId: string): Promise<Array<{ extraction_id: string; filename: string }>> {
+  const result = await client.query<{ extraction_id: string; filename: string }>(
+    "SELECT extraction_id,filename FROM app.course_source WHERE course_id=$1 ORDER BY position",
+    [courseId],
+  );
+  return result.rows;
+}
 // One content-free accounting row per generation with the processor-claimed
 // usage (the synthetic fixture honestly claims 0/0 — the accounting path stays
 // live, the counts are never fabricated). request_id stays NULL: this row
@@ -428,6 +447,15 @@ export async function whyRowsForLesson(client: PoolClient, ownerId: string, cour
   const result = await client.query<WhyExplanationRow>(
     "SELECT id,root_id,owner_id,course_id,lesson_index,depth,admission_id,status,failure_code,dimension,explanation,sources,model,created_at,settled_at FROM app.why_explanation WHERE course_id=$1 AND owner_id=$2 AND lesson_index=$3 ORDER BY depth",
     [courseId, ownerId, lessonIndex],
+  );
+  return result.rows;
+}
+// Every why row of one course version across all lessons (owner-scoped) — the
+// epic-2 S7 provenance inventory; non-ready rows are filtered by the caller.
+export async function whyRowsForCourse(client: PoolClient, ownerId: string, courseId: string): Promise<WhyExplanationRow[]> {
+  const result = await client.query<WhyExplanationRow>(
+    "SELECT id,root_id,owner_id,course_id,lesson_index,depth,admission_id,status,failure_code,dimension,explanation,sources,model,created_at,settled_at FROM app.why_explanation WHERE course_id=$1 AND owner_id=$2 ORDER BY lesson_index,depth",
+    [courseId, ownerId],
   );
   return result.rows;
 }
