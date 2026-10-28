@@ -6,27 +6,45 @@ import { commandSchema, uuid } from "./setup";
 // (blueprint, questions, answer key, answer rules, rubric, point scale and
 // the 80% default mark), submitted exactly once, scored deterministically by
 // unrounded scaled-integer cross-product, and driving a DERIVED roadmap node
-// (In progress -> Completed). The tracer slice deliberately carries no
-// partial credit, gap guidance, award, review-due or instructor-override
-// fields anywhere. Story 2 (3.2) ADDS the targeted-recovery surface below —
-// the failed-grade ledger and the fresh same-demand retest chain — with
-// AD-8's fence: only an originally FAILED ordinary attempt opens recovery,
-// passed groups are preserved and never re-tested, and the original score is
-// never rewritten (recovery credit is shown separately, never merged).
+// (In progress -> Completed). Story 2 (3.2) ADDS the targeted-recovery surface
+// below — the failed-grade ledger and the fresh same-demand retest chain —
+// with AD-8's fence: only an originally FAILED ordinary attempt opens
+// recovery, passed groups are preserved and never re-tested, and the original
+// score is never rewritten (recovery credit is shown separately, never
+// merged). Story 3 (3.3) completes the D3/AD-8 scoring surface: per-item
+// OPTIONAL disclosed partial-credit rubrics with DECLARED FINITE PRECISION
+// (a per-snapshot integer pointsScale — every earned amount stays a scaled
+// integer, no float ever decides), and the instructor pass-mark override
+// carried as an attempt-snapshotted { source, provenance, value } CONTRACT
+// (personal study always carries source "default" at the 80% default — no
+// instructor route or UI exists here; epic 5 supplies the writer). The
+// provisional-grade state is typed beside the statuses as a contract ONLY:
+// it structurally carries no pass decision, so nothing downstream can read a
+// pass off it and it can never award completion (see GradeDecision).
 //
 // Answer withholding (D3/AD-8): the correct answer of every item lives ONLY
 // in the stored snapshot (server-side) and in the graded view of the attempt
 // or retest that submitted it. No GET payload before that attempt/retest is
-// graded carries an answerId or correctChoiceId field.
+// graded carries an answerId or correctChoiceId field. A partial-credit
+// rubric's credits map is disclosure, not a key: it names no answerId (the
+// correct answer is structurally absent from it), and an absent choice is
+// indistinguishable from a zero-credit choice.
 
 export const REQUIRED_TEST_ID = "required-test-1";
 // Story 2: the fresh same-demand retest of the required test's failed
 // objective groups. A separate testId keeps retest snapshots distinguishable
 // from ordinary attempt snapshots while reusing the same item shape.
 export const RETEST_TEST_ID = "targeted-retest-1";
+// Story 3: the manually checked partial-credit FIXTURE test (D7). It is a
+// distinct testId so a rubric-carrying snapshot can never masquerade as the
+// ordinary required test; the served personal-study path always builds the
+// full-credit root test.
+export const PARTIAL_CREDIT_TEST_ID = "required-test-partial-credit";
 // The user-selected default pass mark (D3): snapshotted per attempt so later
 // policy changes could only affect new attempts, never a started one.
 export const DEFAULT_PASS_MARK_PERCENT = 80;
+// The carried default override contract every personal-study snapshot rides.
+export const DEFAULT_PASS_MARK_OVERRIDE = { source: "default", value: DEFAULT_PASS_MARK_PERCENT } as const;
 
 export const attemptStatuses = ["active", "graded"] as const;
 export type AttemptStatus = (typeof attemptStatuses)[number];
@@ -36,6 +54,54 @@ export const recoveryTargetStatuses = ["open", "cleared"] as const;
 export type RecoveryTargetStatus = (typeof recoveryTargetStatuses)[number];
 export const roadmapNodes = ["not-started", "in-progress", "completed"] as const;
 export type RoadmapNode = (typeof roadmapNodes)[number];
+
+// Story 3 — the PROVISIONAL-GRADE CONTRACT, typed BESIDE the attempt
+// statuses (never inside them: a test_attempt row is a deterministic
+// objective grade and always final). D3/AD-8: an instructor-course
+// subjective grade stays Provisional until the instructor confirms it and
+// cannot award completion while pending. The fence is structural: a pass
+// decision (`passed`) exists ONLY on the final variant — the provisional
+// variant has no such field at all, so no consumer can read a pass off it
+// and the completion derivations (scoring.ts gradeAwardsCompletion /
+// deriveRoadmapNode / recoverySatisfied) ignore it by construction. No
+// writer produces it in personal study; this is the typed contract epic 5
+// confirms.
+export const gradeKinds = ["final", "provisional"] as const;
+export type GradeKind = (typeof gradeKinds)[number];
+export type FinalGrade = { gradeKind: "final"; passed: boolean };
+export type ProvisionalGrade = { gradeKind: "provisional"; pendingSince: string };
+export type GradeDecision = FinalGrade | ProvisionalGrade;
+
+// The instructor pass-mark override, carried ON THE SNAPSHOT at start like
+// every policy (source / provenance / value — the provenance.ts precedent:
+// strict shape, forbidden fields structurally absent). "default" is the
+// personal-study contract (value === the 80% default); "instructor" is the
+// epic-5 contract — an instructor-set mark with its recording time as
+// provenance. There is deliberately NO writer for the instructor variant in
+// this build; the schema exists so the carried contract is exact when epic 5
+// lands one. The snapshot's passMarkPercent IS the applicable mark; the
+// refine on each snapshot schema pins override.value === passMarkPercent, so
+// the verdict can never disagree with the contract it discloses.
+export const passMarkOverrideSchema = z.discriminatedUnion("source", [
+  z.strictObject({ source: z.literal("default"), value: z.number().int().min(1).max(100) }),
+  z.strictObject({ source: z.literal("instructor"), value: z.number().int().min(1).max(100), recordedAt: z.iso.datetime() }),
+]);
+export type PassMarkOverride = z.infer<typeof passMarkOverrideSchema>;
+
+// One item's DISCLOSED partial-credit rubric (D3: partial credit is allowed
+// only where a disclosed rubric defines it; no negative marking). The
+// disclosure is the pre-start text the learner sees; credits maps a choice id
+// to the exact earned points — a nonnegative scaled INTEGER in the
+// snapshot's declared pointsScale (a float credit is rejected by the schema:
+// non-precision-conforming rubrics are never repaired). The declared correct
+// answer is structurally ABSENT from the map: it earns the item's full points
+// under the answer rule (the full-credit default), and a map that tries to
+// declare a diminished "correct" credit is rejected.
+export const itemPartialCreditSchema = z.strictObject({
+  disclosure: z.string().trim().min(1).max(600),
+  credits: z.record(z.string().trim().min(1).max(8), z.number().int().min(0).max(10000000)),
+});
+export type ItemPartialCredit = z.infer<typeof itemPartialCreditSchema>;
 
 export const assessmentChoiceSchema = z.strictObject({
   id: z.string().trim().min(1).max(8),
@@ -57,33 +123,75 @@ export const snapshotItemSchema = z
     choices: z.array(assessmentChoiceSchema).min(2).max(4),
     // Answer key — never part of any pre-grade view.
     answerId: z.string().trim().min(1).max(8),
-    points: z.number().int().min(1).max(100000),
+    // Raw scaled-integer points in the SNAPSHOT's declared pointsScale
+    // (scale 1 = whole points, scale 100 = hundredths of a point). The
+    // raised bound keeps the cross-products overflow-safe at the largest
+    // allowed scale (5 items x 10000000 total 50000000: earned x 100 and
+    // mark x total both stay far inside Number.MAX_SAFE_INTEGER).
+    points: z.number().int().min(1).max(10000000),
+    // OPTIONAL disclosed partial-credit rubric — absent means full credit
+    // only (the whole-points 3.1/3.2 behavior, byte-identical).
+    partialCredit: itemPartialCreditSchema.optional(),
   })
   .refine(item => item.choices.some(choice => choice.id === item.answerId), {
     message: "The declared answer must match a declared choice.",
   })
   .refine(item => new Set(item.choices.map(choice => choice.id)).size === item.choices.length, {
     message: "Choice ids must be unique.",
+  })
+  .refine(item => item.partialCredit === undefined || Object.keys(item.partialCredit.credits).every(key => item.choices.some(choice => choice.id === key)), {
+    message: "A declared credit must name a declared choice.",
+  })
+  .refine(item => item.partialCredit === undefined || !(item.answerId in item.partialCredit.credits), {
+    message: "The declared correct answer earns full points under the answer rule; its credit is never a declared diminished value.",
+  })
+  .refine(item => item.partialCredit === undefined || Object.values(item.partialCredit.credits).every(credit => credit <= item.points), {
+    message: "A declared partial credit can never exceed the item's full points.",
+  })
+  .refine(item => {
+    if (item.partialCredit === undefined) return true;
+    // Withholding: a rubric that declares a credit for EVERY non-correct
+    // choice would disclose the answer by elimination in the pre-grade
+    // descriptor (absent ≡ zero-credit must stay indistinguishable).
+    const nonCorrect = item.choices.filter(choice => choice.id !== item.answerId);
+    return nonCorrect.some(choice => !(choice.id in item.partialCredit!.credits));
+  }, {
+    message: "A disclosed rubric can never declare a credit for every non-correct choice.",
   });
 export type SnapshotItem = z.infer<typeof snapshotItemSchema>;
 
 // The shared snapshot core: positions, points, pinning refines and the
 // declared total all behave identically for ordinary attempts and retests.
+// Story 3 adds the DECLARED FINITE PRECISION (pointsScale: 1 = whole points,
+// 100 = hundredths; anything else is non-precision-conforming and rejected)
+// and the carried pass-mark override contract. Both default so pre-3.3
+// stored snapshots (scale 1, no carried contract) still parse and stay
+// gradeable under their own declared scale — stored immutable rows never
+// change shape.
 const snapshotCoreSchema = z.strictObject({
   schemaVersion: z.literal(1),
   testId: z.string().trim().min(1).max(64),
   title: z.string().trim().min(1).max(160),
   source: z.literal("manual-synthetic"),
   passMarkPercent: z.number().int().min(1).max(100),
+  pointsScale: z.union([z.literal(1), z.literal(100)]).default(1),
+  passMarkOverride: passMarkOverrideSchema.default(DEFAULT_PASS_MARK_OVERRIDE),
   answerRule: z.string().trim().min(1).max(600),
   rubric: z.string().trim().min(1).max(600),
-  totalPoints: z.number().int().min(1).max(1000000),
+  totalPoints: z.number().int().min(1).max(50000000),
   items: z.array(snapshotItemSchema).min(1).max(5),
 });
 const sequentialPositions = (snapshot: { items: Array<{ position: number }> }, index: number) =>
   snapshot.items[index]?.position === index + 1;
 const pointsSumToTotal = (snapshot: { totalPoints: number; items: Array<{ points: number }> }) =>
   snapshot.items.reduce((sum, item) => sum + item.points, 0) === snapshot.totalPoints;
+const overrideAgrees = (snapshot: { passMarkPercent: number; passMarkOverride: PassMarkOverride }) =>
+  snapshot.passMarkOverride.value === snapshot.passMarkPercent;
+// The served full-credit-only invariant, enforced at the schema level: the
+// required test and its retests never carry a per-item rubric — the
+// partial-credit fixture schema is the only rubric carrier.
+const noRubrics = (snapshot: { items: Array<{ partialCredit?: ItemPartialCredit }> }) =>
+  snapshot.items.every(item => item.partialCredit === undefined);
 
 export const attemptSnapshotSchema = snapshotCoreSchema
   .extend({ testId: z.literal(REQUIRED_TEST_ID) })
@@ -92,6 +200,12 @@ export const attemptSnapshotSchema = snapshotCoreSchema
   })
   .refine(pointsSumToTotal, {
     message: "Per-item points must sum to the declared total.",
+  })
+  .refine(overrideAgrees, {
+    message: "The carried pass-mark override must equal the snapshot's applicable mark.",
+  })
+  .refine(noRubrics, {
+    message: "The required test is full credit only; only the partial-credit fixture schema carries rubrics.",
   });
 export type AttemptSnapshot = z.infer<typeof attemptSnapshotSchema>;
 
@@ -108,8 +222,55 @@ export const retestSnapshotSchema = snapshotCoreSchema
   })
   .refine(pointsSumToTotal, {
     message: "Per-item points must sum to the declared total.",
+  })
+  .refine(overrideAgrees, {
+    message: "The carried pass-mark override must equal the snapshot's applicable mark.",
+  })
+  .refine(noRubrics, {
+    message: "A targeted retest is full credit only; only the partial-credit fixture schema carries rubrics.",
   });
 export type RetestSnapshot = z.infer<typeof retestSnapshotSchema>;
+
+// Story 3 — the partial-credit FIXTURE snapshot (D7, manually checked in
+// bank.ts): the same shared core under its own testId, with at least one
+// item carrying a disclosed partial-credit rubric and the snapshot's points
+// scale declared at hundredths so fractional credits are exact scaled
+// integers. It rides an ordinary attempt row exactly like an AttemptSnapshot
+// (same items/answers/grading shape); only the testId contract differs.
+export const partialCreditSnapshotSchema = snapshotCoreSchema
+  .extend({ testId: z.literal(PARTIAL_CREDIT_TEST_ID) })
+  .refine(snapshot => snapshot.items.every((_, index) => sequentialPositions(snapshot, index)), {
+    message: "Items must be numbered sequentially from 1.",
+  })
+  .refine(pointsSumToTotal, {
+    message: "Per-item points must sum to the declared total.",
+  })
+  .refine(overrideAgrees, {
+    message: "The carried pass-mark override must equal the snapshot's applicable mark.",
+  })
+  .refine(snapshot => snapshot.items.some(item => item.partialCredit !== undefined), {
+    message: "A partial-credit fixture snapshot must carry at least one disclosed rubric.",
+  });
+export type PartialCreditSnapshot = z.infer<typeof partialCreditSnapshotSchema>;
+// Any snapshot an ordinary attempt row may carry (the served full-credit
+// root build or the planted partial-credit fixture).
+export type AnyAttemptSnapshot = AttemptSnapshot | PartialCreditSnapshot;
+
+// Legacy tolerance for PRE-3.3 stored rows (written before pointsScale /
+// passMarkOverride existed): they are whole-point snapshots under the
+// default-mark contract by construction. Every read-side builder normalizes
+// through these so a stored immutable row never needs rewriting.
+export type LegacySnapshotCore = {
+  passMarkPercent: number;
+  pointsScale?: number;
+  passMarkOverride?: PassMarkOverride;
+};
+export function pointsScaleOf(snapshot: LegacySnapshotCore): 1 | 100 {
+  return snapshot.pointsScale === 100 ? 100 : 1;
+}
+export function passMarkOverrideOf(snapshot: LegacySnapshotCore): PassMarkOverride {
+  return snapshot.passMarkOverride ?? { source: "default", value: snapshot.passMarkPercent };
+}
 
 // Commands. Start resolves the latest ready course version server-side (no
 // client-supplied course pin); submit carries the attempt id and the chosen
@@ -170,9 +331,15 @@ export type TestDescriptorView = {
   title: string;
   source: "manual-synthetic";
   passMarkPercent: number;
+  // Story 3: the declared finite precision and the carried override contract
+  // ride the disclosure, plus the per-item disclosed partial-credit rubrics
+  // (null on every full-credit item — the whole 3.1/3.2 surface unchanged).
+  pointsScale: 1 | 100;
+  passMarkOverride: PassMarkOverride;
   totalPoints: number;
   itemCount: number;
   itemPoints: number[];
+  items: Array<{ position: number; points: number; partialCredit: ItemPartialCredit | null }>;
   answerRule: string;
   rubric: string;
 };
@@ -194,6 +361,13 @@ export type GradedAttemptView = {
   earnedPoints: number;
   totalPoints: number;
   passMarkPercent: number;
+  // Story 3: the grade kind (a deterministic objective attempt is always
+  // "final" here; a provisional-typed grade would serve labeled Provisional
+  // and award nothing), the declared point scale and the carried override
+  // provenance ride the graded view.
+  gradeKind: GradeKind;
+  pointsScale: 1 | 100;
+  passMarkOverride: PassMarkOverride;
   passed: boolean;
   displayPercent: string;
   // The honest verdict line, e.g. `79.96% — Not passed (mark is 80%)`.
@@ -210,6 +384,7 @@ export type AttemptSummary = {
   gradedAt: string | null;
   earnedPoints: number | null;
   totalPoints: number | null;
+  pointsScale: 1 | 100;
   passed: boolean | null;
   displayPercent: string | null;
 };
@@ -223,6 +398,9 @@ export type RecoveryTargetView = {
   objective: string;
   initialEarned: number;
   initialTotal: number;
+  // Story 3: the root attempt's declared point scale rides the ledger view
+  // so scaled-integer amounts render for humans without changing value.
+  pointsScale: 1 | 100;
   initialDisplayPercent: string;
   status: RecoveryTargetStatus;
   clearedBy: string | null;
@@ -236,6 +414,7 @@ export type RetestGroupResult = {
   objective: string;
   earned: number;
   total: number;
+  pointsScale: 1 | 100;
   cleared: boolean;
   displayPercent: string;
 };
@@ -246,6 +425,10 @@ export type ActiveRetestView = {
   courseVersion: number;
   planRevisionId: string;
   targetIndexes: number[];
+  // The RETEST's own declared point scale (its snapshot's — the root
+  // attempt's, mirrored): retest amounts render from this, never from the
+  // latest attempt descriptor's scale.
+  pointsScale: 1 | 100;
   startedAt: string;
   items: AssessmentItemView[];
 };
@@ -256,6 +439,7 @@ export type GradedRetestView = {
   courseVersion: number;
   planRevisionId: string;
   targetIndexes: number[];
+  pointsScale: 1 | 100;
   startedAt: string;
   gradedAt: string;
   groups: RetestGroupResult[];

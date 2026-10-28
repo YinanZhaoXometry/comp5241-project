@@ -1,10 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 import { provisionSynthetic } from "../../src/modules/identity-access/provision";
 import { database, closeDatabase } from "../../src/adapters/postgres/database";
+import { insertAttempt } from "../../src/modules/assessment-progress/repository";
+import { buildPartialCreditSnapshot } from "../../src/modules/assessment-progress/bank";
 import type { AttemptSnapshot, RetestSnapshot } from "../../src/contracts/assessment";
 import type { Receipt } from "../../src/contracts/setup";
 
-// Epic-3 story-1 browser journey plus the story-2 targeted-recovery journey.
+// Epic-3 story-1 browser journey plus the story-2 targeted-recovery journey
+// and the story-3 partial-credit disclosure journey.
 // Journey 1: over a generated course, A reads the pre-start disclosure
 // (threshold, available points, scoring criteria), starts the required test,
 // submits a boundary-honest 79.96% attempt (wrong only on the 2004-point
@@ -15,11 +18,19 @@ import type { Receipt } from "../../src/contracts/setup";
 // practice", cause unnamed) plus the recovery ledger, clears the one failed
 // group through a fresh same-demand retest, and the node COMPLETES on
 // recovery credit with the original verdict still shown beside it — never
-// merged, never averaged, zero passing rows. B (another learner) is denied on
-// the retest verbs too with no leak; every pre-grade GET payload withholds
-// the answer key; the flows stay keyboard-operable and overflow-free at
-// 360px. Synthetic account and content only; the assessment dispatches
-// nothing — zero outbound requests.
+// merged, never averaged, zero passing rows. Journey 3 (partial credit): A's
+// study carries an open attempt snapshotted at the hundredths scale with a
+// disclosed per-item rubric (planted through the module's own writer — the
+// surface is builder + contract, no served start path exists in personal
+// study); the panel discloses the rubric BEFORE any answer with per-choice
+// credit hints that name credit and never the correct answer, the declared
+// partly-correct choice earns EXACTLY its disclosed 1999.00 of 4000.00
+// points, and the honest 79.99% boundary keeps the node In progress — the
+// display never contradicting the verdict under the declared scale.
+// B (another learner) is denied on the retest verbs too with no leak; every
+// pre-grade GET payload withholds the answer key; the flows stay
+// keyboard-operable and overflow-free at 360px. Synthetic account and
+// content only; the assessment dispatches nothing — zero outbound requests.
 const origin = "http://127.0.0.1:3000";
 const sources = [
   { name: "attempt-0.txt", text: "Synthetic assessment source one. A second sentence gives the lesson body some structure." },
@@ -368,4 +379,133 @@ test("A fails once, clears the failed group through a targeted retest: node Comp
   expect(outbound).toEqual([]);
   expect(errors).toEqual([]);
   await page.screenshot({ path: info.outputPath("recovery-completed.png"), fullPage: true });
+});
+
+// Epic-3 story-3 journey: the disclosed partial-credit surface over an open
+// attempt snapshotted at the hundredths scale. The rubric disclosure and the
+// per-choice credit hints are visible BEFORE any answer (and name no correct
+// answer); choosing the declared partly-correct option earns EXACTLY its
+// disclosed 1999.00 of 4000.00 points; 6000.00 + 1999.00 = 79.99% honestly
+// fails the 80% mark with a two-decimal display (the one-decimal "80.0%"
+// would contradict the verdict) and the node stays In progress.
+test("A answers a disclosed partial-credit item: the declared credit is earned exactly and the honest 79.99% boundary keeps the node In progress", async ({ page }, info) => {
+  test.setTimeout(300000);
+  const errors: string[] = [];
+  const outbound: string[] = [];
+  const assessmentBodies: Promise<string>[] = [];
+  page.on("pageerror", error => errors.push(error.name));
+  page.on("request", request => { if (!request.url().startsWith(origin)) outbound.push(new URL(request.url()).hostname); });
+  page.on("response", response => { if (response.url().includes("/assessment") && response.request().method() === "GET") assessmentBodies.push(response.text().catch(() => "")); });
+  await page.setViewportSize({ width: 360, height: 900 });
+  const account = await login(page, "attempt-partial-browser");
+  await grantConsent(page);
+  const rootId = await uploadAndConfirm(page);
+  const panel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Assessment & progress", exact: true }) });
+  const coursePanel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your mini-course", exact: true }) });
+  await coursePanel.getByRole("button", { name: "Generate mini-course (AI)", exact: true }).click();
+  await expect(coursePanel.getByRole("heading", { name: "1. One generated lesson", exact: true })).toBeVisible({ timeout: 60000 });
+
+  // Plant the open attempt through the module's own repository writer with
+  // the module's own fixture builder: a scale-100 snapshot whose second item
+  // carries the disclosed rubric. Same row shape a started attempt carries;
+  // no served start path builds it in personal study.
+  const courseRow = (
+    await database().query<{ id: string; version: number; plan_revision_id: string }>(
+      "SELECT id,version,plan_revision_id FROM app.generated_course WHERE root_id=$1 ORDER BY created_at DESC LIMIT 1",
+      [rootId],
+    )
+  ).rows[0];
+  if (!courseRow) throw new Error("no course row");
+  const objectiveRows = (
+    await database().query<{ position: number; objective: string }>(
+      "SELECT position,objective FROM app.course_objective WHERE course_id=$1 ORDER BY position",
+      [courseRow.id],
+    )
+  ).rows;
+  const snapshot = buildPartialCreditSnapshot(objectiveRows.map(row => ({ index: row.position, text: row.objective })));
+  const client = await database().connect();
+  try {
+    await insertAttempt(client, {
+      id: crypto.randomUUID(),
+      rootId,
+      ownerId: account.userId,
+      courseId: courseRow.id,
+      courseVersion: courseRow.version,
+      planRevisionId: courseRow.plan_revision_id,
+      snapshot,
+    });
+  } finally {
+    await client.release();
+  }
+  await page.reload();
+  // The study selection is per page-load: after the reload the library lists
+  // the confirmed study — reopen it and the assessment panel serves the
+  // planted open attempt.
+  await expect(page.getByRole("heading", { name: "My study library", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "View plan", exact: true }).click();
+  await expect(panel).toBeVisible({ timeout: 15000 });
+
+  // Pre-answer disclosure: the rubric line names the declared credit, the
+  // pass mark stays the default 80, points render in the snapshot's declared
+  // scale, and the node honestly reports engagement — no pass anywhere.
+  await expect(panel.getByText("Attempt open — 0 of 2 answered.", { exact: false })).toBeVisible();
+  await expect(panel.getByText(/earns the declared 1999\.00 of 4000\.00 points/)).toBeVisible();
+  await expect(panel.getByText("6000.00 + 4000.00 = 10000.00 points", { exact: false })).toBeVisible();
+  await expect(panel.getByText("Pass mark: 80%", { exact: false })).toBeVisible();
+  await expect(panel.getByText("Roadmap: In progress.", { exact: true })).toBeVisible();
+
+  // The credited choice names its exact credit beside the option — and never
+  // the correct answer: the pre-grade payloads carry no key of any kind.
+  const creditedId = Object.keys(snapshot.items[1].partialCredit!.credits)[0]!;
+  const creditedText = snapshot.items[1].choices.find(choice => choice.id === creditedId)!.text;
+  const creditedLabel = `${creditedText} — earns 1999.00 of 4000.00 points if chosen`;
+  const preGradeBodies = await Promise.all(assessmentBodies.splice(0));
+  for (const body of preGradeBodies) {
+    expect(body).not.toContain('"answerId"');
+    expect(body).not.toContain('"correctChoiceId"');
+  }
+
+  // Keyboard-only on the first (full-credit, hint-free) item; the credited
+  // partly-correct choice on the rubric item.
+  await page.getByRole("radio", { name: snapshot.items[0].choices.find(choice => choice.id === snapshot.items[0].answerId)!.text, exact: true }).focus();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("radio", { name: snapshot.items[0].choices.find(choice => choice.id === snapshot.items[0].answerId)!.text, exact: true })).toBeChecked();
+  await page.getByRole("radio", { name: creditedLabel, exact: true }).check();
+  const submit = panel.getByRole("button", { name: "Submit test (2/2 answered)", exact: true });
+  await submit.focus();
+  await expect(submit).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  // The honest boundary under the declared scale: exactly the declared credit
+  // earned, 79.99% NOT passing 80, two decimals because one would mislead,
+  // the partly-correct item labeled with its exact earned amount, and the
+  // node staying In progress.
+  await expect(panel.getByRole("strong").filter({ hasText: "79.99% — Not passed (mark is 80%)" })).toBeVisible({ timeout: 15000 });
+  await expect(panel.getByText("7999.00/10000.00 points", { exact: false }).first()).toBeVisible();
+  await expect(panel.getByText("partly correct · 1999.00 of 4000.00 points", { exact: false })).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "Recovery", exact: true })).toBeVisible();
+  await expect(panel.getByText(/initial 1999\.00\/4000\.00/).first()).toBeVisible();
+  await expect(panel.getByText("Failed-test requirement: open — 1 target group uncleared.", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Roadmap: In progress.", { exact: true })).toBeVisible();
+
+  // One graded row, zero passing rows; every GET payload across the whole
+  // journey never carried the snapshot's answer-key field.
+  const rows = await database().query<{ status: string; passed: boolean | null }>(
+    "SELECT status,passed FROM app.test_attempt WHERE root_id=$1 ORDER BY created_at",
+    [rootId],
+  );
+  expect(rows.rows).toEqual([{ status: "graded", passed: false }]);
+  for (const body of await Promise.all(assessmentBodies)) {
+    expect(body).not.toContain('"answerId"');
+  }
+
+  // Keyboard-complete and overflow-free at 360px and desktop.
+  for (const width of [360, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(panel.getByRole("heading", { name: "Assessment & progress", exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  expect(outbound).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: info.outputPath("partial-credit-graded.png"), fullPage: true });
 });

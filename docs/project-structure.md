@@ -47,7 +47,15 @@ project-new/
 │   │   │                                                                 initial results, a fresh same-demand
 │   │   │                                                                 retest flow and per-group recovery
 │   │   │                                                                 credit beside the original verdict —
-│   │   │                                                                 never merged, never averaged
+│   │   │                                                                 never merged, never averaged — plus
+│   │   │                                                                 story 3's scoring surface: per-item
+│   │   │                                                                 disclosed partial-credit rubrics with
+│   │   │                                                                 per-choice credit hints (credit named,
+│   │   │                                                                 never the answer), scale-rendered
+│   │   │                                                                 point amounts, instructor pass-mark
+│   │   │                                                                 override provenance when a snapshot
+│   │   │                                                                 carries one, and a Provisional label
+│   │   │                                                                 path that can award nothing
 │   │   ├── shell/          product + instructor page shells (sidebar/topnav, honesty label)
 │   │   ├── screens/        static styled screen content (library, course, practice, …)
 │   │   └── library·course·practice·progress·recovery·roadmap·review·why·       static product pages
@@ -61,16 +69,28 @@ project-new/
 │   │   │                       handoff document contract (immutable-per-version
 │   │   │                       block + monotonic derivatives block;
 │   │   │                       attempt-independent by construction)
-│   │   ├── assessment.ts   epic-3 scored-attempt + targeted-recovery
-│   │   │                       contracts: command schemas (ordinary and
-│   │   │                       retest start/submit), the server-side
-│   │   │                       snapshot schemas (answer key never in a
-│   │   │                       pre-grade view), the none/offered/active/
-│   │   │                       graded state union with the derived roadmap
-│   │   │                       node, and story 2's recovery views — the
+│   │   ├── assessment.ts   epic-3 scored-attempt + targeted-recovery +
+│   │   │                       scoring-surface contracts: command schemas
+│   │   │                       (ordinary and retest start/submit), the
+│   │   │                       server-side snapshot schemas (answer key
+│   │   │                       never in a pre-grade view), the none/offered/
+│   │   │                       active/graded state union with the derived
+│   │   │                       roadmap node, story 2's recovery views — the
 │   │   │                       per-group target ledger, fresh-retest
 │   │   │                       snapshots/views and the RecoveryState served
-│   │   │                       beside (never merged into) the attempt result
+│   │   │                       beside (never merged into) the attempt
+│   │   │                       result — and story 3's additions: per-item
+│   │   │                       optional disclosed partial-credit rubrics
+│   │   │                       (nonnegative scaled-integer credits, never
+│   │   │                       keyed on the answer), the per-snapshot
+│   │   │                       declared finite precision (pointsScale 1 or
+│   │   │                       100, legacy rows defaulting to 1), the
+│   │   │                       snapshotted { source, provenance, value }
+│   │   │                       pass-mark override contract (source "default"
+│   │   │                       in personal study — no instructor writer
+│   │   │                       exists), and the provisional-grade decision
+│   │   │                       type that structurally carries no pass and
+│   │   │                       can never award completion
 │   │   ├── ai-provider.ts  provider-neutral text-completion port (dormant)
 │   │   └── courses.ts      epic-2 S1–S6 generated-course + supplement +
 │   │                         player + why contracts (content v4 = v3
@@ -154,6 +174,19 @@ project-new/
 │   │   │                       completes on a passed OR fully-recovered failed
 │   │   │                       attempt on the current version — original
 │   │   │                       score never rewritten, credit shown separately
+│   │   │                       — plus story 3's scoring surface, with NO
+│   │   │                       stored-shape change (the snapshot jsonb
+│   │   │                       carries the additions; no migration exists):
+│   │   │                       declared-credit earning (full points, a
+│   │   │                       disclosed rubric's exact scaled-integer
+│   │   │                       credit, or zero), the hundredths-scale
+│   │   │                       partial-credit fixture bank + builder beside
+│   │   │                       the unchanged full-credit pools, the carried
+│   │   │                       pass-mark override snapshotted at start
+│   │   │                       (build-time contract; personal study stays
+│   │   │                       default-80), scale-aware point display, and
+│   │   │                       the provisional-grade fence — only a final
+│   │   │                       graded pass or full recovery completes
 │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
 │   │                           derivative ports, dependencies preview (S9),
 │   │                           retention registry/scheduler + archive contract (S10)
@@ -202,17 +235,27 @@ project-new/
 │   │                       four-family idempotency, the 120-second honesty
 │   │                       set and post-deletion read denials), provenance
 │   │                       (the epic-2 S7 synthetic consumer), assessment
-│   │                       (the epic-3 scored-attempt tracer and its story-2
+│   │                       (the epic-3 scored-attempt tracer, its story-2
 │   │                       targeted-recovery chain: ledger at grade time,
 │   │                       fresh same-demand retests, partial clearing,
 │   │                       supersession pinning, retake re-ledgering,
-│   │                       denial sweep and original-row immutability)
+│   │                       denial sweep and original-row immutability, and
+│   │                       story 3's scoring surface: the partial-credit
+│   │                       fixture graded exactly at its declared hundredths
+│   │                       scale through the real verbs, the carried
+│   │                       instructor override pinned mid-attempt while the
+│   │                       next attempt snapshots the current policy, and
+│   │                       the final-grade label on every graded view)
 │   ├── browser/            Playwright: tracer, pages (static product pages), batches,
 │   │                       consent, preferences, handoff, check, export, lifecycle,
 │   │                       course, journey (epic-2 S10 integrated study suite),
-│   │                       attempt (epic-3 boundary honesty + roadmap line, plus
-│   │                       the recovery journey: focused review, retest flow,
-│   │                       side-by-side credit honesty and second-account denial) —
+│   │                       attempt (epic-3 boundary honesty + roadmap line, the
+│   │                       recovery journey: focused review, retest flow,
+│   │                       side-by-side credit honesty and second-account
+│   │                       denial, and the story-3 partial-credit journey:
+│   │                       rubric disclosed pre-answer, per-choice credit
+│   │                       hints, exact declared credit earned at the
+│   │                       hundredths scale, honest 79.99% boundary) —
 │   │                       production build
 │   └── fixtures/           original synthetic documents only
 ├── docs/                   guides: ai-provider-adapter, bounded-document-extraction,

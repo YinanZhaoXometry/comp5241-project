@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import type { AttemptAnswer, AttemptSnapshot, RetestSnapshot } from "../../contracts/assessment";
+import type { AnyAttemptSnapshot, AttemptAnswer, RetestSnapshot } from "../../contracts/assessment";
 
 // Module-owned rows for the epic-3 assessment tracer and its targeted
 // recovery (story 2). Write ownership: ONLY this module writes
@@ -8,6 +8,14 @@ import type { AttemptAnswer, AttemptSnapshot, RetestSnapshot } from "../../contr
 // (getCourse) and fenced through the shared lifecycle helpers — never written
 // here; there are deliberately no queue, processor-configuration or award
 // writes anywhere in this module.
+//
+// Story 3 changed NO stored shape: the snapshot jsonb carries the new fields
+// (pointsScale, passMarkOverride, per-item partialCredit) additively inside
+// the immutable at-start pin, and the earned/total integer columns already
+// hold scaled-integer values — so no migration exists for 3.3 and 021/022's
+// CHECKs are untouched. An attempt row's snapshot is the served full-credit
+// root build OR the partial-credit fixture build (AnyAttemptSnapshot); both
+// share the core shape the grading path reads.
 
 export type AttemptRow = {
   id: string;
@@ -17,7 +25,7 @@ export type AttemptRow = {
   course_version: number;
   plan_revision_id: string;
   status: "active" | "graded";
-  snapshot: AttemptSnapshot;
+  snapshot: AnyAttemptSnapshot;
   answers: AttemptAnswer[] | null;
   earned_points: number | null;
   total_points: number | null;
@@ -83,7 +91,7 @@ const retestColumns =
 // start is a no-op (false) and the caller returns the winner's row.
 export async function insertAttempt(
   client: PoolClient,
-  row: { id: string; rootId: string; ownerId: string; courseId: string; courseVersion: number; planRevisionId: string; snapshot: AttemptSnapshot },
+  row: { id: string; rootId: string; ownerId: string; courseId: string; courseVersion: number; planRevisionId: string; snapshot: AnyAttemptSnapshot },
 ): Promise<boolean> {
   const inserted = await client.query(
     `INSERT INTO app.test_attempt(id,root_id,owner_id,course_id,course_version,plan_revision_id,status,snapshot)

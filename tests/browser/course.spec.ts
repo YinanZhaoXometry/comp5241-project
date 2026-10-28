@@ -150,7 +150,7 @@ test("A generates and studies the labeled course; the recall answer is withheld 
   // Keyboard-operable card 1: focus the field by label, type, Tab past the
   // assisted toggle to submit (keyboard-complete run).
   await page.getByLabel("Your answer to card 1", { exact: true }).focus();
-  await page.keyboard.type(canonicalAnswer);
+  await page.keyboard.type(canonicalAnswer, { delay: 20 }); // per-keystroke settling: zero-delay typing into the controlled input drops chars when a sibling re-render lands mid-type
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await expect(panel.getByRole("button", { name: "Submit card 1 answer", exact: true })).toBeFocused();
@@ -507,7 +507,7 @@ test("practice set: multi-card keyboard-only journey, assisted label, fresh retr
   // Card 1, keyboard-only, unaided: focus by label → type → Tab past the
   // assisted toggle → Enter on submit.
   await page.getByLabel("Your answer to card 1", { exact: true }).focus();
-  await page.keyboard.type(canonicalAnswer);
+  await page.keyboard.type(canonicalAnswer, { delay: 20 }); // per-keystroke settling: zero-delay typing into the controlled input drops chars when a sibling re-render lands mid-type
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await expect(panel.getByRole("button", { name: "Submit card 1 answer", exact: true })).toBeFocused();
@@ -525,7 +525,7 @@ test("practice set: multi-card keyboard-only journey, assisted label, fresh retr
   await page.keyboard.press("Space");
   await expect(assistedToggle).toBeChecked();
   await page.getByLabel("Your answer to card 2", { exact: true }).focus();
-  await page.keyboard.type(secondCardAnswer);
+  await page.keyboard.type(secondCardAnswer, { delay: 20 });
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await expect(panel.getByRole("button", { name: "Submit card 2 answer", exact: true })).toBeFocused();
@@ -539,7 +539,7 @@ test("practice set: multi-card keyboard-only journey, assisted label, fresh retr
   await expect(card3.getByRole("textbox")).toBeVisible();
   await expect(card3.getByText("Canonical answer:", { exact: false })).toHaveCount(0);
   await page.getByLabel("Your answer to card 3", { exact: true }).focus();
-  await page.keyboard.type(canonicalAnswer);
+  await page.keyboard.type(canonicalAnswer, { delay: 20 }); // per-keystroke settling: zero-delay typing into the controlled input drops chars when a sibling re-render lands mid-type
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");

@@ -1,15 +1,21 @@
 import { describe, expect, it } from 'vitest';
 import {
   attemptSnapshotSchema,
+  attemptStatuses,
   retestSnapshotSchema,
+  partialCreditSnapshotSchema,
+  passMarkOverrideOf,
+  pointsScaleOf,
   startRetestSchema,
   submitAttemptSchema,
   submitRetestSchema,
+  PARTIAL_CREDIT_TEST_ID,
+  DEFAULT_PASS_MARK_OVERRIDE,
   type AttemptSnapshot,
   type RetestSnapshot,
 } from '../../src/contracts/assessment';
-import { buildSnapshot, buildRetestSnapshot, TEST_ITEM_POINTS, TEST_TOTAL_POINTS } from '../../src/modules/assessment-progress/bank';
-import { deriveRoadmapNode, displayPercentOf, groupCleared, groupResultsOf, recoverySatisfied, scoreAttempt, verdictLine } from '../../src/modules/assessment-progress/scoring';
+import { buildSnapshot, buildRetestSnapshot, buildPartialCreditSnapshot, TEST_ITEM_POINTS, TEST_TOTAL_POINTS, PARTIAL_ITEM_POINTS, PARTIAL_TOTAL_POINTS } from '../../src/modules/assessment-progress/bank';
+import { deriveRoadmapNode, displayPercentOf, displayPointsOf, earnedOfItem, gradeAwardsCompletion, groupCleared, groupResultsOf, recoverySatisfied, scoreAttempt, verdictLine } from '../../src/modules/assessment-progress/scoring';
 
 // Unit coverage of the epic-3 story-1 tracer's pure surface plus the story-2
 // targeted-recovery arithmetic: the AD-8 scoring (unrounded cross-product pass
@@ -276,5 +282,218 @@ describe('story 2: fresh retest bank and buildRetestSnapshot (D7 comparability)'
     // An ordinary testId never passes as a retest snapshot and vice versa.
     expect(retestSnapshotSchema.safeParse(buildSnapshot(objectives(2)) as unknown).success).toBe(false);
     expect(attemptSnapshotSchema.safeParse(retest as unknown).success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Story 3 — the snapshotted scoring surface: disclosed finite-precision
+// partial credit, the carried pass-mark override contract, the provisional
+// grade fence and scale-aware display.
+// ---------------------------------------------------------------------------
+
+describe('story 3: partial-credit fixture (D7) and declared-credit earning', () => {
+  it('builds a schema-valid scale-100 fixture with exactly one disclosed rubric and a full-credit item beside it', () => {
+    const fixture = buildPartialCreditSnapshot(objectives(2));
+    expect(partialCreditSnapshotSchema.parse(fixture)).toEqual(fixture);
+    expect(fixture.testId).toBe(PARTIAL_CREDIT_TEST_ID);
+    expect(fixture.pointsScale).toBe(100);
+    expect(fixture.passMarkPercent).toBe(80);
+    expect(fixture.passMarkOverride).toEqual({ source: 'default', value: 80 });
+    expect(PARTIAL_ITEM_POINTS).toEqual([600000, 400000]);
+    expect(PARTIAL_TOTAL_POINTS).toBe(1000000);
+    expect(fixture.items.reduce((sum, item) => sum + item.points, 0)).toBe(fixture.totalPoints);
+    // Item 1 carries NO rubric (absent = full credit only); item 2 carries the
+    // disclosed rubric whose only declared credit is the exact scaled integer
+    // 199900 (1999.00 of 4000.00 points), never keyed on the answer.
+    expect(fixture.items[0].partialCredit).toBeUndefined();
+    expect(fixture.items[1].partialCredit).toEqual({ disclosure: expect.any(String), credits: { c: 199900 } });
+    expect(fixture.items[1].answerId).not.toBe('c');
+    // Deterministic: the same objectives build the byte-identical fixture.
+    expect(buildPartialCreditSnapshot(objectives(2))).toEqual(fixture);
+    expect(() => buildPartialCreditSnapshot([])).toThrow();
+  });
+
+  it('earns the declared credit exactly: full, partial, zero and unanswered', () => {
+    const fixture = buildPartialCreditSnapshot(objectives(2));
+    const [fullOnly, rubric] = fixture.items;
+    // Full-credit item (no rubric): whole points or zero, byte-identical to
+    // the 3.1/3.2 behavior.
+    expect(earnedOfItem(fullOnly, fullOnly.answerId)).toBe(600000);
+    expect(earnedOfItem(fullOnly, 'a')).toBe(0);
+    expect(earnedOfItem(fullOnly, null)).toBe(0);
+    // Rubric item: correct = full points under the answer rule; the declared
+    // partly-correct choice earns EXACTLY its declared scaled integer; any
+    // other non-correct choice earns zero; unanswered earns zero.
+    expect(earnedOfItem(rubric, rubric.answerId)).toBe(400000);
+    expect(earnedOfItem(rubric, 'c')).toBe(199900);
+    expect(earnedOfItem(rubric, 'a')).toBe(0);
+    expect(earnedOfItem(rubric, 'd')).toBe(0);
+    expect(earnedOfItem(rubric, null)).toBe(0);
+    // The root bank items have no rubric: unchanged whole-points earning.
+    const root = buildSnapshot(objectives(3));
+    expect(earnedOfItem(root.items[0], root.items[0].answerId)).toBe(1999);
+    expect(earnedOfItem(root.items[0], 'a')).toBe(0);
+  });
+
+  it('keeps the boundary matrix exact under the hundredths scale and any rubric', () => {
+    // 79.96 / 80.00 / 80.04 at scale 100 — the same cross-product, the same
+    // honest displays as the plan's golden scale-1 cases.
+    const below = scoreAttempt(799600, 1000000);
+    expect(below.passed).toBe(false);
+    expect(below.displayPercent).toBe('79.96%');
+    expect(verdictLine(below)).toBe('79.96% — Not passed (mark is 80%)');
+    const exact = scoreAttempt(800000, 1000000);
+    expect(exact.passed).toBe(true);
+    expect(exact.displayPercent).toBe('80.0%');
+    expect(scoreAttempt(800400, 1000000)).toMatchObject({ passed: true, displayPercent: '80.0%' });
+    // The fixture's natural boundary: correct on item 1 + the declared
+    // 1999.00 partial credit on item 2 = 799900/1000000 = 79.99% — Not
+    // passed, and the one-decimal "80.0%" would contradict the verdict, so
+    // two decimals are shown.
+    const fixtureEarned = PARTIAL_ITEM_POINTS[0] + 199900;
+    const fixtureScore = scoreAttempt(fixtureEarned, PARTIAL_TOTAL_POINTS);
+    expect(fixtureScore.passed).toBe(false);
+    expect(fixtureScore.displayPercent).toBe('79.99%');
+    expect(verdictLine(fixtureScore)).toBe('79.99% — Not passed (mark is 80%)');
+    // All-correct on the fixture is an honest 100%.
+    expect(scoreAttempt(PARTIAL_TOTAL_POINTS, PARTIAL_TOTAL_POINTS).displayPercent).toBe('100.0%');
+  });
+
+  it('renders scaled point amounts for humans without ever deciding anything', () => {
+    expect(displayPointsOf(1999, 1)).toBe('1999');
+    expect(displayPointsOf(10000, 1)).toBe('10000');
+    expect(displayPointsOf(600000, 100)).toBe('6000.00');
+    expect(displayPointsOf(400000, 100)).toBe('4000.00');
+    expect(displayPointsOf(199900, 100)).toBe('1999.00');
+    expect(displayPointsOf(199950, 100)).toBe('1999.50');
+    expect(displayPointsOf(799900, 100)).toBe('7999.00');
+    expect(() => displayPointsOf(-1, 1)).toThrow();
+    expect(() => displayPointsOf(1.5, 100)).toThrow();
+  });
+
+  it('rejects invalid rubrics at build: negative, over-full, answer-keyed, foreign, non-precision, zero-total', () => {
+    const fixture = buildPartialCreditSnapshot(objectives(2));
+    const tamper = (credits: Record<string, number>) => {
+      const tampered = structuredClone(fixture);
+      tampered.items[1].partialCredit = { disclosure: tampered.items[1].partialCredit!.disclosure, credits };
+      return partialCreditSnapshotSchema.safeParse(tampered).success;
+    };
+    expect(tamper({ c: -1 })).toBe(false); // negative marking is forbidden
+    expect(tamper({ c: 400001 })).toBe(false); // credit may never exceed full points
+    expect(tamper({ [fixture.items[1].answerId]: 199900 })).toBe(false); // the answer earns full points under the rule
+    expect(tamper({ zz: 100 })).toBe(false); // a credit must name a declared choice
+    expect(tamper({ c: 1999.5 })).toBe(false); // non-precision-conforming (float) credit
+    // Zero-total and unknown scale are rejected on the core.
+    expect(partialCreditSnapshotSchema.safeParse({ ...structuredClone(fixture), totalPoints: 0 }).success).toBe(false);
+    expect(partialCreditSnapshotSchema.safeParse({ ...structuredClone(fixture), pointsScale: 10 }).success).toBe(false);
+    expect(partialCreditSnapshotSchema.safeParse({ ...structuredClone(fixture), pointsScale: 1000 }).success).toBe(false);
+    // A snapshot whose items carry no rubric at all is not a partial-credit
+    // fixture — the fixture schema rejects it.
+    const rubricless = structuredClone(fixture);
+    delete rubricless.items[1].partialCredit;
+    expect(partialCreditSnapshotSchema.safeParse(rubricless).success).toBe(false);
+    // Withholding: a rubric declaring a credit for EVERY non-correct choice
+    // (zero credits included) would disclose the answer by elimination.
+    expect(tamper({ a: 0, c: 199900, d: 0 })).toBe(false);
+    // The served schemas are full-credit only: a rubric item can never
+    // masquerade as the ordinary required test or one of its retests.
+    const rubricOnRequired = structuredClone(buildSnapshot(objectives(2)));
+    rubricOnRequired.items[0].partialCredit = { disclosure: fixture.items[1].partialCredit!.disclosure, credits: { a: 1 } };
+    expect(attemptSnapshotSchema.safeParse(rubricOnRequired).success).toBe(false);
+    const rubricOnRetest = structuredClone(buildRetestSnapshot(buildSnapshot(objectives(3)), [1]));
+    rubricOnRetest.items[0].partialCredit = { disclosure: fixture.items[1].partialCredit!.disclosure, credits: { a: 1 } };
+    expect(retestSnapshotSchema.safeParse(rubricOnRetest).success).toBe(false);
+  });
+
+  it('groups partial-credit earning per objective under the same snapshot scale', () => {
+    const fixture = buildPartialCreditSnapshot(objectives(2));
+    // Correct on item 1 (obj0), declared partial credit on item 2 (obj1).
+    const groups = groupResultsOf(fixture, [
+      { position: 1, choiceId: fixture.items[0].answerId },
+      { position: 2, choiceId: 'c' },
+    ]);
+    expect(groups).toEqual([
+      { objectiveIndex: 0, objective: 'Synthetic objective 1', earned: 600000, total: 600000 },
+      { objectiveIndex: 1, objective: 'Synthetic objective 2', earned: 199900, total: 400000 },
+    ]);
+    expect(groupCleared(groups[0], 80)).toBe(true);
+    expect(groupCleared(groups[1], 80)).toBe(false); // 49.975% — the retest target stays open
+  });
+});
+
+describe('story 3: carried pass-mark override contract', () => {
+  it('rides the default contract on every personal-study snapshot', () => {
+    const root = buildSnapshot(objectives(2));
+    expect(root.passMarkPercent).toBe(80);
+    expect(root.passMarkOverride).toEqual(DEFAULT_PASS_MARK_OVERRIDE);
+    expect(root.pointsScale).toBe(1);
+    expect(passMarkOverrideOf(root)).toEqual({ source: 'default', value: 80 });
+    expect(pointsScaleOf(root)).toBe(1);
+  });
+
+  it('carries an instructor-sourced override exactly as snapshotted policy', () => {
+    const recordedAt = new Date('2026-10-28T10:00:00Z').toISOString();
+    const overridden = buildSnapshot(objectives(2), { source: 'instructor', value: 90, recordedAt });
+    // The applicable mark IS the carried override value; the schema pins the
+    // agreement so the verdict can never disagree with the contract.
+    expect(overridden.passMarkPercent).toBe(90);
+    expect(overridden.passMarkOverride).toEqual({ source: 'instructor', value: 90, recordedAt });
+    expect(attemptSnapshotSchema.parse(overridden)).toEqual(overridden);
+    // 80.01% passes the default 80 but NOT the pinned 90 — the carried
+    // contract decides, exactly.
+    expect(scoreAttempt(8001, 10000, overridden.passMarkPercent).passed).toBe(false);
+    expect(scoreAttempt(8001, 10000).passed).toBe(true);
+  });
+
+  it('rejects a carried contract that disagrees with the applicable mark or lacks provenance', () => {
+    const root = buildSnapshot(objectives(2));
+    const disagreement = { ...structuredClone(root), passMarkOverride: { source: 'default', value: 90 } };
+    expect(attemptSnapshotSchema.safeParse(disagreement).success).toBe(false);
+    const unknownSource = { ...structuredClone(root), passMarkOverride: { source: 'committee', value: 80 } };
+    expect(attemptSnapshotSchema.safeParse(unknownSource).success).toBe(false);
+    const noProvenance = { ...structuredClone(root), passMarkOverride: { source: 'instructor', value: 90 } };
+    expect(attemptSnapshotSchema.safeParse(noProvenance).success).toBe(false);
+    const forged = { ...structuredClone(root), passMarkOverride: { source: 'instructor', value: 90, recordedAt: '2026-10-28T10:00:00Z', by: 'someone' } };
+    expect(attemptSnapshotSchema.safeParse(forged).success).toBe(false);
+  });
+
+  it('normalizes legacy pre-3.3 rows: undeclared scale is 1, undeclared contract is the default', () => {
+    const legacy = { passMarkPercent: 80 } as const;
+    expect(pointsScaleOf(legacy)).toBe(1);
+    expect(passMarkOverrideOf(legacy)).toEqual({ source: 'default', value: 80 });
+  });
+
+  it('mirrors the root scale and override onto retest snapshots (root policy fixed through the chain)', () => {
+    const recordedAt = new Date('2026-10-28T10:00:00Z').toISOString();
+    const root = buildSnapshot(objectives(3), { source: 'instructor', value: 90, recordedAt });
+    const retest = buildRetestSnapshot(root, [1]);
+    expect(retest.pointsScale).toBe(1);
+    expect(retest.passMarkOverride).toEqual({ source: 'instructor', value: 90, recordedAt });
+    expect(retest.passMarkPercent).toBe(90);
+  });
+});
+
+describe('story 3: the provisional-grade contract can never award completion', () => {
+  it('awards completion only through a final graded pass', () => {
+    expect(gradeAwardsCompletion({ gradeKind: 'final', passed: true })).toBe(true);
+    expect(gradeAwardsCompletion({ gradeKind: 'final', passed: false })).toBe(false);
+    // A provisional-typed decision carries NO pass decision at all; it maps
+    // to a non-pass through the fence and the derivations ignore it.
+    expect(gradeAwardsCompletion({ gradeKind: 'provisional', pendingSince: new Date().toISOString() })).toBe(false);
+    const provisionalPass = gradeAwardsCompletion({ gradeKind: 'provisional', pendingSince: new Date().toISOString() });
+    expect(deriveRoadmapNode({ requiredItems: { total: 2, done: 2 }, passedAttemptOnCurrentVersion: provisionalPass, recoveredOnCurrentVersion: false, anyAttempt: true })).toBe('in-progress');
+    expect(deriveRoadmapNode({ requiredItems: { total: 2, done: 2 }, passedAttemptOnCurrentVersion: gradeAwardsCompletion({ gradeKind: 'final', passed: true }), recoveredOnCurrentVersion: false, anyAttempt: true })).toBe('completed');
+  });
+
+  it('keeps the provisional kind out of every stored status (contract-only, epic 5 confirms it)', () => {
+    // The REAL exported statuses stay active/graded: a test_attempt row is a
+    // deterministic objective grade and always final; the provisional kind
+    // exists only as the typed GradeDecision variant no writer produces.
+    expect(attemptStatuses).toEqual(['active', 'graded']);
+    expect(attemptStatuses).not.toContain('provisional');
+    // Every ledgered recovery target still clears only through retest
+    // evidence — a provisional nothing cannot satisfy the requirement.
+    expect(recoverySatisfied([{ status: 'open' }, { status: 'cleared' }])).toBe(false);
+    expect(recoverySatisfied([{ status: 'cleared' }, { status: 'cleared' }])).toBe(true);
   });
 });

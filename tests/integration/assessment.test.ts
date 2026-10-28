@@ -9,10 +9,12 @@ import { removeRoot } from '../../src/modules/lifecycle-platform/service';
 import { requestCourseGeneration, getCourse, markItemDone } from '../../src/modules/course-generation/service';
 import { runCourseGeneration } from '../../src/modules/course-generation/worker';
 import { getAssessment, startTest, submitAttempt, startRetest, submitRetest } from '../../src/modules/assessment-progress/service';
+import { insertAttempt } from '../../src/modules/assessment-progress/repository';
+import { buildSnapshot, buildPartialCreditSnapshot } from '../../src/modules/assessment-progress/bank';
 import { database, closeDatabase } from '../../src/adapters/postgres/database';
 import { closeQueue } from '../../src/adapters/queue';
 import type { Command, Identity, Plan } from '../../src/contracts/setup';
-import type { AttemptSnapshot, RetestSnapshot } from '../../src/contracts/assessment';
+import type { AttemptSnapshot, PartialCreditSnapshot, RetestSnapshot } from '../../src/contracts/assessment';
 
 // LOCAL SYNTHETIC coverage of the epic-3 story-1 scored-attempt tracer and
 // the story-2 targeted-recovery chain: one required test over a ready
@@ -26,7 +28,12 @@ import type { AttemptSnapshot, RetestSnapshot } from '../../src/contracts/assess
 // clears only at the root mark, partial recovery keeps the requirement
 // honestly open, the later clear satisfies it with the original score row
 // byte-identical, chains stay pinned through supersession and retakes
-// re-ledger under their own snapshot. Real PostgreSQL; the processor is the
+// re-ledger under their own snapshot — plus story 3's surface: a disclosed
+// finite-precision partial-credit rubric graded exactly through the real
+// verbs at the declared hundredths scale, the carried instructor pass-mark
+// override pinned on a running attempt while the next attempt snapshots the
+// current default policy, and every graded view served as a final grade
+// decision. Real PostgreSQL; the processor is the
 // local synthetic fixture — zero network, and the assessment itself
 // dispatches nothing.
 
@@ -600,5 +607,172 @@ describe('epic-3 story-2: targeted recovery ledger and fresh retest chain', () =
     expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.retest_attempt WHERE root_id=$1', [study.rootId])).rows[0].count).toBe(0);
     expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.recovery_target WHERE root_id=$1', [study.rootId])).rows[0].count).toBe(0);
     expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.test_attempt WHERE root_id=$1', [study.rootId])).rows[0].count).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Story 3 — the snapshotted scoring surface over the REAL verbs: a disclosed
+// partial-credit rubric graded exactly at the declared hundredths scale, the
+// carried instructor pass-mark override pinned on a running attempt while
+// the next attempt snapshots the current (default) policy, and every graded
+// view served as a final grade decision.
+// ---------------------------------------------------------------------------
+
+describe('epic-3 story-3: partial credit, carried override, pinned policy', () => {
+  // Plant an OPEN attempt row through the module's own repository writer
+  // with a snapshot from the module's own builders — the same rows a started
+  // attempt would carry. The partial-credit fixture and an instructor
+  // override have no served start path in personal study (the surface is
+  // contract + builder); planting exercises the REAL grading/disclosure
+  // machinery over them, exactly as a started attempt would be graded.
+  async function plantOpenAttempt(identity: Identity, rootId: string, courseId: string, courseVersion: number, planRevisionId: string, snapshot: AttemptSnapshot | PartialCreditSnapshot) {
+    const client = await database().connect();
+    try {
+      const id = crypto.randomUUID();
+      const inserted = await insertAttempt(client, { id, rootId, ownerId: identity.userId, courseId, courseVersion, planRevisionId, snapshot });
+      if (!inserted) throw new Error('planting failed');
+      return id;
+    } finally {
+      await client.release();
+    }
+  }
+
+  it('grades a disclosed partial-credit rubric exactly at the declared hundredths scale with pre-answer disclosure and the honest 79.99% boundary', async () => {
+    const a = await actor('partial-credit-happy');
+    await grant(a);
+    const study = await confirmedStudy(a);
+    const course = await generateCourse(a, study.rootId, study.revision);
+    const ready = course.course;
+
+    const attemptId = await plantOpenAttempt(a, study.rootId, ready.courseId, ready.version, study.planRevisionId, buildPartialCreditSnapshot(ready.objectives));
+
+    // The active state serves the fixture's OWN descriptor: declared hundredths
+    // scale, the default override contract, and the per-item disclosed rubric —
+    // all BEFORE any answer is submitted. No answer key anywhere.
+    const active = await getAssessment(a, study.rootId);
+    expect(active.state).toBe('active');
+    expect(active.test).toMatchObject({ testId: 'required-test-partial-credit', passMarkPercent: 80, pointsScale: 100, passMarkOverride: { source: 'default', value: 80 }, itemCount: 2, itemPoints: [600000, 400000], totalPoints: 1000000 });
+    expect(active.test!.items[0]).toMatchObject({ position: 1, points: 600000, partialCredit: null });
+    expect(active.test!.items[1]).toMatchObject({ position: 2, points: 400000, partialCredit: { credits: { c: 199900 } } });
+    expect(active.test!.items[1].partialCredit!.disclosure).toContain('1999.00 of 4000.00 points');
+    if (!active.attempt || 'gradedAt' in active.attempt) throw new Error('expected an active attempt view');
+    expect(active.attempt.items).toHaveLength(2);
+    const activeSerialized = JSON.stringify(active);
+    expect(activeSerialized).not.toContain('"answerId"');
+    expect(activeSerialized).not.toContain('"correctChoiceId"');
+
+    // A repeat start returns the planted open attempt as-is (one open attempt
+    // per root) — with ITS OWN pin.
+    const reoffered = await startTest(a, study.rootId, { ...command(study.revision) });
+    expect(reoffered.operationId).toBe(attemptId);
+    expect(reoffered.planRevisionId).toBe(study.planRevisionId);
+
+    // Answer: correct on the full-credit item, the DECLARED partly-correct
+    // choice on the rubric item — 600000 + 199900 = 799900/1000000 = 79.99%,
+    // honestly below the 80% mark.
+    const stored = await snapshotOf(attemptId);
+    const credited = Object.keys(stored.items[1].partialCredit!.credits)[0]!;
+    const submitCommand = { ...command(study.revision), attemptId, answers: [{ position: 1, choiceId: stored.items[0].answerId }, { position: 2, choiceId: credited }] };
+    const graded = await submitAttempt(a, study.rootId, attemptId, submitCommand);
+    expect(graded.state).toBe('graded');
+    expect(graded.gradeKind).toBe('final');
+    expect(graded.pointsScale).toBe(100);
+    expect(graded.passMarkOverride).toEqual({ source: 'default', value: 80 });
+    expect(graded.earnedPoints).toBe(799900);
+    expect(graded.totalPoints).toBe(1000000);
+    expect(graded.passed).toBe(false);
+    expect(graded.displayPercent).toBe('79.99%');
+    expect(graded.verdict).toBe('79.99% — Not passed (mark is 80%)');
+    // Per-item reveal: the rubric item earned EXACTLY its declared credit.
+    expect(graded.items[0]).toMatchObject({ earned: 600000, correctChoiceId: stored.items[0].answerId });
+    expect(graded.items[1]).toMatchObject({ earned: 199900, chosenChoiceId: credited, correctChoiceId: stored.items[1].answerId });
+
+    // Exactly-once: same commandKey replays the identical result; a NEW
+    // commandKey on the graded attempt conflicts.
+    expect(await submitAttempt(a, study.rootId, attemptId, submitCommand)).toEqual(graded);
+    await expect(submitAttempt(a, study.rootId, attemptId, { ...command(study.revision), attemptId, answers: submitCommand.answers })).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    // The failed grade ledgered exactly the rubric item's failed group under
+    // its own snapshot — the same machinery, now carrying scaled integers.
+    const ledger = await database().query<{ objective_index: number; initial_earned: number; initial_total: number; status: string }>(
+      'SELECT objective_index,initial_earned,initial_total,status FROM app.recovery_target WHERE root_attempt_id=$1 ORDER BY objective_index',
+      [attemptId],
+    );
+    expect(ledger.rows).toEqual([{ objective_index: 1, initial_earned: 199900, initial_total: 400000, status: 'open' }]);
+    const served = await getAssessment(a, study.rootId);
+    expect(served.recovery!.requirementSatisfied).toBe(false);
+    expect(served.recovery!.targets[0]).toMatchObject({ objectiveIndex: 1, initialEarned: 199900, initialTotal: 400000, pointsScale: 100, initialDisplayPercent: '50.0%' });
+
+    // The synthetic retest bank mirrors the ROOT bank only: a fixture attempt
+    // cannot open the retest chain — rejected, never repaired.
+    await expect(startRetest(a, study.rootId, { ...command(study.revision), attemptId, targetIndexes: [1] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+
+    // The submit receipt stays content-free.
+    const receipts = await database().query<{ result: unknown }>("SELECT result FROM app.command_receipt WHERE root_id=$1 AND action='submit-test'", [study.rootId]);
+    expect(receipts.rows).toHaveLength(1);
+    for (const { result } of receipts.rows) {
+      const serialized = JSON.stringify(result);
+      expect(serialized).not.toContain('answer');
+      expect(serialized).not.toContain('choiceId');
+      expect(serialized).not.toContain('earnedPoints');
+      expect(serialized).not.toContain('passed');
+    }
+  });
+
+  it('pins a carried instructor override: the running attempt grades at ITS snapshotted mark while the next attempt carries the current default policy', async () => {
+    const a = await actor('override-pinned');
+    await grant(a);
+    const study = await confirmedStudy(a);
+    const course = await generateCourse(a, study.rootId, study.revision);
+    const ready = course.course;
+    const recordedAt = new Date('2026-10-28T10:00:00Z').toISOString();
+
+    // The attempt opens under a carried instructor override of 90 — snapshotted
+    // at start like every policy.
+    const attemptId = await plantOpenAttempt(a, study.rootId, ready.courseId, ready.version, study.planRevisionId, buildSnapshot(ready.objectives, { source: 'instructor', value: 90, recordedAt }));
+
+    // Disclosure shows the carried override BEFORE any answer.
+    const active = await getAssessment(a, study.rootId);
+    expect(active.state).toBe('active');
+    expect(active.test).toMatchObject({ passMarkPercent: 90, pointsScale: 1, passMarkOverride: { source: 'instructor', value: 90, recordedAt } });
+
+    // The "policy edit": after the attempt started, the course policy the NEXT
+    // build would snapshot reverts to the personal-study default (80). The
+    // running attempt still grades on ITS pinned snapshot: correct on items
+    // 1, 2, 3 and 5, wrong on item 4 earns 8001/10000 = 80.01% — a pass under
+    // 80, honestly NOT passed under the pinned 90.
+    const stored = await snapshotOf(attemptId);
+    const wrongFourth = stored.items[3].choices.find(choice => choice.id !== stored.items[3].answerId)!.id;
+    const answers = stored.items.map(item => ({ position: item.position, choiceId: item.position === 4 ? wrongFourth : item.answerId }));
+    const graded = await submitAttempt(a, study.rootId, attemptId, { ...command(study.revision), attemptId, answers });
+    expect(graded.earnedPoints).toBe(8001);
+    expect(graded.passed).toBe(false);
+    expect(graded.displayPercent).toBe('80.0%');
+    expect(graded.verdict).toBe('80.0% — Not passed (mark is 90%)');
+    expect(graded.gradeKind).toBe('final');
+    const rowBefore = await database().query('SELECT * FROM app.test_attempt WHERE id=$1', [attemptId]);
+    const bytesBefore = JSON.stringify(rowBefore.rows[0]);
+
+    // The NEXT attempt snapshots the CURRENT policy: the default 80 with the
+    // default contract — the same answers now honestly pass.
+    const next = await startTest(a, study.rootId, { ...command(study.revision) });
+    expect(next.operationId).not.toBe(attemptId);
+    const nextSnapshot = await snapshotOf(next.operationId);
+    expect(nextSnapshot.passMarkPercent).toBe(80);
+    expect(nextSnapshot.passMarkOverride).toEqual({ source: 'default', value: 80 });
+    const passed = await submitAttempt(a, study.rootId, next.operationId, { ...command(study.revision), attemptId: next.operationId, answers: nextSnapshot.items.map(item => ({ position: item.position, choiceId: item.position === 4 ? wrongFourth : item.answerId })) });
+    expect(passed.passed).toBe(true);
+    expect(passed.verdict).toBe('80.0% — Pass (mark is 80%)');
+
+    // Completion follows only the final pass; the mid-attempt policy move
+    // never revoked or rewrote anything — the failed override row is
+    // byte-identical and both attempts stay listed on their own pins.
+    for (const item of ready.items.filter(item => item.required))
+      await markItemDone(a, study.rootId, { ...command(study.revision), courseId: ready.courseId, itemId: item.id });
+    const completed = await getAssessment(a, study.rootId);
+    expect(completed.node).toBe('completed');
+    expect(completed.attempts.map(attempt => [attempt.pointsScale, attempt.passed])).toEqual([[1, true], [1, false]]);
+    const rowAfter = await database().query('SELECT * FROM app.test_attempt WHERE id=$1', [attemptId]);
+    expect(JSON.stringify(rowAfter.rows[0])).toBe(bytesBefore);
   });
 });

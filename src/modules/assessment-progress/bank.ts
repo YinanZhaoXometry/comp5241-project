@@ -1,12 +1,18 @@
 import {
   REQUIRED_TEST_ID,
   RETEST_TEST_ID,
+  PARTIAL_CREDIT_TEST_ID,
   attemptSnapshotSchema,
   retestSnapshotSchema,
-  DEFAULT_PASS_MARK_PERCENT,
+  partialCreditSnapshotSchema,
+  DEFAULT_PASS_MARK_OVERRIDE,
+  passMarkOverrideOf,
+  pointsScaleOf,
   type AssessmentChoice,
   type AttemptSnapshot,
   type RetestSnapshot,
+  type PartialCreditSnapshot,
+  type PassMarkOverride,
 } from "../../contracts/assessment";
 import { fail } from "../../platform/errors";
 
@@ -32,6 +38,13 @@ import { fail } from "../../platform/errors";
 // blueprint's per-item points for that group one-for-one with fresh
 // questions, and the ROOT attempt's pinned pass mark/rubric/answer rule ride
 // the retest snapshot unchanged.
+//
+// Story 3 keeps both full-credit pools BYTE-IDENTICAL — the served
+// personal-study surface is unchanged — and adds the partial-credit FIXTURE
+// pool at the bottom: a manually checked (D7) scale-100 test exercising the
+// disclosed finite-precision partial-credit surface. It is built only by
+// buildPartialCreditSnapshot (never by the served start path) and rides an
+// ordinary attempt row through the same grading machinery.
 
 export const TEST_ITEM_POINTS = [1999, 1999, 1999, 1999, 2004] as const;
 export const TEST_TOTAL_POINTS = TEST_ITEM_POINTS.reduce((sum, points) => sum + points, 0);
@@ -159,8 +172,13 @@ const retestItems: BankItem[] = [
 
 // Build the at-start snapshot for one course's objective set. Deterministic
 // and pure: the same objectives always produce the byte-identical snapshot,
-// which is what makes the offered view and the pinned attempt agree.
-export function buildSnapshot(objectives: Array<{ index: number; text: string }>): AttemptSnapshot {
+// which is what makes the offered view and the pinned attempt agree. Story 3:
+// the builder CARRIES the pass-mark override contract — the served
+// personal-study path always passes nothing (the 80% default, source
+// "default"); an instructor-sourced override is the epic-5 integration point
+// this build types and snapshots but never routes. The snapshot's
+// passMarkPercent IS the applicable mark, so grading code stays unchanged.
+export function buildSnapshot(objectives: Array<{ index: number; text: string }>, override: PassMarkOverride = DEFAULT_PASS_MARK_OVERRIDE): AttemptSnapshot {
   if (!objectives.length) fail("INVALID_INPUT");
   if (bankItems.length !== TEST_ITEM_POINTS.length) fail("RETRYABLE_FAILURE");
   const items = bankItems.map((item, position) => {
@@ -176,12 +194,14 @@ export function buildSnapshot(objectives: Array<{ index: number; text: string }>
       points: TEST_ITEM_POINTS[position],
     };
   });
-  return attemptSnapshotSchema.parse({
+  return buildParsed(attemptSnapshotSchema, {
     schemaVersion: 1,
     testId: REQUIRED_TEST_ID,
     title: "Required test — honest assessment fundamentals",
     source: "manual-synthetic",
-    passMarkPercent: DEFAULT_PASS_MARK_PERCENT,
+    passMarkPercent: override.value,
+    pointsScale: 1,
+    passMarkOverride: override,
     answerRule: ANSWER_RULE,
     rubric: RUBRIC,
     totalPoints: TEST_TOTAL_POINTS,
@@ -197,10 +217,14 @@ export function buildSnapshot(objectives: Array<{ index: number; text: string }>
 // question from the pool position matching the root item's own bank
 // position; positions renumber 1..n within the retest; the ROOT attempt's
 // pinned pass mark, answer rule and rubric ride unchanged (root policy is
-// fixed through the recovery chain). Anything malformed — duplicates, an
-// index no root item carries, an empty selection, a pool mismatch — is
-// INVALID_INPUT, never repaired.
-export function buildRetestSnapshot(rootSnapshot: AttemptSnapshot, targetIndexes: number[]): RetestSnapshot {
+// fixed through the recovery chain). Story 3: the root's declared points
+// scale and carried pass-mark override ride too (root policy through the
+// chain, now including the carried contract). A root item this pool cannot
+// structurally mirror — e.g. a partial-credit-fixture item whose points
+// match no pool position — fails the mirror check: the retest bank compares
+// against the ROOT bank only, and anything unmatched is INVALID_INPUT,
+// never repaired.
+export function buildRetestSnapshot(rootSnapshot: AttemptSnapshot | PartialCreditSnapshot, targetIndexes: number[]): RetestSnapshot {
   if (new Set(targetIndexes).size !== targetIndexes.length) fail("INVALID_INPUT");
   if (retestItems.length !== TEST_ITEM_POINTS.length) fail("RETRYABLE_FAILURE");
   const selected = rootSnapshot.items.filter(item => targetIndexes.includes(item.objectiveIndex));
@@ -220,15 +244,114 @@ export function buildRetestSnapshot(rootSnapshot: AttemptSnapshot, targetIndexes
       points: rootItem.points,
     };
   });
-  return retestSnapshotSchema.parse({
+  return buildParsed(retestSnapshotSchema, {
     schemaVersion: 1,
     testId: RETEST_TEST_ID,
     title: `Targeted retest — ${rootSnapshot.title}`,
     source: "manual-synthetic",
     passMarkPercent: rootSnapshot.passMarkPercent,
+    pointsScale: pointsScaleOf(rootSnapshot),
+    passMarkOverride: passMarkOverrideOf(rootSnapshot),
     answerRule: rootSnapshot.answerRule,
     rubric: rootSnapshot.rubric,
     totalPoints: items.reduce((sum, item) => sum + item.points, 0),
+    items,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Story 3 — the PARTIAL-CREDIT FIXTURE (D7, manually checked; per-item
+// verification list in the story plan's Implementation Notes). A distinct
+// two-item test at the HUNDREDTHS scale (pointsScale 100: every point value
+// below is a scaled integer — 600000 means 6000.00 points), with item 1
+// carrying NO rubric (absent = full credit only, byte-identical behavior to
+// the root pool) and item 2 carrying the disclosed rubric. The rubric's
+// credits are exact scaled integers — no float ever decides an earned
+// amount — and the correct answer is structurally absent from the credits
+// map (it earns full points under the answer rule). Choosing the credited
+// partly-correct choice on item 2 with item 1 correct earns
+// 600000 + 199900 = 799900 of 1000000 = 79.99% — honestly below the 80%
+// mark, displayed with two decimals because the one-decimal "80.0%" would
+// contradict the Not passed verdict.
+// ---------------------------------------------------------------------------
+
+export const PARTIAL_ITEM_POINTS = [600000, 400000] as const;
+export const PARTIAL_TOTAL_POINTS = PARTIAL_ITEM_POINTS.reduce((sum, points) => sum + points, 0);
+
+// The commands.ts parse precedent: an invalid rubric is rejected at build as
+// INVALID_INPUT, never repaired and never surfaced as a raw ZodError — the
+// matrix's rejection taxonomy for zero-total/non-precision/invalid builds.
+type Parseable<T> = { safeParse: (data: unknown) => { success: true; data: T } | { success: false } };
+function buildParsed<T>(schema: Parseable<T>, value: unknown): T {
+  const result = schema.safeParse(value);
+  if (!result.success) fail("INVALID_INPUT");
+  return result.data;
+}
+
+export const PARTIAL_ANSWER_RULE =
+  "Single choice per item: the declared correct answer earns the item's full points; any other choice earns its disclosed partial credit where the item declares one, otherwise zero. No negative marking.";
+export const PARTIAL_RUBRIC =
+  "Full credit on items without a disclosed partial-credit rubric; an item carrying one earns exactly its declared scaled-integer credit for the declared choices. No negative marking.";
+export const PARTIAL_DISCLOSURE =
+  "Partial credit on this item: the selection naming both required facts earns all 4000.00 points; the selection naming exactly one of the two facts earns the declared 1999.00 of 4000.00 points; every other selection earns zero.";
+
+const partialItems: Array<BankItem & { partialCredit?: { disclosure: string; credits: Record<string, number> } }> = [
+  {
+    prompt: `For the outcome "${objectiveSlot}", where may a disclosed partial-credit rubric change what an answer earns?`,
+    choices: [
+      { id: "a", text: "Anywhere — after the attempt is submitted, the grader may award any points it likes." },
+      { id: "b", text: "Only on the item that carries the disclosed rubric, and only the exact credit it declared when the attempt started — items without a rubric stay full credit or zero." },
+      { id: "c", text: "On every item of the test — one rubric declared for the whole test applies everywhere." },
+      { id: "d", text: "Only if the learner asks for partial credit during the attempt." },
+    ],
+    answerId: "b",
+  },
+  {
+    prompt: `For the outcome "${objectiveSlot}", which selection states BOTH required facts about partial credit: (1) it is awarded only under an item's disclosed rubric, and (2) no answer ever subtracts points (no negative marking)?`,
+    choices: [
+      { id: "a", text: "Partial credit can be awarded without any disclosed rubric, and wrong answers can lose extra points." },
+      { id: "b", text: "Partial credit is awarded only under an item's disclosed rubric, and no answer ever subtracts points — there is no negative marking." },
+      { id: "c", text: "Partial credit is awarded only under an item's disclosed rubric." },
+      { id: "d", text: "Every answer that looks nearly right automatically earns half the item's points." },
+    ],
+    answerId: "b",
+    partialCredit: { disclosure: PARTIAL_DISCLOSURE, credits: { c: 199900 } },
+  },
+];
+
+// Build the partial-credit FIXTURE snapshot for one course's objective set.
+// Deterministic and pure, like the root build; the override contract rides
+// the same way (the default build carries the 80% default contract). NEVER
+// called by the served start path — the fixture exists to exercise the
+// partial-credit surface through the real snapshot/grading machinery.
+export function buildPartialCreditSnapshot(objectives: Array<{ index: number; text: string }>, override: PassMarkOverride = DEFAULT_PASS_MARK_OVERRIDE): PartialCreditSnapshot {
+  if (!objectives.length) fail("INVALID_INPUT");
+  if (partialItems.length !== PARTIAL_ITEM_POINTS.length) fail("RETRYABLE_FAILURE");
+  const items = partialItems.map((item, position) => {
+    const linked = objectives[position % objectives.length];
+    if (!linked) fail("INVALID_INPUT");
+    return {
+      position: position + 1,
+      objectiveIndex: linked.index,
+      objective: linked.text,
+      prompt: item.prompt.split(objectiveSlot).join(linked.text),
+      choices: item.choices,
+      answerId: item.answerId,
+      points: PARTIAL_ITEM_POINTS[position],
+      ...(item.partialCredit ? { partialCredit: item.partialCredit } : {}),
+    };
+  });
+  return buildParsed(partialCreditSnapshotSchema, {
+    schemaVersion: 1,
+    testId: PARTIAL_CREDIT_TEST_ID,
+    title: "Required test — disclosed partial-credit fixture",
+    source: "manual-synthetic",
+    passMarkPercent: override.value,
+    pointsScale: 100,
+    passMarkOverride: override,
+    answerRule: PARTIAL_ANSWER_RULE,
+    rubric: PARTIAL_RUBRIC,
+    totalPoints: PARTIAL_TOTAL_POINTS,
     items,
   });
 }
