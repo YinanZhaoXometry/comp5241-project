@@ -19,7 +19,7 @@ covers = ["R1", "R2", "R3"]
 after = ["1.1", "2.3"]
 hitl = true
 risk = "high"
-unknown = "Whole-epic execution gates and start authorization: epics 1–4 are not complete (epic 1 remains open on entries 1.6, 1.7 take-path closure and 1.12) and no explicit permission to start instructor-course implementation exists; this refinement authorizes planning only."
+unknown = "Whole-epic execution gates and start authorization: epics 1–2 are closed (2026-10-25/28) but epics 3–4 are not, so the gate stands, and no explicit permission to start instructor-course implementation exists; this refinement authorizes planning only."
 references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Information Architecture (instructor shell) and Component Patterns (Approval inspector)", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D4 approval unit and D5 enrollment"]
 
 [[entry]]

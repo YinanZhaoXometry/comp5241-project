@@ -17,7 +17,7 @@ covers = ["R3", "R5"]
 after = ["2.7", "3.8"]
 hitl = true
 risk = "high"
-unknown = "No story may start yet: the 2026-10-21 whole-epic execution gates stand (epics 2, 3 and 5 are not built/closed) and explicit start authorization has not been given; this planning authorizes nothing."
+unknown = "No story may start yet: the 2026-10-21 whole-epic execution gates stand (epic 2 is closed as of 2026-10-28, but epics 3 and 5 are not) and explicit start authorization has not been given; this planning authorizes nothing."
 references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-12 activity contract", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Component Patterns (activity-family shells, content-item tracker) and State Patterns"]
 
 [[entry]]

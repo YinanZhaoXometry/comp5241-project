@@ -18,7 +18,7 @@ companions:
   ]
 after: [epic-private-study-setup]
 refined: true
-status: in-progress
+status: done
 risk: high
 ---
 
@@ -83,3 +83,4 @@ Each line carries its parent requirement's words at this epic's altitude; `cover
 - Decision: 2026-10-28 — the owner approved the entry-10 re-slice (the 1.12/1.14 pattern): entry 10 becomes "Integrated local study suite (re-sliced local half of S10)" and is closable on its recorded local evidence; the live/deployment half moves to new entry 11 "Authorized release verification (deferred deployment half of S10)" (`after [10]`, hitl, carrying the F-A/F-B live-evidence admissions and the F-C deployment unknown). Nothing downstream referenced entry 10, so no dependent `after` changed.
 - Dropped: entry 11, 2026-10-28 — deferred with the owner's approval, mirroring epic-1's 1.14: the release half requires authorizations that do not exist (F-A live processor eligibility for the full-generation purpose, F-B bounded live-fetch feasibility, F-C deployment scope/operator/retention evidence). Revivable only as a new entry under its own authorization; its recorded unknown states the evidence each gate still requires.
 - Recorded qualifier (2026-10-28 closure): every "full local gate green" in this epic's plans carries the same pre-existing e2e load-sensitivity class — the three `batches.spec.ts` broken-PDF parser-path specs fail under full-gate load and pass standalone (5/5), recorded in the 2.8/2.9/2.10 plans with the warm-up declined as honesty-weakening (sweep no-op). Read those greens with this qualifier; standalone runs cover the affected path. Also per the plans: the known at-rest receipt-content deferral has its home in the initiative's `deferred-work.md` (source: the 2.1 tracer plan).
+- Decision: 2026-10-28 — **epic conditionally closed** by owner confirmation after the fresh-context closure check (CLOSURE-SUPPORTED-WITH-NOTES): entries 1–10 `done` — Done-when clauses 1–3 verified against recorded local synthetic-fixture evidence, Requirements R1–R5 covered, Boundaries holding. Clause 4 (the deployed slice) stays deferred in dropped entry 11 pending F-A/F-B/F-C authorization. No live dispatch, live fetch, deployment or release-readiness claim is made anywhere; the e2e load-sensitivity qualifier above applies to every recorded gate green.
