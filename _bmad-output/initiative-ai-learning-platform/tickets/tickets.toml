@@ -9,6 +9,15 @@
 # purpose-scoped processor configuration under the same owner decision — the
 # current v4 consent does not cover full course generation); no later-epic entry
 # is started, assigned or authorized to build.
+# 2026-10-28: epic 2 CONDITIONALLY CLOSED (2.1–2.10 done, 2.11 dropped-deferred); epic 3
+# started under the owner's go (3.1/3.2 in review, 3.3 ready).
+# 2026-10-29: by owner replan, the epic-5 and epic-6 ENVELOPES were narrowed to
+# contract-level handoffs — their files' `after` now gate on epics 1–2 / epic 2 (closed);
+# the declared cross-epic needs below are unchanged and are carried by the entry pins
+# repointed 2026-10-24. Started: 5.1 (manual-course tracer) and 6.2 (G4 feasibility
+# spike). Epic 4 stays whole-epic gated on epic 3 (its tracer consumes 3.4). Starts
+# beyond that slice take the owner's go at their turn. Lane rules: one branch per epic;
+# epic 5 numbers migrations from 030; rebase before merge; module ownership unchanged.
 # Draft id 7 retired after tree validation: pilot/closure is not a horizontal testing epic.
 next_id = 8
 
