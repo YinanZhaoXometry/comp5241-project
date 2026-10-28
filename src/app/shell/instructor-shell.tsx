@@ -41,9 +41,13 @@ const navigation = [
 export function InstructorShell({
   active,
   breadcrumb,
+  live = false,
   children,
-}: Readonly<{ active?: InstructorSection | null; breadcrumb?: string; children: React.ReactNode }>) {
+}: Readonly<{ active?: InstructorSection | null; breadcrumb?: string; live?: boolean; children: React.ReactNode }>) {
   const crumb = breadcrumb ?? (active ? `Instructor · ${navigation.find(item => item.section === active)?.label}` : "Instructor studio");
+  // Live surfaces (epic-5 tracer) keep the honesty label but state it
+  // accurately for live local data: synthetic sample data, no live AI.
+  const honesty = live ? "Sample prototype · No live AI" : "Instructor sample · No live data";
   return (
     <div className={styles.app}>
       <a className={styles.skip} href="#content">Skip to content</a>
@@ -69,7 +73,7 @@ export function InstructorShell({
           <p className={styles.listTitle}>Viewing as</p>
           <div className={styles.studyChip}>
             <span className={styles.sName}>Instructor</span>
-            <span className={styles.sMeta}>Prof. Rowan Ellis · sample</span>
+            <span className={styles.sMeta}>{live ? "Signed-in principal · local synthetic" : "Prof. Rowan Ellis · sample"}</span>
           </div>
         </div>
         <nav className={`${styles.sideNav} ${styles.sideDivider}`} aria-label="Other views">
@@ -78,18 +82,20 @@ export function InstructorShell({
             Learner views
           </Link>
         </nav>
-        <div className={styles.sideFoot}>Instructor sample · No live data</div>
+        <div className={styles.sideFoot}>{honesty}</div>
       </aside>
       <div className={styles.main}>
         <header className={styles.topbar}>
-          <span className={styles.crumbMeta}>{crumb} · Sample data</span>
-          <span className={styles.honestyPill}>Instructor sample · No live data</span>
+          <span className={styles.crumbMeta}>{crumb}{live ? " · Local synthetic data" : " · Sample data"}</span>
+          <span className={styles.honestyPill}>{honesty}</span>
         </header>
         <main className={styles.content} id="content" tabIndex={-1}>
           {children}
         </main>
         <footer className={styles.pagefoot}>
-          <span>Fieldnotes · Original sample content · No academic records, AI generation or instructor approval behind these pages.</span>
+          {live
+            ? <span>Fieldnotes · Local synthetic data only · No live AI, no real academic records behind these pages.</span>
+            : <span>Fieldnotes · Original sample content · No academic records, AI generation or instructor approval behind these pages.</span>}
         </footer>
       </div>
     </div>

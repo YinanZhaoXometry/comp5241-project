@@ -3,7 +3,7 @@ title: 'Manual-course approval-enrollment tracer (5.1)'
 type: 'feature'
 ticket: '1'
 created: '2026-10-29'
-status: blocked
+status: in-progress
 baseline_revision: '766a12485a99f760840982264b66730f00c6f036'
 route: 'full'
 route_source: 'auto'
@@ -19,8 +19,6 @@ context:
   - /Users/zhaoyinan/document/Polyu/COMP5241 软工/project-new-epic5/AGENTS.md
 warnings: []
 deferred: []
-blocked_at: "2026-10-29"
-blocked_reason: "no subagents"
 ---
 
 <intent-contract>
@@ -99,6 +97,8 @@ blocked_reason: "no subagents"
 Planner note (route: full): sized full because the tracer crosses DB + module + HTTP + two live UI ports + three test layers + restart evidence. The start authorization (hitl) is the owner's 2026-10-29 go; provisioning the synthetic instructor principal is the standing `npm run provision` (operator-delegate action, done during verification).
 
 2026-10-29 (blocked exit, no code changes): the bmad-build-auto run resolved ticket 5.1, completed the full document/code investigation and wrote this plan to ready-for-development quality, then halted at step-03's mandatory full-route implementing-subagent launch: this dispatch environment (a subagent lane) exposes no subagent-spawning tool, and the workflow's Subagents rule requires HALT with `no subagents` rather than improvising an in-session implementation. Work already standing on this branch: `npm ci --ignore-scripts` completed (254 packages, 0 vulnerabilities); no database was started, no ports touched, no source files changed. Environment note for the next runner: the shell snapshot's `node`/`npm` functions call an undefined `_nvm_lazy_load` — prepend `source ~/.nvm/nvm.sh && nvm use >/dev/null; unfunction node npm 2>/dev/null` to every terminal call. Resume by clearing the blocked mark and either re-running from a subagent-capable session or explicitly authorizing the oneshot (in-session) route.
+
+2026-10-29: owner direction "finish 5.1" explicitly authorizes the in-session implementation unlock recorded above; status returned to in-progress and the plan is implemented in-session by the same agent that wrote it (route stays `full`; the subagent-launch step is satisfied by owner-authorized self-implementation, recorded here as an authorized process deviation).
 
 ## Verification
 

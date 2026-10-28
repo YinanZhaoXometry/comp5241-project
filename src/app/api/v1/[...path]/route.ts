@@ -12,6 +12,7 @@ import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finish
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
 import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState, getProvenance } from "../../../../modules/course-generation/service";
+import { listInstructorCourses, createCourse, getCourseDetail, saveDraft, approveVersion, previewEnrollment, confirmEnrollment, getApprovals, learnerEnrollments, learnerCourse } from "../../../../modules/instructor-courses/service";
 import { getAssessment, startTest, submitAttempt } from "../../../../modules/assessment-progress/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
@@ -233,6 +234,39 @@ async function handle(request: Request, context: Context) {
       const result = path[1] === "decision" ? await decide(identity, body as Decide)
         : path[1] === "withdrawal" ? await withdraw(identity, body as Withdraw) : null;
       if (result) return Response.json(result, { headers: privateHeaders });
+    }
+    // Epic-5 entry 1 (manual-course approval-enrollment tracer): the live
+    // instructor studio. Every endpoint re-authorizes the instructor role AND
+    // course ownership server-side; the wrong role and a foreign course are
+    // the same no-existence-leak denial as a missing course.
+    if (path[0] === "instructor" && path[1] === "courses") {
+      if (path.length === 2 && request.method === "GET")
+        return Response.json(await listInstructorCourses(identity), { headers: privateHeaders });
+      if (path.length === 2 && request.method === "POST")
+        return Response.json(await createCourse(identity, await jsonBody(request)), { status: 201, headers: privateHeaders });
+      if (path.length === 3 && request.method === "GET")
+        return Response.json(await getCourseDetail(identity, path[2]), { headers: privateHeaders });
+      if (path.length === 4 && request.method === "POST") {
+        const body = await jsonBody(request);
+        const result = path[3] === "draft" ? await saveDraft(identity, body)
+          : path[3] === "approve" ? await approveVersion(identity, body)
+          : path[3] === "enrollment-preview" ? await previewEnrollment(identity, path[2], body)
+          : path[3] === "enrollment" ? await confirmEnrollment(identity, body) : null;
+        if (result) return Response.json(result, { headers: privateHeaders });
+      }
+    }
+    if (path[0] === "instructor" && path[1] === "approvals" && path.length === 2 && request.method === "GET") {
+      return Response.json(await getApprovals(identity), { headers: privateHeaders });
+    }
+    // Epic-5 entry 1 learner path: enrolled study through the LEARNER shell,
+    // never the instructor studio. The course read serves only the latest
+    // approved version; every non-enrolled requester gets the identical
+    // FORBIDDEN_OR_NOT_FOUND.
+    if (path[0] === "enrollments") {
+      if (path.length === 1 && request.method === "GET")
+        return Response.json(await learnerEnrollments(identity), { headers: privateHeaders });
+      if (path.length === 2 && request.method === "GET")
+        return Response.json(await learnerCourse(identity, path[1]), { headers: privateHeaders });
     }
     fail("FORBIDDEN_OR_NOT_FOUND");
   } catch (error) { return safeFailure(error); }

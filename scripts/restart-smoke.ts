@@ -192,6 +192,62 @@ try {
   const courseStudy = await (await client.get(coursePath)).json();
   assert.equal((await client.post(`${coursePath}/removal`, { headers: { Origin: origin }, data: command(courseStudy.revision) })).status(), 200);
   assert.equal((await database().query("SELECT count(*)::int AS count FROM app.course_supplement WHERE course_id=$1", [courseId])).rows[0].count, 0);
-  for (const secret of [text, courseText, owner.email, owner.password, other.email, other.password]) assert.ok(!output.join("").includes(secret), "Private data reached process output");
-  console.log("Restart smoke passed: exact plan/session persisted, B denied, queued PDF recovered with the same original and one extraction, duplicate receipt replayed, course generation queued without a worker completed exactly once across restart with an identical replayed receipt and one ready course, recall answer released only on submission, required-test attempt and graded result survived the restart unchanged with a replayed submit yielding the identical result and one graded row, supplement pass queued without a worker completed exactly once with a verified attributed supplement and purged with its root; process output content-free.");
+  // Epic-5 entry-1 beat: the manual-course approval-enrollment tracer. The
+  // instructor creates a course, drafts one manual lesson, approves the exact
+  // version (approver/time/version recorded), enrolls one verified learner
+  // through the single-row preview/confirm action — then a full web+worker
+  // restart must leave the approved version immutable and identical, the
+  // learner study path unchanged, and the no-existence-leak denial standing
+  // for a second instructor. A replayed approve command returns one receipt
+  // with exactly one approval row.
+  const instructor5 = await provisionSynthetic("restart-instructor", "instructor");
+  const learner5 = await provisionSynthetic("restart-learner", "learner");
+  const denied5 = await provisionSynthetic("restart-second-instructor", "instructor");
+  const studio = await request.newContext({ baseURL: origin });
+  const study5 = await request.newContext({ baseURL: origin });
+  const foreign5 = await request.newContext({ baseURL: origin });
+  try {
+    for (const [context, account] of [[studio, instructor5], [study5, learner5], [foreign5, denied5]] as const) {
+      assert.equal((await context.post("/api/v1/auth/sign-in/email", { headers: { Origin: origin }, data: { email: account.email, password: account.password } })).status(), 200);
+    }
+    const created5 = await studio.post("/api/v1/instructor/courses", { headers: { Origin: origin }, data: { ...command(), title: "Restart instructor course" } });
+    assert.equal(created5.status(), 201);
+    const course5 = await created5.json() as { courseId: string };
+    const draft5 = await studio.post(`/api/v1/instructor/courses/${course5.courseId}/draft`, { headers: { Origin: origin }, data: { ...command(), courseId: course5.courseId, lesson: { title: "Restart manual lesson", sections: [{ text: "Synthetic restart manual lesson body. No AI." }] } } });
+    assert.equal(draft5.status(), 200);
+    const version5 = (await draft5.json()) as { versionId: string };
+    const approve5Command = { ...command(), courseId: course5.courseId, versionId: version5.versionId };
+    const approve5 = await studio.post(`/api/v1/instructor/courses/${course5.courseId}/approve`, { headers: { Origin: origin }, data: approve5Command });
+    assert.equal(approve5.status(), 200);
+    const approval5 = await approve5.json() as { state: string; approvalId: string };
+    assert.equal(approval5.state, "approved");
+    const preview5 = await studio.post(`/api/v1/instructor/courses/${course5.courseId}/enrollment-preview`, { headers: { Origin: origin }, data: { schemaVersion: 1, name: "Restart Learner", email: learner5.email } });
+    assert.equal(preview5.status(), 200);
+    assert.equal(((await preview5.json()) as { matched: boolean }).matched, true);
+    const enroll5 = await studio.post(`/api/v1/instructor/courses/${course5.courseId}/enrollment`, { headers: { Origin: origin }, data: { ...command(), courseId: course5.courseId, name: "Restart Learner", email: learner5.email } });
+    assert.equal(enroll5.status(), 200);
+    const detail5Before = await (await studio.get(`/api/v1/instructor/courses/${course5.courseId}`)).json();
+    const study5Before = await (await study5.get(`/api/v1/enrollments/${course5.courseId}`)).json();
+    assert.equal((study5Before as { state: string }).state, "ready");
+    await stop(); await start();
+    assert.deepEqual(await (await studio.get(`/api/v1/instructor/courses/${course5.courseId}`)).json(), detail5Before);
+    assert.deepEqual(await (await study5.get(`/api/v1/enrollments/${course5.courseId}`)).json(), study5Before);
+    assert.equal((await foreign5.get(`/api/v1/enrollments/${course5.courseId}`)).status(), 404);
+    // The approved version is immutable across restarts (AD-5).
+    await assert.rejects(() => database().query("UPDATE app.instructor_course_version SET content='{\"tampered\":true}' WHERE id=$1", [version5.versionId]), /Immutable revision/);
+    // A replayed approve command returns the identical receipt with exactly
+    // one approval row, and the enrollment stays single.
+    const replay5 = await studio.post(`/api/v1/instructor/courses/${course5.courseId}/approve`, { headers: { Origin: origin }, data: approve5Command });
+    assert.equal(replay5.status(), 200);
+    assert.deepEqual(await replay5.json(), approval5);
+    assert.equal((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.instructor_approval WHERE version_id=$1", [version5.versionId])).rows[0].count, 1);
+    assert.equal((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.instructor_enrollment WHERE course_id=$1", [course5.courseId])).rows[0].count, 1);
+    // The tracer's records register in the epic-1 lifecycle inventory.
+    const inventory5 = (await (await study5.post("/api/v1/personal/removal", { headers: { Origin: origin }, data: { schemaVersion: 1, preview: true } })).json()) as { categories: Array<{ key: string; count: number }> };
+    assert.equal(inventory5.categories.find(category => category.key === "instructor-enrollments")?.count, 1);
+  } finally {
+    await studio.dispose(); await study5.dispose(); await foreign5.dispose();
+  }
+  for (const secret of [text, courseText, owner.email, owner.password, other.email, other.password, instructor5.email, instructor5.password, learner5.email, learner5.password, denied5.email, denied5.password]) assert.ok(!output.join("").includes(secret), "Private data reached process output");
+  console.log("Restart smoke passed: exact plan/session persisted, B denied, queued PDF recovered with the same original and one extraction, duplicate receipt replayed, course generation queued without a worker completed exactly once across restart with an identical replayed receipt and one ready course, recall answer released only on submission, required-test attempt and graded result survived the restart unchanged with a replayed submit yielding the identical result and one graded row, supplement pass queued without a worker completed exactly once with a verified attributed supplement and purged with its root, instructor course approved version and enrollment survived the restart immutable with one replayed approval receipt and the second instructor denied; process output content-free.");
 } finally { await stop(); await client.dispose(); await denied.dispose(); await closeDatabase(); }
