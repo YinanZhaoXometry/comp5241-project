@@ -9,6 +9,7 @@ import { PrivacyPanel } from "./privacy-panel";
 import { GoalStage } from "./goal-stage";
 import { CheckStage } from "./check-stage";
 import { CourseStage } from "./course-stage";
+import { AssessmentStage } from "./assessment-stage";
 import { ExportPanel } from "./export-panel";
 import { DangerZone } from "./danger-zone";
 import { AiAssist } from "./ai-assist";
@@ -162,6 +163,7 @@ export function StudyApp({ prefillEmail }: Readonly<{ prefillEmail?: string }>) 
             <AiAssist key={`${session.user.id}:${study.rootId}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onTopic={setAiTopic} onDraft={setAiDraft} />
             {study.confirmed && <CheckStage key={`${session.user.id}:${study.rootId}:${study.revision}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} />}
             {study.confirmed && <CourseStage key={`course:${session.user.id}:${study.rootId}:${study.revision}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onCourseReady={() => { if (viewGeneration === generation.current) void api<Study>(`studies/${study.rootId}`).then(value => { if (viewGeneration === generation.current) setStudy(value); }).catch(() => { /* the stage's own state stays authoritative */ }); }} />}
+            {study.confirmed && <AssessmentStage key={`assessment:${session.user.id}:${study.rootId}:${study.revision}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} />}
             <DangerZone study={study} busy={busy} onWork={act} onDeleted={message => { setStudy(null); setDirty(false); setReceipt(message); void load().then(() => moveFocus()); }} />
           </>}
           <section className="library"><h2>Saved studies</h2>{entries.length === 0 ? <p>No saved studies yet.</p> : <ul>{entries.map(entry => <li key={entry.rootId}><div><strong>{entry.filename}</strong><p className="fine">{entry.state === "deleted" ? `Access revoked · cleanup ${entry.cleanupState}` : entry.confirmed ? (entry.courseGenerated ? "Plan confirmed · mini-course generated" : "Plan confirmed — course not generated") : `Manual draft · ${entry.state} · revision ${entry.revision}`}</p></div>{entry.state !== "deleted" && <button className="quiet" disabled={busy} onClick={() => { void open(entry.rootId); }}>{entry.confirmed ? "View plan" : "Resume"}</button>}</li>)}</ul>}</section>

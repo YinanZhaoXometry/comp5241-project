@@ -1,0 +1,28 @@
+{
+  "comment": "G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.",
+  "defaultAction": "SCMP_ACT_ERRNO",
+  "defaultErrnoRet": 1,
+  "archMap": [{ "architecture": "SCMP_ARCH_AARCH64", "subArchitectures": [] }],
+  "syscalls": [
+    {
+      "names": [
+        "read", "write", "readv", "writev", "close", "close_range", "lseek",
+        "pread64", "pwrite64", "fstat", "fstatfs", "statfs", "newfstatat",
+        "faccessat", "faccessat2", "statx", "openat", "readlinkat", "getdents64",
+        "fcntl", "ioctl", "dup", "dup2", "dup3",
+        "mmap", "munmap", "mprotect", "mremap", "madvise", "msync", "brk",
+        "futex", "futex_waitv", "rseq", "membarrier", "restart_syscall",
+        "set_tid_address", "set_robust_list",
+        "rt_sigaction", "rt_sigprocmask", "rt_sigreturn", "sigaltstack",
+        "getrandom", "getpid", "getppid", "gettid", "getuid", "geteuid",
+        "getgid", "getegid", "getgroups", "umask", "getcwd", "chdir", "fchdir",
+        "clock_gettime", "clock_getres", "clock_nanosleep", "nanosleep",
+        "gettimeofday", "getrusage", "uname", "sysinfo", "sched_getaffinity",
+        "sched_yield", "prlimit64", "getrlimit",
+        "mkdirat", "unlinkat", "renameat", "renameat2", "fchmod", "fchmodat",
+        "execve", "exit", "exit_group"
+      ],
+      "action": "SCMP_ACT_ALLOW"
+    }
+  ]
+}

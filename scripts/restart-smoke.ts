@@ -141,6 +141,30 @@ try {
   const recall = await client.post(`${coursePath}/course/recall`, { headers: { Origin: origin }, data: { ...command(confirmedRevision), attempted: "Synthetic course restart source." } });
   assert.equal(recall.status(), 200);
   assert.equal(((await recall.json()) as { outcome: string }).outcome, "correct");
+  // Epic-3 story-1 beat: start the required-test attempt on the ready course
+  // and submit it once (all correct through the stored snapshot key). A full
+  // web+worker restart must leave the attempt, its snapshot and result
+  // unchanged, and a replayed submit command yields the identical result
+  // with exactly one graded row.
+  const assessmentRevision = ((await (await client.get(coursePath)).json()) as { revision: number }).revision;
+  const assessmentStart = await client.post(`${coursePath}/assessment`, { headers: { Origin: origin }, data: command(assessmentRevision) });
+  assert.equal(assessmentStart.status(), 200);
+  const attemptReceipt = await assessmentStart.json() as Receipt;
+  const attemptSnapshot = (await database().query<{ snapshot: { items: Array<{ position: number; answerId: string }> } }>("SELECT snapshot FROM app.test_attempt WHERE id=$1", [attemptReceipt.operationId])).rows[0].snapshot;
+  const attemptAnswers = attemptSnapshot.items.map(item => ({ position: item.position, choiceId: item.answerId }));
+  const submitCommand = command(assessmentRevision);
+  const submitted = await client.post(`${coursePath}/assessment/${attemptReceipt.operationId}/submit`, { headers: { Origin: origin }, data: { ...submitCommand, attemptId: attemptReceipt.operationId, answers: attemptAnswers } });
+  assert.equal(submitted.status(), 200);
+  const gradedResult = await submitted.json() as { passed: boolean; verdict: string };
+  assert.equal(gradedResult.passed, true);
+  assert.equal(gradedResult.verdict, "100.0% — Pass (mark is 80%)");
+  const assessmentBefore = await (await client.get(`${coursePath}/assessment`)).json();
+  await stop(); await start();
+  assert.deepEqual(await (await client.get(`${coursePath}/assessment`)).json(), assessmentBefore);
+  const replayedSubmit = await client.post(`${coursePath}/assessment/${attemptReceipt.operationId}/submit`, { headers: { Origin: origin }, data: { ...submitCommand, attemptId: attemptReceipt.operationId, answers: attemptAnswers } });
+  assert.equal(replayedSubmit.status(), 200);
+  assert.deepEqual(await replayedSubmit.json(), gradedResult); // identical result, one receipt
+  assert.equal((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.test_attempt WHERE id=$1 AND status='graded'", [attemptReceipt.operationId])).rows[0].count, 1);
   // Epic-2 S2 beat: queue the supplement pass while NO worker runs, then a
   // full web+worker restart must complete the persisted job exactly once with
   // a verified attributed supplement and one 'supplement' lifecycle object.
@@ -169,5 +193,5 @@ try {
   assert.equal((await client.post(`${coursePath}/removal`, { headers: { Origin: origin }, data: command(courseStudy.revision) })).status(), 200);
   assert.equal((await database().query("SELECT count(*)::int AS count FROM app.course_supplement WHERE course_id=$1", [courseId])).rows[0].count, 0);
   for (const secret of [text, courseText, owner.email, owner.password, other.email, other.password]) assert.ok(!output.join("").includes(secret), "Private data reached process output");
-  console.log("Restart smoke passed: exact plan/session persisted, B denied, queued PDF recovered with the same original and one extraction, duplicate receipt replayed, course generation queued without a worker completed exactly once across restart with an identical replayed receipt and one ready course, recall answer released only on submission, supplement pass queued without a worker completed exactly once with a verified attributed supplement and purged with its root; process output content-free.");
+  console.log("Restart smoke passed: exact plan/session persisted, B denied, queued PDF recovered with the same original and one extraction, duplicate receipt replayed, course generation queued without a worker completed exactly once across restart with an identical replayed receipt and one ready course, recall answer released only on submission, required-test attempt and graded result survived the restart unchanged with a replayed submit yielding the identical result and one graded row, supplement pass queued without a worker completed exactly once with a verified attributed supplement and purged with its root; process output content-free.");
 } finally { await stop(); await client.dispose(); await denied.dispose(); await closeDatabase(); }

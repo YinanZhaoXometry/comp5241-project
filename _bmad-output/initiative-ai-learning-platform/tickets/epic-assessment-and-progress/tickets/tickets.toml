@@ -28,7 +28,6 @@ covers = ["R3"]
 after = [1, "1.3", "1.6"]
 hitl = false
 risk = "high"
-unknown = "F-A-pattern live retest eligibility: AI generation of fresh same-demand retest variants needs a purpose-re-gated D5-compatible provider (retention/deletion/non-training proof plus operator authorization for synthetic non-personal tests), the same blocker as epic 1 S6/epic 2 F-A. Synthetic checked fixture banks proceed; live generation and its live acceptance stay blocked."
 references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Recovery path pattern and State Patterns (Partial recovery)", "PRD — _bmad-output/initiative-ai-learning-platform/prd-ai-learning-platform/prd-ai-learning-platform.md, FR-14 consequences"]
 
 [[entry]]

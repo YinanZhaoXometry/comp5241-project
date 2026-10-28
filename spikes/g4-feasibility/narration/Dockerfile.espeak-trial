@@ -1,0 +1,6 @@
+# G4 spike — disposable espeak-ng timing trial image (throwaway; removed after).
+# Derived from the same pristine digest-pinned official base the parser
+# precedent documents. NOT admitted; NOT a product component.
+FROM python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9
+RUN apk add --no-cache espeak-ng && espeak-ng --version > /espeak-version.txt 2>&1
+ENTRYPOINT ["espeak-ng", "--stdout"]

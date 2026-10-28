@@ -3,8 +3,10 @@
 # Entry `after` pins stage the four earlier epics per provider: numeric "1.<id>"/"2.x" for
 # built/refined epic-1/2 entries; sibling pins repointed 2026-10-24 to epic-2 generation
 # 2.1, player 2.3, provenance 2.7 and why 2.6; epic-3 scoring 3.3/retest chain 3.2/handoff
-# 3.8; epic-4 scoped due-state/cancellation 4.6. The epic file's whole-epic `after` on
-# epics 1-4 stays the execution gate.
+# 3.8; epic-4 scoped due-state/cancellation 4.6. 2026-10-29: the epic file's whole-epic
+# `after` was narrowed by owner replan to epics 1-2 (closed); the epic-3/4 needs are
+# carried by the entry pins (contract-level). Entry 1 started under the owner's go.
+# Migrations for this epic are numbered from 030 (epic 3 holds 021+ in parallel).
 # One lane protects shared scope/approval/enrollment/reporting surfaces.
 # unknown gates the start; hitl identifies actual human work but is not a readiness gate.
 next_id = 13
@@ -19,7 +21,6 @@ covers = ["R1", "R2", "R3"]
 after = ["1.1", "2.3"]
 hitl = true
 risk = "high"
-unknown = "Whole-epic execution gates and start authorization: epics 1–2 are closed (2026-10-25/28) but epics 3–4 are not, so the gate stands, and no explicit permission to start instructor-course implementation exists; this refinement authorizes planning only."
 references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Information Architecture (instructor shell) and Component Patterns (Approval inspector)", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D4 approval unit and D5 enrollment"]
 
 [[entry]]

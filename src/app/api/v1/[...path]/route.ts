@@ -12,6 +12,7 @@ import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finish
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
 import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState, getProvenance } from "../../../../modules/course-generation/service";
+import { getAssessment, startTest, submitAttempt } from "../../../../modules/assessment-progress/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -122,6 +123,21 @@ async function handle(request: Request, context: Context) {
           : path[4] === "flag" ? await flagUnclear(identity, rootId, path[3], body as FlagItem) : null;
         if (result) return Response.json(result, { headers: privateHeaders });
       }
+    }
+    // Epic-3 story-1 scored-attempt tracer (shape of the check verbs above):
+    // GET serves the owner-scoped assessment state (offered disclosure, open
+    // attempt, graded result with history, derived roadmap node — never an
+    // answer before that attempt is graded); POST starts (or re-offers) the
+    // one required test; the submit verb grades the open attempt exactly
+    // once against its at-start snapshot.
+    if (path[0] === "studies" && path[2] === "assessment" && (path.length === 3 || (path.length === 5 && path[4] === "submit"))) {
+      const rootId = path[1];
+      if (path.length === 3 && request.method === "GET") {
+        const assessment = await getAssessment(identity, rootId);
+        return protectedResponse(identity, rootId, assessment, request.signal, false, assessment.objectIds);
+      }
+      if (path.length === 3 && request.method === "POST") return Response.json(await startTest(identity, rootId, await jsonBody(request) as Command), { headers: privateHeaders });
+      if (request.method === "POST") return Response.json(await submitAttempt(identity, rootId, path[3], await jsonBody(request)), { headers: privateHeaders });
     }
     if (path[0] === "studies" && path.length === 3 && path[2] === "dependencies" && request.method === "POST") {
       return Response.json(await dependenciesPreview(identity, path[1], await jsonBody(request)), { headers: privateHeaders });
