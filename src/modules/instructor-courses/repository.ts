@@ -164,8 +164,8 @@ export async function insertApproval(
 ): Promise<string> {
   const id = crypto.randomUUID();
   await client.query(
-    "INSERT INTO app.instructor_approval(version_id,approver_id,version_digest) VALUES($1,$2,$3)",
-    [versionId, approverId, digest],
+    "INSERT INTO app.instructor_approval(id,version_id,approver_id,version_digest) VALUES($1,$2,$3,$4)",
+    [id, versionId, approverId, digest],
   );
   return id;
 }

@@ -36,10 +36,11 @@ CREATE TABLE IF NOT EXISTS app.instructor_course_version (
 CREATE INDEX IF NOT EXISTS instructor_course_version_course ON app.instructor_course_version(course_id, created_at DESC);
 
 -- Exact-version approval records (D4): approver, time and the approved
--- version's content digest. version_id PK arbitrates duplicates structurally
--- — at most one approval can ever exist per version.
+-- version's content digest. One approval row per version — the UNIQUE
+-- version_id arbitrates duplicates structurally.
 CREATE TABLE IF NOT EXISTS app.instructor_approval (
-  version_id uuid PRIMARY KEY REFERENCES app.instructor_course_version(id),
+  id uuid PRIMARY KEY,
+  version_id uuid NOT NULL UNIQUE REFERENCES app.instructor_course_version(id),
   approver_id uuid NOT NULL REFERENCES auth."user"(id),
   version_digest text NOT NULL,
   approved_at timestamptz NOT NULL DEFAULT clock_timestamp()

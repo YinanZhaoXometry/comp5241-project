@@ -219,11 +219,18 @@ describe("epic-5 5.1: manual-course approval-enrollment tracer", () => {
     await deniedBy(admin.identity, courseId);
     await deniedBy(learner.identity, missingId);
 
-    // Instructor surfaces deny non-instructors and non-owners identically.
-    for (const other of [secondInstructor.identity, admin.identity, learner.identity]) {
+    // Instructor surfaces deny non-instructors identically; a second
+    // instructor sees only their OWN (empty) lists — a list is owner-scoped,
+    // never a cross-owner surface — while every course-scoped call on the
+    // owner's course denies them like everyone else.
+    for (const other of [admin.identity, learner.identity]) {
       await expect(listInstructorCourses(other)).rejects.toThrow("This item is unavailable.");
-      await expect(getCourseDetail(other, courseId)).rejects.toThrow("This item is unavailable.");
       await expect(getApprovals(other)).rejects.toThrow("This item is unavailable.");
+    }
+    expect(await listInstructorCourses(secondInstructor.identity)).toEqual({ courses: [] });
+    expect(await getApprovals(secondInstructor.identity)).toEqual({ pending: [], approved: [] });
+    for (const other of [secondInstructor.identity, admin.identity, learner.identity]) {
+      await expect(getCourseDetail(other, courseId)).rejects.toThrow("This item is unavailable.");
       await expect(saveDraft(other, { ...command(0), courseId, lesson: LESSON })).rejects.toThrow("This item is unavailable.");
       await expect(approveVersion(other, { ...command(0), courseId, versionId: draft.versionId! })).rejects.toThrow("This item is unavailable.");
       await expect(previewEnrollment(other, courseId, { schemaVersion: 1, name: "X", email: learner.credentials.email })).rejects.toThrow("This item is unavailable.");
