@@ -130,7 +130,10 @@ test("instructor authors, approves and enrolls; the learner studies only the app
   const secondInstructor = await provisionSynthetic("second-instructor-browser", "instructor");
   const admin = await provisionSynthetic("admin-browser", "admin");
   await database().query('DELETE FROM auth."rateLimit"');
-  const courseId = (await database().query<{ id: string }>("SELECT id FROM app.instructor_course WHERE title='Browser tracer course'")).rows[0].id;
+  // THIS run's course only: earlier attempts left same-titled courses owned
+  // by other instructors, and every course-scoped assertion below must bind
+  // to the one this journey created.
+  const courseId = (await database().query<{ id: string }>("SELECT id FROM app.instructor_course WHERE title='Browser tracer course' AND owner_id=$1", [instructor.userId])).rows[0].id;
   for (const account of [stranger, secondInstructor, admin]) {
     const context = await playwright.request.newContext({ baseURL: origin });
     const signIn = await context.post("/api/v1/auth/sign-in/email", { headers: { Origin: origin }, data: { email: account.email, password: account.password } });
