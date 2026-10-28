@@ -42,7 +42,10 @@ test("instructor authors, approves and enrolls; the learner studies only the app
   await page.setViewportSize({ width: 360, height: 900 });
   await signInOn(page, "/instructor/courses", instructor.email, instructor.password);
   await expect(page.getByRole("heading", { name: "Courses", level: 1, exact: true })).toBeVisible();
-  await expect(page.getByText("Sample prototype · No live AI", { exact: true }).first()).toBeVisible();
+  // The honesty label sits in BOTH the sidebar footer (hidden at 360px, where
+  // the sidebar collapses to the top nav) and the always-visible topbar pill —
+  // assert the visible one, scoped to the header.
+  await expect(page.locator("header").getByText("Sample prototype · No live AI", { exact: true })).toBeVisible();
   await expect(page.getByText("No courses yet", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Create course", exact: true }).click();
   await page.getByLabel("Course title", { exact: true }).fill("Browser tracer course");
