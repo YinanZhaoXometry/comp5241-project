@@ -3,7 +3,7 @@
   "harness": "spikes/g4-feasibility/runner (disposable; not product code; selects/activates nothing)",
   "supervisor_concurrency": "serialized battery: max 1 job at a time (per-host concurrency cap by construction)",
   "environment": {
-    "started": "2026-10-29T01:13:20+0800",
+    "started": "2026-10-29T01:39:33+0800",
     "host_uname": "Darwin Neos-Mac-mini.local 27.0.0 Darwin Kernel Version 27.0.0: Tue Aug 11 21:20:40 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T6020 arm64",
     "docker_client_server": "29.5.3 / 29.5.2",
     "docker_context": "colima",
@@ -23,12 +23,12 @@
     "spike_workdir_state": "empty",
     "containers_removed_count": 18
   },
-  "cpu_quota_ratio_0.25_over_1.0": 0.229,
+  "cpu_quota_ratio_0.25_over_1.0": 0.203,
   "overall": "ALL_CONTAINED",
   "probes": [
     {
       "probe": "legal_correct",
-      "container": "g4spike-legal_correct-27572-600907",
+      "container": "g4spike-legal_correct-4254-174122",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -42,13 +42,13 @@
       },
       "client_exit": 0,
       "kill_reason": null,
-      "wall_seconds": 0.265,
+      "wall_seconds": 0.107,
       "daemon_state": {
         "ExitCode": 0,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:21.099008398Z",
-        "FinishedAt": "2026-10-28T17:13:21.188113942Z"
+        "StartedAt": "2026-10-28T17:39:34.206801348Z",
+        "FinishedAt": "2026-10-28T17:39:34.251052229Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -87,7 +87,7 @@
     },
     {
       "probe": "legal_incorrect",
-      "container": "g4spike-legal_incorrect-27572-601253",
+      "container": "g4spike-legal_incorrect-4254-174273",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -101,13 +101,13 @@
       },
       "client_exit": 0,
       "kill_reason": null,
-      "wall_seconds": 0.162,
+      "wall_seconds": 0.115,
       "daemon_state": {
         "ExitCode": 0,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:21.440715569Z",
-        "FinishedAt": "2026-10-28T17:13:21.503236336Z"
+        "StartedAt": "2026-10-28T17:39:34.355893134Z",
+        "FinishedAt": "2026-10-28T17:39:34.396304469Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -146,7 +146,7 @@
     },
     {
       "probe": "legal_runtime_error",
-      "container": "g4spike-legal_runtime_error-27572-601510",
+      "container": "g4spike-legal_runtime_error-4254-174436",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -160,13 +160,13 @@
       },
       "client_exit": 1,
       "kill_reason": null,
-      "wall_seconds": 0.465,
+      "wall_seconds": 0.406,
       "daemon_state": {
         "ExitCode": 1,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:21.637957051Z",
-        "FinishedAt": "2026-10-28T17:13:22.007330148Z"
+        "StartedAt": "2026-10-28T17:39:34.518367351Z",
+        "FinishedAt": "2026-10-28T17:39:34.856395883Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -205,7 +205,7 @@
     },
     {
       "probe": "esc_host_paths",
-      "container": "g4spike-esc_host_paths-27572-602072",
+      "container": "g4spike-esc_host_paths-4254-174894",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -219,13 +219,13 @@
       },
       "client_exit": 0,
       "kill_reason": null,
-      "wall_seconds": 0.153,
+      "wall_seconds": 0.113,
       "daemon_state": {
         "ExitCode": 0,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:22.215303461Z",
-        "FinishedAt": "2026-10-28T17:13:22.284418671Z"
+        "StartedAt": "2026-10-28T17:39:34.972797592Z",
+        "FinishedAt": "2026-10-28T17:39:35.015845681Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -267,7 +267,7 @@
     },
     {
       "probe": "esc_proc_tricks",
-      "container": "g4spike-esc_proc_tricks-27572-602293",
+      "container": "g4spike-esc_proc_tricks-4254-175054",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -281,13 +281,13 @@
       },
       "client_exit": 0,
       "kill_reason": null,
-      "wall_seconds": 0.206,
+      "wall_seconds": 0.165,
       "daemon_state": {
         "ExitCode": 0,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:22.435204589Z",
-        "FinishedAt": "2026-10-28T17:13:22.517994405Z"
+        "StartedAt": "2026-10-28T17:39:35.13749623Z",
+        "FinishedAt": "2026-10-28T17:39:35.200756341Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -329,7 +329,7 @@
     },
     {
       "probe": "esc_priv_escalation",
-      "container": "g4spike-esc_priv_escalation-27572-602557",
+      "container": "g4spike-esc_priv_escalation-4254-175266",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -343,13 +343,13 @@
       },
       "client_exit": 0,
       "kill_reason": null,
-      "wall_seconds": 0.16,
+      "wall_seconds": 0.163,
       "daemon_state": {
         "ExitCode": 0,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:22.68351966Z",
-        "FinishedAt": "2026-10-28T17:13:22.768557028Z"
+        "StartedAt": "2026-10-28T17:39:35.348185294Z",
+        "FinishedAt": "2026-10-28T17:39:35.406813317Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -390,7 +390,7 @@
     },
     {
       "probe": "net_socket_create",
-      "container": "g4spike-net_socket_create-27572-602775",
+      "container": "g4spike-net_socket_create-4254-175480",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -404,13 +404,13 @@
       },
       "client_exit": 0,
       "kill_reason": null,
-      "wall_seconds": 0.21,
+      "wall_seconds": 0.177,
       "daemon_state": {
         "ExitCode": 0,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:22.932125947Z",
-        "FinishedAt": "2026-10-28T17:13:23.028936209Z"
+        "StartedAt": "2026-10-28T17:39:35.562132861Z",
+        "FinishedAt": "2026-10-28T17:39:35.632924689Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -449,7 +449,7 @@
     },
     {
       "probe": "net_dns",
-      "container": "g4spike-net_dns-27572-603042",
+      "container": "g4spike-net_dns-4254-175704",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -463,13 +463,13 @@
       },
       "client_exit": 0,
       "kill_reason": null,
-      "wall_seconds": 0.319,
+      "wall_seconds": 0.23,
       "daemon_state": {
         "ExitCode": 0,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:23.171812487Z",
-        "FinishedAt": "2026-10-28T17:13:23.353528115Z"
+        "StartedAt": "2026-10-28T17:39:35.78540298Z",
+        "FinishedAt": "2026-10-28T17:39:35.942853111Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -507,7 +507,7 @@
     },
     {
       "probe": "net_http",
-      "container": "g4spike-net_http-27572-603414",
+      "container": "g4spike-net_http-4254-175980",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -521,13 +521,13 @@
       },
       "client_exit": 0,
       "kill_reason": null,
-      "wall_seconds": 0.736,
+      "wall_seconds": 0.449,
       "daemon_state": {
         "ExitCode": 0,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:23.53454381Z",
-        "FinishedAt": "2026-10-28T17:13:24.136058945Z"
+        "StartedAt": "2026-10-28T17:39:36.064105453Z",
+        "FinishedAt": "2026-10-28T17:39:36.443195955Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -566,7 +566,7 @@
     },
     {
       "probe": "net_metadata",
-      "container": "g4spike-net_metadata-27572-604202",
+      "container": "g4spike-net_metadata-4254-176476",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -580,13 +580,13 @@
       },
       "client_exit": 0,
       "kill_reason": null,
-      "wall_seconds": 0.676,
+      "wall_seconds": 0.503,
       "daemon_state": {
         "ExitCode": 0,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:24.340910396Z",
-        "FinishedAt": "2026-10-28T17:13:24.89704945Z"
+        "StartedAt": "2026-10-28T17:39:36.560372127Z",
+        "FinishedAt": "2026-10-28T17:39:36.967943911Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -625,7 +625,7 @@
     },
     {
       "probe": "res_forkbomb_seccomp",
-      "container": "g4spike-res_forkbomb_seccomp-27572-604930",
+      "container": "g4spike-res_forkbomb_seccomp-4254-177025",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -639,13 +639,13 @@
       },
       "client_exit": 0,
       "kill_reason": null,
-      "wall_seconds": 0.315,
+      "wall_seconds": 0.223,
       "daemon_state": {
         "ExitCode": 0,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:25.052036798Z",
-        "FinishedAt": "2026-10-28T17:13:25.261631526Z"
+        "StartedAt": "2026-10-28T17:39:37.108281567Z",
+        "FinishedAt": "2026-10-28T17:39:37.255448607Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -685,7 +685,7 @@
     },
     {
       "probe": "res_forkbomb_pids",
-      "container": "g4spike-res_forkbomb_pids-27572-605303",
+      "container": "g4spike-res_forkbomb_pids-4254-177296",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-relaxed-test.json",
       "limits": {
@@ -699,13 +699,13 @@
       },
       "client_exit": 137,
       "kill_reason": "wall_deadline",
-      "wall_seconds": 12.099,
+      "wall_seconds": 12.097,
       "daemon_state": {
         "ExitCode": 137,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:25.430658405Z",
-        "FinishedAt": "2026-10-28T17:13:37.452438065Z"
+        "StartedAt": "2026-10-28T17:39:37.380009371Z",
+        "FinishedAt": "2026-10-28T17:39:49.415465235Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -730,9 +730,9 @@
         "Mounts": [],
         "LogConfig": null
       },
-      "stdout_bytes_raw": 213,
+      "stdout_bytes_raw": 177,
       "stdout_capped": false,
-      "stdout_head": "CHECK|pids_fork_progress|forks_ok=4\nCHECK|pids_fork_progress|forks_ok=8\nCHECK|pids_limit_hit|DENIED|forks_ok=8: BlockingIOError: [Errno 11] Resource temporarily unavailable\nPROBE|res_forkbomb_pids|done|forks_ok=8\n",
+      "stdout_head": "CHECK|pids_fork_progress|forks_ok=4\nCHECK|pids_limit_hit|DENIED|forks_ok=7: BlockingIOError: [Errno 11] Resource temporarily unavailable\nPROBE|res_forkbomb_pids|done|forks_ok=7\n",
       "stderr_head": "",
       "container_removed": true,
       "assertions": [
@@ -744,7 +744,7 @@
     },
     {
       "probe": "res_mem_balloon",
-      "container": "g4spike-res_mem_balloon-27572-617455",
+      "container": "g4spike-res_mem_balloon-4254-189442",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -758,13 +758,13 @@
       },
       "client_exit": 137,
       "kill_reason": null,
-      "wall_seconds": 0.267,
+      "wall_seconds": 0.223,
       "daemon_state": {
         "ExitCode": 137,
         "OOMKilled": true,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:37.581634453Z",
-        "FinishedAt": "2026-10-28T17:13:37.771217021Z"
+        "StartedAt": "2026-10-28T17:39:49.524943707Z",
+        "FinishedAt": "2026-10-28T17:39:49.649483199Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -803,7 +803,7 @@
     },
     {
       "probe": "res_infinite_loop",
-      "container": "g4spike-res_infinite_loop-27572-617771",
+      "container": "g4spike-res_infinite_loop-4254-189716",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -817,13 +817,13 @@
       },
       "client_exit": 137,
       "kill_reason": "wall_deadline",
-      "wall_seconds": 8.131,
+      "wall_seconds": 8.112,
       "daemon_state": {
         "ExitCode": 137,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:37.892416684Z",
-        "FinishedAt": "2026-10-28T17:13:45.927105771Z"
+        "StartedAt": "2026-10-28T17:39:49.793146006Z",
+        "FinishedAt": "2026-10-28T17:39:57.84985488Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -862,7 +862,7 @@
     },
     {
       "probe": "res_disk_fill",
-      "container": "g4spike-res_disk_fill-27572-625957",
+      "container": "g4spike-res_disk_fill-4254-197872",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -876,13 +876,13 @@
       },
       "client_exit": 0,
       "kill_reason": null,
-      "wall_seconds": 0.155,
+      "wall_seconds": 0.113,
       "daemon_state": {
         "ExitCode": 0,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:46.084906156Z",
-        "FinishedAt": "2026-10-28T17:13:46.154686846Z"
+        "StartedAt": "2026-10-28T17:39:57.96044274Z",
+        "FinishedAt": "2026-10-28T17:39:58.003391924Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -914,14 +914,14 @@
       "container_removed": true,
       "assertions": [
         "PASS: tmpfs size cap produced ENOSPC (errno 28)",
-        "PASS: recorded fill volume",
+        "PASS: probe completed with a recorded fill volume",
         "PASS: container force-removed after the job"
       ],
       "assertion_verdict": "CONTAINED/OK"
     },
     {
       "probe": "res_output_flood",
-      "container": "g4spike-res_output_flood-27572-626165",
+      "container": "g4spike-res_output_flood-4254-198035",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -935,13 +935,13 @@
       },
       "client_exit": 137,
       "kill_reason": "output_hard_cap",
-      "wall_seconds": 0.441,
+      "wall_seconds": 0.221,
       "daemon_state": {
         "ExitCode": 137,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:46.285742907Z",
-        "FinishedAt": "2026-10-28T17:13:46.664387544Z"
+        "StartedAt": "2026-10-28T17:39:58.1126512Z",
+        "FinishedAt": "2026-10-28T17:39:58.280567973Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -981,7 +981,7 @@
     },
     {
       "probe": "cpu_count_ref",
-      "container": "g4spike-cpu_count_ref-27572-626675",
+      "container": "g4spike-cpu_count_ref-4254-198301",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -995,13 +995,13 @@
       },
       "client_exit": 0,
       "kill_reason": null,
-      "wall_seconds": 3.161,
+      "wall_seconds": 3.149,
       "daemon_state": {
         "ExitCode": 0,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:46.813389768Z",
-        "FinishedAt": "2026-10-28T17:13:49.863316621Z"
+        "StartedAt": "2026-10-28T17:39:58.381498863Z",
+        "FinishedAt": "2026-10-28T17:40:01.428619417Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -1028,7 +1028,7 @@
       },
       "stdout_bytes_raw": 57,
       "stdout_capped": false,
-      "stdout_head": "CHECK|cpu_iterations|count=16415737\nPROBE|cpu_count|done\n",
+      "stdout_head": "CHECK|cpu_iterations|count=18263089\nPROBE|cpu_count|done\n",
       "stderr_head": "",
       "container_removed": true,
       "assertions": [
@@ -1040,7 +1040,7 @@
     },
     {
       "probe": "cpu_count_capped",
-      "container": "g4spike-cpu_count_capped-27572-629905",
+      "container": "g4spike-cpu_count_capped-4254-201502",
       "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
       "profile": "seccomp-runner-strict.json",
       "limits": {
@@ -1054,13 +1054,13 @@
       },
       "client_exit": 0,
       "kill_reason": null,
-      "wall_seconds": 3.27,
+      "wall_seconds": 3.197,
       "daemon_state": {
         "ExitCode": 0,
         "OOMKilled": false,
         "Error": "",
-        "StartedAt": "2026-10-28T17:13:50.045062517Z",
-        "FinishedAt": "2026-10-28T17:13:53.169620128Z"
+        "StartedAt": "2026-10-28T17:40:01.583209678Z",
+        "FinishedAt": "2026-10-28T17:40:04.682144509Z"
       },
       "applied_flags": {
         "NetworkMode": "none",
@@ -1087,14 +1087,14 @@
       },
       "stdout_bytes_raw": 56,
       "stdout_capped": false,
-      "stdout_head": "CHECK|cpu_iterations|count=3753818\nPROBE|cpu_count|done\n",
+      "stdout_head": "CHECK|cpu_iterations|count=3712533\nPROBE|cpu_count|done\n",
       "stderr_head": "",
       "container_removed": true,
       "assertions": [
         "PASS: exit 0",
         "PASS: iteration count recorded",
         "PASS: container force-removed after the job",
-        "PASS: cpu quota enforced: 0.25-cpu iterations/reference = 0.229 (<0.6)"
+        "PASS: cpu quota enforced: 0.25-cpu iterations/reference = 0.203 (<0.6)"
       ],
       "assertion_verdict": "CONTAINED/OK"
     }

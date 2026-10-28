@@ -31,4 +31,5 @@ for i, line in enumerate(text):
     print(f"sentence {i+1}: {dt:.2f}s ({len(line.split())} words)")
 print(f"total: {total:.2f}s")
 EOF
+rm -f /tmp/g4-say-sent*.wav
 echo "trial-say done"

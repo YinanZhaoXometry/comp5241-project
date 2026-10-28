@@ -148,7 +148,7 @@ def assertions(key: str, row: dict) -> list[str]:
         req(row["client_exit"] == 137, "killed with 137")
     elif key == "res_disk_fill":
         req(has("ENOSPC"), "tmpfs size cap produced ENOSPC (errno 28)")
-        req(not has("written_MiB=2") or True, "recorded fill volume")
+        req(has("PROBE|res_disk_fill|done"), "probe completed with a recorded fill volume")
     elif key == "res_output_flood":
         req(row.get("kill_reason") in ("output_hard_cap", "wall_deadline"), "flood stopped by hard cap or wall")
         req(row["stdout_bytes_raw"] <= row["limits"]["hard_cap_bytes"] + 65536,

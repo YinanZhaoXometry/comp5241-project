@@ -192,7 +192,12 @@ project-new/
 ├── _bmad/                  the installed BMad Method tooling itself — do not edit casually
 ├── _bmad-output/           BMad-generated planning artifacts for this initiative (below)
 ├── .local/                 ignored local runtime state (below)
-└── test-results/           ignored Playwright output
+├── test-results/           ignored Playwright output
+└── spikes/g4-feasibility/  epic-6 G4 feasibility spike harness (isolated-runner
+                            probe battery + offline narration trials, with the
+                            g4-* dossiers in the epic folder) — committed spike
+                            evidence only: outside every lint/typecheck/build
+                            surface, no product path, selects/activates nothing
 ```
 
 ## `_bmad/` vs `_bmad-output/`

@@ -30,8 +30,15 @@ and that limit is stated wherever it matters.
 Trial text: 4 original synthetic sentences (`spikes/g4-feasibility/narration/sample-text.txt`).
 Trial scripts: `trial-piper.sh`, `trial-say.sh`, `trial-espeak.sh` (espeak inside a derived
 throwaway container built from the same pinned official Python base as the runner dossier, run
-with the full hardening flag set including the strict seccomp profile; derived image removed
-afterwards — `digest-locked-id sha256:6ac4f16e…`, rmi'd).
+with the full hardening flag set: `--network none`, nonroot 65532, read-only rootfs,
+`--cap-drop ALL`, no-new-privileges, the strict seccomp profile AND the four resource caps
+`--memory 256m --memory-swap 256m --cpus 0.5 --pids-limit 16` plus the capped tmpfs; derived
+image removed afterwards — recorded post-review run `digest-locked-id
+sha256:54c2c345d9c0cfff8a172500be67271a2f99089ba7be68c521c01246af43da7e`. Review correction,
+recorded honestly: the pre-review run (`sha256:6ac4f16e…`) used the same hardening WITHOUT the
+four explicit resource caps — only trusted Alpine espeak-ng ran, so no containment conclusion
+was affected, but the earlier wording overstated the flag set; the post-review numbers below
+are from the capped run.)
 
 ## Voice/model licences (the load-bearing half for 6.6)
 
@@ -57,8 +64,8 @@ afterwards — `digest-locked-id sha256:6ac4f16e…`, rmi'd).
 | Candidate | Wall time | CPU / peak RSS | Disk footprint | Output |
 | --- | --- | --- | --- | --- |
 | piper-tts 1.8.0 + en_US-amy-low | 2.81 s whole file (0.7× audio duration); per-sentence cold process 1.39–1.70 s | 3.57 s CPU; peak RSS 266.6 MB | venv 147 MB + voice 63.1 MB (onnx) | 16 kHz mono WAV, 560 KB, 17.50 s audio |
-| macOS say (Samantha) | 3.24 s whole file | 0.62 s CPU; peak RSS ~28 MB | 0 (built into macOS) | 22.05 kHz mono WAV, 723 KB, 16.30 s audio; per-sentence cold 1.54–2.10 s |
-| espeak-ng 1.52.0 (in-container) | 0.14–0.16 s per sentence INCLUDING container start | container-capped (256 MiB/0.5 CPU hardening); negligible use | apk ~few MB in throwaway image | 22.05 kHz mono WAV, 156–195 KB/sentence (sent0 3.54 s audio) |
+| macOS say (Samantha) | 3.24 s whole file | 0.62 s CPU; peak RSS 34,242,560 B ≈ 34 MB (per `samples/say-time.txt`) | 0 (built into macOS) | 22.05 kHz mono WAV, 723 KB, 16.30 s audio; per-sentence cold 1.54–2.10 s |
+| espeak-ng 1.52.0 (in-container) | 0.12–0.15 s per sentence INCLUDING container start (post-review capped run; 0.14–0.16 s pre-review without explicit caps) | negligible use under the container caps (256 MiB memory=swap / 0.5 CPU / pids-limit 16 / 16 MiB tmpfs) | apk ~few MB in throwaway image | 22.05 kHz mono WAV, 156–195 KB/sentence (sent0 3.54 s audio) |
 | Coqui TTS | not measured (declined) | — | ≥ ~2 GB (torch) — the decline reason | — |
 
 Interpretation (feasibility, not selection): an offline pipeline on this machine can narrate a

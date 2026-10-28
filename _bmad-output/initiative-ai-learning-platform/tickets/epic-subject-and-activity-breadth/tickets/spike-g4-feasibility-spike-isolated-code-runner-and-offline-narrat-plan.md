@@ -3,7 +3,7 @@ title: 'G4 feasibility spike: isolated code runner and offline narration (6.2)'
 type: 'chore' # spike evidence + disposable harness; no product code path changes
 ticket: 2
 created: '2026-10-29'
-status: blocked
+status: built
 baseline_revision: '766a12485a99f760840982264b66730f00c6f036'
 route: 'oneshot'
 route_source: 'auto'
@@ -17,9 +17,35 @@ context:
   - '{project-root}/docs/bounded-document-extraction.md'
   - '{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-subject-and-activity-breadth/epic-subject-and-activity-breadth.md'
 warnings: ['oversized']
-deferred: []
-blocked_at: "2026-10-29"
-blocked_reason: "review lens unavailable: no subagent launcher in this execution environment (implementation complete at c7c492b; re-dispatch a review pass)"
+deferred:
+  - summary: >-
+      Machine-specific identifiers are kept verbatim in the spike evidence (home path in
+      esc_host_paths.py and g4-probe-results.json, hostname in host_uname).
+    evidence: >-
+      Review note (low): verbatim run evidence, intentionally not neutralized; recorded as
+      runner-dossier finding 8 — neutralize before distributing the artifacts beyond this
+      repository.
+    location: >-
+      spikes/g4-feasibility/runner/probes/esc_host_paths.py
+    severity: low
+  - summary: >-
+      "Host not starved / other lane unaffected" is evidenced only indirectly; 6.7 admission
+      must not inherit it as proven.
+    evidence: >-
+      Review note (low): bounded timings and enforced caps observed, no direct host-impact
+      measurement taken; recorded as runner-dossier finding 9 — 6.7 must measure directly.
+    location: >-
+      _bmad-output/initiative-ai-learning-platform/tickets/epic-subject-and-activity-breadth/g4-runner-dossier.md
+    severity: low
+  - summary: >-
+      Runner output cap bounds stdout only; stderr is uncapped in principle (read post-exit).
+    evidence: >-
+      Review note (low): run_job.py reads stderr after exit with no byte cap; bounded de facto
+      only by the wall deadline; recorded as runner-dossier finding 10 — 6.7 fix-forward is to
+      bound stderr capture exactly like stdout before admission.
+    location: >-
+      spikes/g4-feasibility/runner/run_job.py
+    severity: low
 ---
 
 <intent-contract>
@@ -105,7 +131,20 @@ Implementation log (appended during the run, 2026-10-29):
 
 ## Review Triage Log
 
-(No review pass ran — see Auto Run Result.)
+### 2026-10-29 — Review pass
+- verdicts: 9 findings — high 0, medium 1, low 8, false-positive-checked 7 — overall PASS-WITH-NOTES (independent reviewer, fresh context, read-only)
+- review provenance: this pass was the PO-dispatched independent fresh-context reviewer (read-only), recorded verbatim on the PO's instruction after the in-run quick lens proved unavailable (see first Auto Run Result); no workflow lens was launched by this environment, so `lenses_ran` stays empty and every row below is the reviewer's/PO's finding, triaged by the builder.
+- findings:
+  - `[medium]` `[patch]` narration dossier overstated the espeak trial's flag set (no `--memory/--memory-swap/--cpus/--pids-limit` in the pre-review run) — FIXED both ways: `trial-espeak.sh` now applies the four caps and was re-run (0.12–0.15 s/sentence, recorded image `sha256:54c2c345…`), and the dossier names the exact per-run flag sets with the pre-review gap recorded honestly.
+  - `[low]` `[patch]` `run_probes.py` disk-fill assertion was a tautology (`... or True`) — FIXED to require `PROBE|res_disk_fill|done`; battery re-run solo so script and artifact agree (18/18 CONTAINED again, fresh timings recorded; one intermediate parallel run's `images_unchanged:false` explained in the runner dossier — concurrent espeak image rebuild, not residue).
+  - `[low]` `[patch]` trial scripts left temp files on re-run (`/tmp/g4-say-sent*.wav`, `/tmp/g4-espeak-imgid.txt`) — FIXED: `trial-say.sh` now `rm -f`s its per-sentence temp files; `trial-espeak.sh` no longer writes to /tmp at all (image id echoed to stdout only).
+  - `[low]` `[patch]` README claimed `voices/` was git-ignored but `.gitignore` didn't cover it — FIXED by the reviewer's first option: `spikes/g4-feasibility/narration/voices/` added to `.gitignore` (63 MB regenerable voice model); README statement now accurate.
+  - `[low]` `[patch]` narration dossier said `say` peak RSS ~28 MB vs recorded 34,242,560 B — FIXED to ~34 MB with the recorded value cited; per-sentence cold timings remain recorded in the dossier table (no extra samples file needed).
+  - `[low]` `[defer→forward-note]` machine-specific details (home path in `esc_host_paths.py`+JSON, hostname in `host_uname`) — kept VERBATIM as run evidence; recorded as runner-dossier finding 8 (neutralize before any external distribution).
+  - `[low]` `[defer→forward-note]` "host not starved / other lane unaffected" evidenced only indirectly — recorded as runner-dossier finding 9: 6.7 admission must NOT inherit it as proven.
+  - `[low]` `[defer→forward-note]` output cap covers stdout only; stderr uncapped-in-principle — recorded as runner-dossier finding 10 (6.7 fix-forward: bound stderr like stdout).
+  - `[low]` `[patch]` `docs/project-structure.md` lacked an entry for `spikes/g4-feasibility/` (AGENTS same-change rule) — FIXED: one annotated entry added to the canonical tree (the one product-tree file the review authorized).
+- reviewer's false-positive-checked confirmations (recorded, no action): no over-claims; relaxed seccomp used only for the labelled fork-bomb row; product-path diff vs 766a124 empty; no eval/shell-true; licence citations verified live (piper-tts 1.8.0 GPL-3.0-or-later; amy-low MODEL_CARD → mimic3-voices CC-BY-SA-4.0); no venv/voice-model binaries committed (WAVs ≈1.94 MB); zero docker/disk residue.
 
 ## Auto Run Result
 
@@ -149,6 +188,34 @@ independent review. lenses_ran stays empty accordingly.
 a session with subagent capability; the diff to review is `git diff 766a124..c7c492b`
 (representative copy written at `/tmp/g4-spike-diff.patch` during the run). On a passing
 review the plan can move to `built`/`done` and the blocked mark be cleared.
+
+## Auto Run Result — follow-up pass (same day, 2026-10-29)
+
+**Final status: `built`** — the independent fresh-context review pass returned above returned
+**PASS-WITH-NOTES**; all six `[patch]` findings were applied, the three `[note]` findings are
+recorded as forward-notes in the runner dossier (findings 8–10) and the frontmatter `deferred`
+list; the block was cleared and the ticket marked `built` on the PO's "finish 6.2" direction
+(`done` deliberately NOT self-marked — the PO records acceptance on the board after merge).
+
+- Patches applied (1 medium, 5 low): espeak flag-set correction (script now carries the four
+  resource caps AND was re-run; dossier names both runs' exact flag sets), disk-fill assertion
+  fix + solo battery re-run, temp-file hygiene in both trial scripts, `.gitignore` line for
+  `spikes/g4-feasibility/narration/voices/`, `say` RSS corrected to the recorded 34,242,560 B,
+  `docs/project-structure.md` entry for `spikes/g4-feasibility/`.
+- Re-runs performed and their numbers: battery solo re-run 2026-10-29T01:39:33+0800 —
+  **18/18 CONTAINED/OK**, ALL_CONTAINED, CPU-quota ratio 0.203, fork bomb capped at 7 forks
+  (EAGAIN) then wall-killed 12.097 s, balloon OOMKilled 0.223 s, loop wall-killed 8.112 s,
+  disk fill ENOSPC at exactly 16 MiB, flood bounded at exactly 8 MiB / 0.221 s, cleanup block
+  all-clean (no containers/volumes/images/temp residue). espeak re-run under the full cap set:
+  0.12–0.15 s/sentence, recorded image `sha256:54c2c345…`, removed after.
+- Review-pass record location: `## Review Triage Log` above (verdicts line verbatim from the
+  PO; per-finding rows; reviewer's clean-confirmations list).
+- Follow-up review recommendation: **false** — no `high` was patched (1 medium + 5 low; the
+  medium was an evidence-wording defect fixed with a re-run, not a containment defect).
+- Residual risks: unchanged from the dossier findings — spike-grade evidence on one shared
+  Colima VM; 6.7 must build its own admission (engine/host deployment proof, audit/fingerprint,
+  bounded stderr, direct host-impact measurement); 6.6 must close the voice licence chain
+  (amy is quarantined) and audition the committed samples.
 
 ## Design Notes
 

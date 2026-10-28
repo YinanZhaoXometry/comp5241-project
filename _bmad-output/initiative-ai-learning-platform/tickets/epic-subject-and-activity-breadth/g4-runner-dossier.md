@@ -52,28 +52,30 @@ Per-job supervisor `spikes/g4-feasibility/runner/run_job.py` (one job = one cont
 
 ## Probe results (all 18 CONTAINED/OK; full rows in g4-probe-results.json)
 
-Environment: docker 29.5.3/29.5.2, context `colima`, Colima 0.10.3; battery run 2026-10-29
-(the JSON carries `started`, exact per-row flags, timings, stdout/stderr excerpts).
+Environment: docker 29.5.3/29.5.2, context `colima`, Colima 0.10.3. **Recorded artifact run:
+2026-10-29T01:39:33+0800** — the post-review re-run after the disk-fill assertion fix (the
+first battery, 01:13, was equivalent: 18/18 CONTAINED; only timings differ). The JSON carries
+`started`, exact per-row flags, timings and stdout/stderr excerpts.
 
-| Probe | Outcome | Evidence (measured) |
+| Probe | Outcome | Evidence (measured, artifact run) |
 | --- | --- | --- |
-| legal_correct | graded CORRECT by deterministic comparison | exit 0, 0.265 s |
-| legal_incorrect | same comparison grades INCORRECT | exit 0, 0.162 s |
-| legal_runtime_error | explicit traceback outcome, no crash-to-pass | exit 1, 0.465 s |
-| esc_host_paths | docker socket/host paths/traversal all denied (ENOENT/EACCES); no bind mounts exist | 0.153 s |
-| esc_proc_tricks | pid 1 is the container's own `python -I -B -` (pid namespace); uid/gid 65532; tmpfs `rw,nosuid,nodev,noexec,size=16384k` in /proc/mounts; /proc/kcore EACCES; /proc/sys write EROFS; unshare(CLONE_NEWUSER) EPERM; ptrace EPERM | 0.206 s |
-| esc_priv_escalation | setuid(0)/setgid(0)/chown-to-root EPERM; mount(2) EPERM; writes to /etc, /usr, /var all EROFS; a setuid bit placed on tmpfs is inert (nosuid) | 0.16 s |
-| net_socket_create | socket(2) itself denied at syscall level: `PermissionError: [Errno 1] Operation not permitted` (tcp and udp) | 0.21 s |
-| net_dns | getaddrinfo fails: `PermissionError errno 1` (no netns + denied socket) | 0.319 s |
-| net_http | http:// and https:// example.com both denied | 0.736 s |
-| net_metadata | 169.254.169.254:80/:8080, fd00:ec2::254 and metadata HTTP all denied | 0.676 s |
-| res_forkbomb_seccomp (strict profile) | fork(), subprocess and threads all denied before anything spawns | 0.315 s |
-| res_forkbomb_pids (relaxed test-only profile) | cgroup pids-limit stopped the bomb: 8 forks OK then `BlockingIOError [Errno 11] Resource temporarily unavailable` (cap 16 incl. init); survivors killed at wall, exit 137 | 12.099 s |
-| res_mem_balloon | cgroup OOM kill: `OOMKilled: true`, exit 137 after ~192 MiB allocated against the 256 MiB cap | 0.267 s |
-| res_infinite_loop | wall deadline kill at 8.131 s, exit 137; CPU quota 0.5 | 8.131 s |
-| res_disk_fill | capped tmpfs produced ENOSPC (errno 28) at ~15–16 MiB; host disk untouched | 0.155 s |
-| res_output_flood | supervisor bounded capture stopped at exactly 8 MiB host bytes, `kill_reason: output_hard_cap`, exit 137, recorded output truncated to the 1 MiB evidence cap | 0.441 s |
-| cpu_count_ref (1.0 CPU) vs cpu_count_capped (0.25 CPU) | iteration ratio 0.229 — CPU quota enforced | 3.161 s / 3.27 s |
+| legal_correct | graded CORRECT by deterministic comparison | exit 0, 0.107 s |
+| legal_incorrect | same comparison grades INCORRECT | exit 0, 0.115 s |
+| legal_runtime_error | explicit traceback outcome, no crash-to-pass | exit 1, 0.406 s |
+| esc_host_paths | docker socket/host paths/traversal all denied (ENOENT/EACCES); no bind mounts exist | 0.113 s |
+| esc_proc_tricks | pid 1 is the container's own `python -I -B -` (pid namespace); uid/gid 65532; tmpfs `rw,nosuid,nodev,noexec,size=16384k` in /proc/mounts; /proc/kcore EACCES; /proc/sys write EROFS; unshare(CLONE_NEWUSER) EPERM; ptrace EPERM | 0.165 s |
+| esc_priv_escalation | setuid(0)/setgid(0)/chown-to-root EPERM; mount(2) EPERM; writes to /etc, /usr, /var all EROFS; a setuid bit placed on tmpfs is inert (nosuid) | 0.163 s |
+| net_socket_create | socket(2) itself denied at syscall level: `PermissionError: [Errno 1] Operation not permitted` (tcp and udp) | 0.177 s |
+| net_dns | getaddrinfo fails: `PermissionError errno 1` (no netns + denied socket) | 0.23 s |
+| net_http | http:// and https:// example.com both denied | 0.449 s |
+| net_metadata | 169.254.169.254:80/:8080, fd00:ec2::254 and metadata HTTP all denied | 0.503 s |
+| res_forkbomb_seccomp (strict profile) | fork(), subprocess and threads all denied before anything spawns | 0.223 s |
+| res_forkbomb_pids (relaxed test-only profile) | cgroup pids-limit stopped the bomb: 7 forks OK then `BlockingIOError [Errno 11] Resource temporarily unavailable` (cap 16 incl. init; the exact capped count varies run-to-run — 8 and 4 in earlier local runs — the kernel cap is the finding); survivors killed at wall, exit 137 | 12.097 s |
+| res_mem_balloon | cgroup OOM kill: `OOMKilled: true`, exit 137 after ~192 MiB allocated against the 256 MiB cap | 0.223 s |
+| res_infinite_loop | wall deadline kill at 8.112 s, exit 137; CPU quota 0.5 | 8.112 s |
+| res_disk_fill | capped tmpfs produced ENOSPC (errno 28) at exactly 16 MiB written; host disk untouched | 0.113 s |
+| res_output_flood | supervisor bounded capture stopped at exactly 8 MiB host bytes, `kill_reason: output_hard_cap`, exit 137, recorded output truncated to the 1 MiB evidence cap | 0.221 s |
+| cpu_count_ref (1.0 CPU) vs cpu_count_capped (0.25 CPU) | iteration ratio 0.203 — CPU quota enforced | 3.149 s / 3.197 s |
 
 ## Cleanup verification (recorded in g4-probe-results.json `cleanup`)
 
@@ -81,7 +83,10 @@ After the battery: `docker ps -a --filter name=g4spike-` residue **none**; docke
 unchanged (before == after); images unchanged (zero added — no new pulls, no leftover layers);
 harness workdir `spikes/g4-feasibility/runner/.work` empty/removed; 18/18 containers
 force-removed. The espeak trial's derived image (narration dossier) was `docker rmi`'d
-immediately after its trial.
+immediately after its trial. (Honesty note: one intermediate battery run recorded
+`images_unchanged: false` purely because the narration espeak trial was rebuilding its
+throwaway image concurrently; the recorded artifact above is the solo re-run. The espeak trial
+image is not spike residue — it is created and removed by `trial-espeak.sh` on every run.)
 
 ## Findings, limits, uncertainties (read before relying on this)
 
@@ -109,6 +114,16 @@ immediately after its trial.
 7. **Digest provenance.** The base image was already present and is the same pristine digest
    documented in `docs/bounded-document-extraction.md` (PSF-licensed Python). The spike did not
    re-verify its upstream manifest; admission for 6.7 must re-pin/re-verify per its own build.
+8. **Machine-specific evidence kept verbatim.** The recorded artifacts deliberately contain
+   this machine's identifiers (absolute home path in `esc_host_paths.py` and the JSON, host
+   uname/hostname) so the evidence shows exactly what ran; they are not portable claims.
+   Neutralize before any distribution of the artifacts beyond this repository.
+9. **"Host not starved / other lane unaffected" is indirect evidence** (bounded timings,
+   enforced caps, no observed host impact during the shared-machine run) — entry 6.7's
+   admission must NOT inherit it as a proven property; a dedicated measurement belongs to 6.7.
+10. **The output cap bounds stdout only.** stderr is read once, post-exit, and is uncapped in
+    principle (bounded de facto only by the wall deadline). Fix-forward for 6.7: bound stderr
+    capture exactly like stdout before admitting any job whose payloads can reach it.
 
 ## Reproduction
 

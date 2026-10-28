@@ -9,17 +9,19 @@ cd "$dir"
 IMAGE=g4spike-espeak-trial:local
 PROFILE="$(cd ../runner && pwd)/seccomp-runner-strict.json"
 
-echo "--- build derived trial image (record digest):"
-docker build -q -f Dockerfile.espeak-trial -t "$IMAGE" . | tee /tmp/g4-espeak-imgid.txt
+echo "--- build derived trial image (record image id on stdout only):"
+docker build -q -f Dockerfile.espeak-trial -t "$IMAGE" .
 docker image inspect "$IMAGE" --format 'digest-locked-id={{.Id}}'
 
 echo "--- version (via hardened run, network none):"
-docker run --rm --network none --user 65532:65532 --read-only --cap-drop ALL \
-  --security-opt no-new-privileges --security-opt "seccomp=$PROFILE" --log-driver none \
-  --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+docker run --rm \
+  --network none --user 65532:65532 --read-only --cap-drop ALL \
+  --security-opt no-new-privileges --security-opt "seccomp=$PROFILE" \
+  --memory 256m --memory-swap 256m --cpus 0.5 --pids-limit 16 \
+  --log-driver none --tmpfs /tmp:rw,noexec,nosuid,size=16m \
   --entrypoint cat "$IMAGE" /espeak-version.txt
 
-echo "--- synthesis (timed, output via stdout, strict seccomp):"
+echo "--- synthesis (timed, output via stdout, strict seccomp + resource caps):"
 mkdir -p samples
 python3 - <<'EOF'
 import subprocess, time
@@ -30,7 +32,10 @@ profile = os.environ["G4_PROFILE"]
 base = ["docker", "run", "--rm", "--network", "none", "--user", "65532:65532",
         "--read-only", "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges",
-        "--security-opt", f"seccomp={profile}", "--log-driver", "none",
+        "--security-opt", f"seccomp={profile}",
+        "--memory", "256m", "--memory-swap", "256m", "--cpus", "0.5",
+        "--pids-limit", "16",
+        "--log-driver", "none",
         "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m", "-i", image]
 total = 0.0
 for i, line in enumerate(text):
