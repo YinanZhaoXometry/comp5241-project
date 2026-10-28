@@ -1,7 +1,7 @@
 ---
 title: 'Integrated study suite and authorized release verification'
 type: 'feature'
-ticket: '2.10'
+ticket: 10
 created: '2026-10-27'
 status: 'built'
 baseline_revision: '871a45a'

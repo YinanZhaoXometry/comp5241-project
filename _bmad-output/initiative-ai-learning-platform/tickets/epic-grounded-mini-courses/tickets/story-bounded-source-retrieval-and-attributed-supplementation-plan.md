@@ -1,9 +1,9 @@
 ---
 title: 'Bounded source retrieval and attributed supplementation'
 type: 'feature'
-ticket: '2.2'
+ticket: 2
 created: '2026-10-27'
-status: 'built'
+status: done
 baseline_revision: 'f55d239'
 route: 'full'
 route_source: 'auto'

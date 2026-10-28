@@ -1,9 +1,9 @@
 ---
 title: 'Active recall practice set and typed feedback'
 type: 'feature'
-ticket: '2.5'
+ticket: 5
 created: '2026-10-27'
-status: 'built'
+status: done
 baseline_revision: '1104e95'
 route: 'full'
 route_source: 'auto'

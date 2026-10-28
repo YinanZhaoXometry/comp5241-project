@@ -18,6 +18,7 @@ companions:
   ]
 after: [epic-private-study-setup]
 refined: true
+status: in-progress
 risk: high
 ---
 
@@ -78,3 +79,4 @@ Each line carries its parent requirement's words at this epic's altitude; `cover
 - Decision: 2026-10-26 — the owner authorized the epic-2 build kickoff ("implement and kick off Epic 2", parallel agent sessions). Epic-1 closure (2026-10-25; 1.14 dropped-deferred by owner decision) satisfies the whole-epic gate. Start scope is local synthetic-fixture implementation under the standing constraints — no external dispatch, loopback only, no deployment — which settles and removes the start-blocking `unknown` on entries 1 and 2. F-A and F-B remain the live gates in delivery-checks: live generation needs a purpose-scoped (v5) processor configuration admitted by the owner through the S6 owner-admission record pattern (v4's consented purpose covers setup assistance only), under ai-live.ts destination enforcement and budget cap; live source fetch needs F-B feasibility evidence and authorization. Entry 10's F-C deployment `unknown` stands.
 - Decision: 2026-10-26 — kickoff waves for the parallel sessions: entry 1 alone first (every other entry waits on the tracer); entry 2 next; entries 3 and 4 then form the first parallel pair (both touch the generation surface — serialize merges, rebase before each merge). Later waves re-derive from `after` at their kickoff.
 - Open question: F-C deployment authorization stays `unknown` on entry 10 until release verification is authorized; it blocks deployment only, not synthetic-fixture work.
+- Decision: 2026-10-28 — board reconciliation after the merged build (f55d239..685228b, PR #3): all ten entries were built 2026-10-26/28 on local synthetic fixtures with in-run quick-lens review triage patched per plan and the full local gate green at the closing commit (live dispatch, live fetch and deployment never attempted). Entries 2.1–2.9 are marked done on that recorded evidence; no live-AI, egress or release-readiness claim is made — F-A/F-B stay recorded open. Entry 10's terminal status stays `built` (its own plan records "a blocked release cannot be recorded Done" with F-A/F-B/F-C open); its re-slice into the closable local integrated suite and a deferred authorized-release-verification entry (the 2026-10-25 1.12/1.14 pattern) is proposed to the owner and pending approval.

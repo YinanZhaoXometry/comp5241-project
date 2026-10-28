@@ -1,9 +1,9 @@
 ---
 title: 'Generation honesty, consent denial and descendant lifecycle'
 type: 'feature'
-ticket: '2.8'
+ticket: 8
 created: '2026-10-27'
-status: 'built'
+status: done
 baseline_revision: '11dc15e'
 route: 'full'
 route_source: 'auto'

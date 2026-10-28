@@ -1,9 +1,9 @@
 ---
 title: 'Learner-controlled why exploration with honest stopping'
 type: 'feature'
-ticket: '2.6'
+ticket: 6
 created: '2026-10-27'
-status: 'built'
+status: done
 baseline_revision: '84b02c9'
 route: 'full'
 route_source: 'auto'
