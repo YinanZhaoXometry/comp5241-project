@@ -65,9 +65,17 @@ describe("epic-5 5.1: manual-course approval-enrollment tracer", () => {
     expect(replayedCreate).toEqual(created);
     expect((await database().query("SELECT count(*)::int AS count FROM app.instructor_course WHERE owner_id=$1", [instructor.identity.userId])).rows[0].count).toBe(1);
 
-    const draft = await saveDraft(instructor.identity, { ...command(0), courseId, lesson: LESSON });
+    const draftCommand = command(0);
+    const draft = await saveDraft(instructor.identity, { ...draftCommand, courseId, lesson: LESSON });
     expect(draft).toMatchObject({ courseId, version: 1, state: "draft" });
     const versionId = draft.versionId!;
+    // A replayed draft command returns the identical receipt; a same-key
+    // command with a DIFFERENT body conflicts honestly; still one version.
+    expect(await saveDraft(instructor.identity, { ...draftCommand, courseId, lesson: LESSON })).toEqual(draft);
+    await expect(saveDraft(instructor.identity, { ...draftCommand, courseId, lesson: { title: "Changed", sections: [{ text: "Changed body." }] } })).rejects.toThrow("The saved revision changed.");
+    expect((await database().query("SELECT count(*)::int AS count FROM app.instructor_course_version WHERE course_id=$1", [courseId])).rows[0].count).toBe(1);
+    // An unknown versionId on the OWN course is the same no-leak denial.
+    await expect(approveVersion(instructor.identity, { ...command(0), courseId, versionId: crypto.randomUUID() })).rejects.toThrow("This item is unavailable.");
 
     // The pending draft is inspectable BEFORE approval; learners see nothing yet.
     const approvalsBefore = await getApprovals(instructor.identity);
