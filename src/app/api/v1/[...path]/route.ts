@@ -10,6 +10,8 @@ import { getDisclosure, decide, withdraw } from "../../../../modules/processing-
 import { getPreferences, savePreferences } from "../../../../modules/setup-preferences/service";
 import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finishCheck, flagUnclear } from "../../../../modules/setup-diagnostic/service";
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
+import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
+import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState, getProvenance } from "../../../../modules/course-generation/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -74,6 +76,39 @@ async function handle(request: Request, context: Context) {
       const result = await getOperation(identity, path[1]);
       return protectedResponse(identity, result.rootId, result, request.signal);
     }
+    if (path[0] === "studies" && path[2] === "course" && path[3] === "recall" && path.length === 4 && request.method === "POST") {
+      return Response.json(await submitRecall(identity, path[1], await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-2 S5 per-card practice submission: one recall card of one ready
+    // course version, with the learner-declared assisted flag. The canonical
+    // answer and rationale are released only in this verb's typed feedback.
+    if (path[0] === "studies" && path[2] === "course" && path[3] === "practice" && path.length === 4 && request.method === "POST") {
+      return Response.json(await submitPracticeCard(identity, path[1], await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-2 S3 content-item tracker: explicit mark-done of ONE required item
+    // of one ready course version (owner- and version-scoped, idempotent by
+    // command envelope).
+    if (path[0] === "studies" && path[2] === "course" && path[3] === "track" && path.length === 4 && request.method === "POST") {
+      return Response.json(await markItemDone(identity, path[1], await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-2 S6 why exploration: GET serves one lesson's ladder of one ready
+    // course version (?course=<uuid|version> optional selector, ?lesson=<0-7>
+    // required); POST is the consent-gated "Go deeper" command. A request past
+    // the server-computed evidence availability returns the honest exhaustion
+    // verdict — 200 with zero dispatch — while an admitted step is 202.
+    if (path[0] === "studies" && path[2] === "course" && path[3] === "why" && path.length === 4) {
+      if (request.method === "GET") {
+        const parameters = new URL(request.url).searchParams;
+        const requested = parameters.get("course") ?? undefined;
+        const lesson = parameters.get("lesson") ?? undefined;
+        const why = await getWhyState(identity, path[1], requested, lesson);
+        return protectedResponse(identity, path[1], why, request.signal, false, why.objectIds);
+      }
+      if (request.method === "POST") {
+        const result = await requestWhyStep(identity, path[1], await jsonBody(request));
+        return Response.json(result, { status: result.state === "exhausted" ? 200 : 202, headers: privateHeaders });
+      }
+    }
     if (path[0] === "studies" && path[2] === "check" && path.length >= 3 && path.length <= 5) {
       const rootId = path[1];
       if (path.length === 3 && request.method === "GET") return protectedResponse(identity, rootId, await getCheckState(identity, rootId), request.signal);
@@ -107,13 +142,55 @@ async function handle(request: Request, context: Context) {
         if (!action) return protectedResponse(identity, rootId, study, request.signal, false, objects);
         if (action === "text") return protectedResponse(identity, rootId, study.text ?? "", request.signal, true, objects);
         if (action === "plan") return protectedResponse(identity, rootId, { draft: study.draft, confirmed: study.confirmed }, request.signal, false, objects);
+        if (action === "ai-draft") {
+          const draft = await getAiDraft(identity, rootId);
+          return protectedResponse(identity, rootId, draft, request.signal, false, draft.objectIds);
+        }
+        if (action === "ai-check") {
+          const check = await getAiDraft(identity, rootId, "check");
+          return protectedResponse(identity, rootId, check, request.signal, false, check.objectIds);
+        }
+        if (action === "course") {
+          // Optional ?course=<uuid|version> resolves one specific ready
+          // version (the prior-version read path); absent, the current view.
+          const requested = new URL(request.url).searchParams.get("course") ?? undefined;
+          const course = await getCourse(identity, rootId, requested);
+          return protectedResponse(identity, rootId, course, request.signal, false, course.objectIds);
+        }
+        if (action === "supplements") {
+          // Optional ?course=<uuid|version> mirrors the course read path: the
+          // supplement state of one specific ready course version.
+          const requested = new URL(request.url).searchParams.get("course") ?? undefined;
+          const supplements = await getSupplements(identity, rootId, requested);
+          return protectedResponse(identity, rootId, supplements, request.signal, false, supplements.objectIds);
+        }
+        if (action === "provenance") {
+          // Epic-2 S7 versioned provenance handoff surface: optional
+          // ?course=<uuid|version> pins one ready course version (immutable
+          // block byte-stable across superseding revisions and derivative
+          // growth); optional ?fields=<a,b> declares the consumer's intended
+          // contract fields — a name outside the contract (answers, attempts)
+          // is INVALID_INPUT before anything is read. EVERY value of a
+          // repeated ?fields= parameter is joined into the declaration, so no
+          // non-contract name can hide behind a first valid one.
+          const parameters = new URL(request.url).searchParams;
+          const requested = parameters.get("course") ?? undefined;
+          const fieldValues = parameters.getAll("fields");
+          const fields = fieldValues.length ? fieldValues.join(",") : undefined;
+          const provenance = await getProvenance(identity, rootId, requested, fields);
+          return protectedResponse(identity, rootId, provenance, request.signal, false, provenance.objectIds);
+        }
       }
       if (request.method === "POST") {
         const body = await jsonBody(request);
         const result = action === "plan" ? await savePlan(identity, rootId, body as SavePlan)
           : action === "confirmation" ? await confirmPlan(identity, rootId, body as Confirm)
-          : action === "removal" ? await removeRoot(identity, rootId, body as Command) : null;
-        if (result) return Response.json(result, { headers: privateHeaders });
+          : action === "removal" ? await removeRoot(identity, rootId, body as Command)
+          : action === "ai-draft" ? await requestAiDraft(identity, rootId, body)
+          : action === "ai-check" ? await requestAiCheck(identity, rootId, body)
+          : action === "course" ? await requestCourseGeneration(identity, rootId, body)
+          : action === "supplements" ? await requestSupplements(identity, rootId, body) : null;
+        if (result) return Response.json(result, { status: action === "ai-draft" || action === "ai-check" || action === "course" || action === "supplements" ? 202 : 200, headers: privateHeaders });
       }
     }
     if (path[0] === "preferences" && path.length === 1) {

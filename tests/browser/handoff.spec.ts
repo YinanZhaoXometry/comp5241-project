@@ -79,9 +79,8 @@ test("a confirmed plan shows honest handoff readiness, keeps a duplicate confirm
   await expect(page.getByRole("heading", { name: "Plan confirmed — course not generated", exact: true })).toBeFocused();
   // U5 honesty: handoff readiness without implying any accepted generation job.
   await expect(page.getByText("Plan ready for course generation", { exact: false }).first()).toBeVisible();
-  const generate = page.getByRole("button", { name: "Generate course — unavailable in this release", exact: true });
-  await expect(generate).toBeDisabled();
-  await expect(page.getByText("no generation job", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("Course generation now lives in the mini-course stage below", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("no enrollment or completion award exists here", { exact: false }).first()).toBeVisible();
   await expect(page.getByText("handoff-honesty.txt", { exact: false }).first()).toBeVisible();
 
   const current = await study(page, receipt.rootId);

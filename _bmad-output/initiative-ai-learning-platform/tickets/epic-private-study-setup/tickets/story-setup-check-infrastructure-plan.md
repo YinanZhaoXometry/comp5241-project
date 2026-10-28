@@ -3,7 +3,7 @@ title: 'Optional starting check infrastructure (S7 infrastructure subset)'
 type: 'feature'
 ticket: 7
 created: '2026-10-22'
-status: 'built'
+status: done
 baseline_revision: 'd851f8f77314ab8f7d8f38e84cac266f7f31916e'
 route: 'full'
 route_source: 'auto'
@@ -81,6 +81,7 @@ context:
 
 ## Plan Change Log
 
+- 2026-10-25 — **TAKE-PATH CLOSURE (S7 done).** With S6's owner-admitted generator live (memlog 25–28), the open acceptance closed as designed: `requestAiCheck` (ai-setup module) generates the 3–5-item bundle through the SAME admission/settle machinery (configuration v4, migration 013, widens the consented purpose to starting-check items — one honest re-grant required), validates items strictly against the CONFIRMED plan's outcomes/sources (migration 014 widens the bundle source check to `ai-generated`), and inserts a standard `diagnostic_bundle` the unchanged take/submit/finish/flag flow runs on. `takeCheck` now reuses an existing bundle for the confirmed plan revision (idempotent retake) instead of conflicting — required with two bundle origins; one-bundle-per-plan unchanged. UI: "Generate with AI" offered equally in offered/unavailable states when consent is granted; answers still withheld per item; no credit fields anywhere. Evidence: integration ai-check (5 cases incl. withdrawal race, unparseable rejection, replay), unit parser bounds, browser suite green, and the LIVE probe (ai-smoke probe 3: 3 validated items, 1028 provider-claimed tokens, 13s) recorded at `.local/ai-smoke-latest.json`. Owner-admitted/terms-unverified labeling throughout; no D5/F3-passed claim.
 - 2026-10-22 — Migration extends the shared `app.lifecycle_object` kind check to include `'diagnostic'` (precedent: migration 002 added `'selection'`). Coordination note for the integrator: any later migration that rewrites this check (e.g. an export kind) must include `'diagnostic'`.
 - 2026-10-22 — P1/P2 tables (`app.setup_preference`, `app.processing_decision`, …) do not exist on this branch; no code reads them. The check is offered from the confirmed plan regardless of processing consent (manual path, no AI), so no P1 dependency was needed.
 - 2026-10-22 — A `tests/unit/diagnostic.test.ts` was added beyond the package's listed test files to hand-validate the authored bundle independently of any generator (supports the "manually validate bounded fixture items" requirement); no other scope added.

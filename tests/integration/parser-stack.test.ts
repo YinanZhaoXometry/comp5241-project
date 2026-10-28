@@ -19,7 +19,7 @@ describe("non-Expat parser candidate", () => {
   });
   it("loads the assessed native stack with no Expat import or loaded library", async () => {
     const versions = JSON.parse((await sandbox(await candidate(), ["--probe", "versions"])).toString());
-    expect(versions).toMatchObject({ python: "3.14.8", pypdf: "6.21.1", lxml: "6.1.3", libxml: "2.15.4", libxmlCompiled: "2.15.4", libxslt: "1.1.45", libxsltCompiled: "1.1.45", expatImportable: false, expatLoaded: false });
+    expect(versions).toMatchObject({ python: "3.14.8", pypdf: "6.21.2", lxml: "6.1.3", libxml: "2.15.4", libxmlCompiled: "2.15.4", libxslt: "1.1.45", libxsltCompiled: "1.1.45", expatImportable: false, expatLoaded: false });
     expect(versions.features).not.toEqual(expect.arrayContaining(["catalog"]));
     expect(versions.features).not.toEqual(expect.arrayContaining(["http"]));
     expect(versions.features).not.toEqual(expect.arrayContaining(["ftp"]));

@@ -104,6 +104,16 @@ Recorded decisions:
 - The shells keep the spine's honesty labels ("Sample prototype · No live AI" / "Instructor sample · No live data") as designed in the reference shells.
 - This supersedes §7's "existing tests pass unchanged" for the demo spec specifically: the demo area itself was removed, so its spec was replaced; all tracer tests remain unchanged and green.
 
+## 11. Amendment — 2026-10-24 independent review: tracer sign-in prefill corrected to email-only
+
+The 2026-10-24 independent review found that commit `33bcccb` ("feat(tracer): prefill sign-in with the local synthetic learner account"), merged inside this plan's range, was **outside this plan's authorization** ("Behavior changes: none — this plan restyles only") while the plan/AGENTS claimed zero tracer behavior changes. It also flagged (P2) that `defaultValue={prefillPassword}` serialized the local synthetic learner's password into every unauthenticated HTML response.
+
+Recorded decisions:
+
+- The prefill convenience is **ratified by amendment** (it serves the local synthetic demo and reads only the git-ignored `.local/synthetic-credentials.json`), but corrected: **only the email is prefilled; the password is never serialized into served HTML.** Applied 2026-10-24 in `src/app/page.tsx` / `src/app/study-app.tsx`.
+- The "zero tracer behavior changes" claims in this plan's §7/§8 and in AGENTS.md are corrected as of 2026-10-24 to record `33bcccb` as the one behavior-adjacent commit in the range, now email-only.
+- Everything else the review checked (static-page constraints, single `:root` hex block, narrow loader exclusion, CSP/headers untouched, per-shell skip links, no new dependencies, no skipped tests) passed.
+
 ## 9. Governance cross-references
 
 - Spine revision record: `DESIGN.md` §8 changelog, §9 memlog stubs (6 entries — file them in the ux folder when this plan is approved).

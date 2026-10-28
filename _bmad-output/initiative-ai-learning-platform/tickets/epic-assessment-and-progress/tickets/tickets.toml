@@ -1,0 +1,142 @@
+# Ordered assessment-and-progress stories, 2026-10-24; no leaf files or execution plans yet.
+# covers uses THIS epic's R1-R4 (parent R10/R13/R14/R20), not initiative R ids.
+# One lane protects shared attempt/evidence/award schema and scoring semantics;
+# the 2026-10-21 whole-epic execution gates still apply to every entry.
+# unknown gates the start; hitl identifies actual human work but is not a readiness gate.
+# Cross-epic ids are "epic.entry" pins into epics 1-2's existing tomls.
+next_id = 12
+
+[[entry]]
+id = 1
+type = "story"
+title = "Plan-to-roadmap scored-attempt tracer"
+description = "With the authorized starter, consume epic 1's persisted confirmed plan and owner/session boundary and epic 2's versioned course/objective provenance surface (entry 2.7) to run the thinnest assessment path: present one required objective-linked test from a manually checked synthetic fixture bank, start one attempt that snapshots its blueprint, questions, rubric, point scale and applicable 80%-default mark, submit it, score it deterministically with unrounded scaled-integer comparison, and reflect the resulting roadmap node state (In progress on required-item/test gaps, Completed when the thin required set is done and passed). Establish the assessment/progress module, its migration ownership under AD-1/AD-17 and purpose-typed attempt evidence per AD-7; no recovery, partial credit, guidance or parent awards in this entry."
+verify = "Using two local test accounts on synthetic fixtures, A opens the generated course's required test, sees threshold/available points/scoring criteria before starting, submits one attempt that scores honestly at a boundary fixture (e.g. 79.96% vs 80% reads Not passed), and the course node shows In progress, then Completed on a passing rerun; B and stale/deleted-course requests get scope denial; the attempt and its snapshot survive web/worker restart with one tracked result per submit command."
+covers = ["R2", "R4"]
+after = ["1.1", "1.5", "2.7"]
+hitl = true
+risk = "high"
+unknown = "No story may start yet: the 2026-10-21 whole-epic execution gates stand (epic 1 is not closed - S6, S7 take-path closure and S12 blocked on F3/F6 - and epic 2's supplied contracts are unbuilt) and explicit start authorization has not been given; this planning authorizes nothing."
+references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Test attempt view pattern and State Patterns (Pass-mark boundary)", "PRD — _bmad-output/initiative-ai-learning-platform/prd-ai-learning-platform/prd-ai-learning-platform.md, FR-13 consequences"]
+
+[[entry]]
+id = 2
+type = "story"
+title = "Targeted recovery ledger and fresh retest chain"
+description = "Build the epic's riskiest surface per AD-8: on a failed ordinary attempt, compute initial objective-group results under the same snapshot, preserve passing groups, and ledger every failed group as an open recovery target; offer focused review per group, then a fresh retest declaring target groups at the same intended cognitive demand with comparable rubric/points coverage, drawn from a manually checked synthetic fixture retest bank. Each reassessed group must reach the root attempt's applicable threshold to clear; uncleared or untested targets keep the failed-test requirement unsatisfied; the original score is never rewritten and recovery credit shows separately; root policy stays fixed through the recovery chain. Tests cover success, failure and partial-target coverage with retained passes."
+verify = "A failed fixture attempt at 68% opens recovery for exactly its failed groups; a retest clearing one group and not the other leaves the requirement honestly open with original 68% and per-group credit shown side by side; a later retest clearing the remainder satisfies the requirement without repeating passed sections or altering the original score; duplicate retest commands yield one tracked attempt each."
+covers = ["R3"]
+after = [1, "1.3", "1.6"]
+hitl = false
+risk = "high"
+unknown = "F-A-pattern live retest eligibility: AI generation of fresh same-demand retest variants needs a purpose-re-gated D5-compatible provider (retention/deletion/non-training proof plus operator authorization for synthetic non-personal tests), the same blocker as epic 1 S6/epic 2 F-A. Synthetic checked fixture banks proceed; live generation and its live acceptance stay blocked."
+references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Recovery path pattern and State Patterns (Partial recovery)", "PRD — _bmad-output/initiative-ai-learning-platform/prd-ai-learning-platform/prd-ai-learning-platform.md, FR-14 consequences"]
+
+[[entry]]
+id = 3
+type = "story"
+title = "Snapshotted scoring surface and pass-mark boundaries"
+description = "Complete the D3/AD-8 scoring surface around the tracer's thin path: nonnegative scaled-integer points with exact rational threshold cross-products (no floating-point/display rounding deciding a pass), one-decimal display plus authoritative Pass/Not passed, disclosed partial credit only under a declared finite-precision rubric with no negative marking, invalid/zero-total rubrics rejected, instructor pass-mark override carried as an attempt-snapshotted contract for epic 5, pre-start disclosure of threshold/points/criteria, visible previous attempts never silently overwritten, duplicate submission one receipt, and mid-attempt threshold/rubric edits affecting only new attempts. Type the provisional-grade state (cannot award completion while pending) as the contract epic 5 confirms."
+verify = "Boundary fixtures at 79.96%/80.00%/80.04% against an 80% mark return Not passed/Pass/Pass with one-decimal display and explicit status; a partial-credit rubric item scores per its disclosure; a policy edit mid-attempt leaves the running attempt's snapshot fixed while the next attempt uses the new policy; repeated submits of one attempt commit exactly one result."
+covers = ["R2"]
+after = [1]
+hitl = false
+risk = "high"
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D3 scoring/threshold/snapshot checks", "architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-8 scoring rules"]
+
+[[entry]]
+id = 4
+type = "story"
+title = "Content-plus-tests completion and monotonic parent awards"
+description = "Assemble completion per AD-5/AD-8: required content-item done records and required non-test activity submissions (consumed from epic 2's tracker under the shared evidence contract) plus every required test ordinarily passed or fully recovered award a unique version-scoped, monotonic mini-course completion; a parent path/course evaluates its required-child manifest and awards parent completion only when every required child release is awarded, optional children never blocking. Version switching is an explicit informed choice with changed required work shown before switching; new drafts or optional additions never erase prior awards; later review outcomes and policy edits never revoke earned completion. Tests cover every D1 completion-check case including parent-with-incomplete-child."
+verify = "A course with all required items done but one failed/unrecovered test stays In progress; satisfying the last requirement through normal passing and through full targeted recovery both award completion exactly once; a parent with one incomplete required child stays incomplete while an optional child does not block; superseding the course revision or a later policy edit leaves the earned award intact, and explicit version switching discloses changed required work first."
+covers = ["R2", "R4"]
+after = [1, 2, 3, "2.3"]
+hitl = false
+risk = "high"
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D1 content finished/tests separate/version scope", "architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-5 parent manifests and AD-8 monotonic awards"]
+
+[[entry]]
+id = 5
+type = "story"
+title = "Evidence-linked gap guidance with Unknown separation"
+description = "Build R10's guidance on typed evidence only: recommendations name the still-failed or partially-recovered objective groups and practice evidence they draw on, cite the specific response/objective, explain uncertainty, and link to focused review; Unknown (unassessed objectives) renders distinctly from Needs practice (observed difficulty, cause unnamed); assisted practice, unaided performance, self-report and engagement stay labeled and never merge; the learner can flag an unclear question from the result/guidance surface (feeding entry 7). Deterministic guidance over fixtures is the acceptance core; AI-narrated personalized guidance is a live-gated enhancement behind the provider gate."
+verify = "After a failed attempt and mixed practice, guidance lists exactly the failed groups with their cited responses, marks an unassessed objective Unknown rather than Needs practice, labels assisted practice separately from the unaided attempt, and never asserts a cause or mastery; flagging a question records the flag without altering scores."
+covers = ["R1"]
+after = [2, 3, "2.5", "1.3", "1.6"]
+hitl = false
+risk = "high"
+unknown = "F-A-pattern live guidance eligibility: AI-narrated personalized gap guidance needs a purpose-re-gated D5-compatible provider with the epic-1 S6/epic-2 F-A evidence and operator authorization for synthetic non-personal tests. Deterministic fixture-based guidance proceeds; live dispatch and its live acceptance stay blocked."
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D2 gap guidance and evidence separation", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Voice and Tone (Needs practice, honest uncertainty) and Flow 2"]
+
+[[entry]]
+id = 6
+type = "story"
+title = "Whole-mini-course roadmap surface"
+description = "Build the spine's roadmap on the completion contract: one node per entire mini-course rendering Not started / In progress / Completed from R2 awards, separate Needs practice and Review due pills, recommended prerequisite order from the plan with free browsing of every authorized node and no locks/XP, honest 'Plan confirmed — course not generated' and version-superseded states, and keyboard/360px/desktop operability. The Review-due pill renders from a stubbed versioned review-state query port that epic-spaced-review fills; its absence renders no pill, never a wrong state, and a due review can never remove completion."
+verify = "A three-mini-course path renders node states that follow completion awards exactly, marks a failed-group course In progress with a Needs practice pill while keeping a completed sibling Completed, browses every node freely in recommended order with no lock, and stays honest across 360px/desktop keyboard-only runs; with the review port unbound no Review due pill renders and completion is unchanged."
+covers = ["R4"]
+after = [4, 5]
+hitl = false
+risk = "medium"
+references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Roadmap surface, Roadmap node pattern and State Patterns (Version superseded)", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D1 progress/navigation"]
+
+[[entry]]
+id = 7
+type = "story"
+title = "Disputed-item correction and honest retries"
+description = "Implement D3's quality/correction and retry honesty: a flagged scored item enters Under review; if its validity could affect a pending or unearned completion decision, that decision pauses while prior evidence is retained and a corrected/replacement assessment is offered without counting the dispute as another failure; already-earned passes and completion are never revoked — history preserved, defect annotated. Retries have no pedagogical limit; service/quota delays present a clear message with saved work and never record a failed attempt or promise unlimited free generation."
+verify = "Flagging a borderline fixture item marks it Under review and pauses only the affected pending completion; a corrected replacement satisfies the requirement without an extra failed attempt; a previously earned pass on the disputed item stands; exhausting a generation quota yields an honest delay message with saved work and zero attempt records; unlimited pedagogical retries hold across the chain."
+covers = ["R3"]
+after = [2, 5]
+hitl = false
+risk = "medium"
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D3 retries and quality/correction", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, State Patterns (Item under review)"]
+
+[[entry]]
+id = 8
+type = "story"
+title = "Versioned completion and evidence handoff surface"
+description = "Expose the authorized versioned query surface downstream epics consume, per AD-13/AD-14: completion awards pinned to release/child manifests, applicable pass-mark snapshots, the shared evaluator verdict review uses (unaided review-purpose results computed under a pinned policy), provisional-grade and attempt/pass/recovery reporting projections for epic 5, and the activity/rubric/completion contract shape epic 6 extends — with synthetic consumer contract tests proving version pinning, supersession stability and scope denial. No review scheduling or instructor UI is built here."
+verify = "A synthetic downstream consumer resolves a course's awards, marks and evaluator verdicts pinned to exact revisions; a superseding release leaves pinned reads stable while new reads see it; the review consumer can compute a verdict without any scheduling surface; out-of-scope and cross-owner reads are denied."
+covers = ["R2", "R3", "R4"]
+after = [1, 3, 4, 6]
+hitl = false
+risk = "high"
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-13 review verdict and AD-14 scoped reporting"]
+
+[[entry]]
+id = 9
+type = "story"
+title = "Assessment lifecycle, ownership and deletion integration"
+description = "Integrate this epic's derivatives with epic 1's lifecycle classes (S8/S9/S10) as epic 2's entry 8 did for courses: attempts, snapshots, evidence, recovery ledgers, awards, guidance records and dispute states registered in the export/deletion/retention inventory with scoped lineage; root and all-personal deletion fence in-flight attempts and suppress late grading commits; exports include attempt/score/recovery history per snapshot scope or honestly exclude it; retention clocks cover assessment derivatives; cross-owner/revoked denial covers every new read path."
+verify = "Race attempt grading and retest generation against root deletion: no late-recommitted result, immediate denial on the next read, complete derivative purge inside deadlines and idempotent failure/retry receipts; an owner export contains their attempts/evidence/awards while another actor's download is denied; duplicate lifecycle commands yield one tracked effect."
+covers = ["R1", "R2", "R3"]
+after = [1, 2, 3, 4, 5, 6, 7, 8, "1.8", "1.9", "1.10", "2.8"]
+hitl = false
+risk = "high"
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-4 ownership/lineage/deletion fences"]
+
+[[entry]]
+id = 10
+type = "story"
+title = "Refactor sweep"
+description = "Inspect completed-story plans and deferred review findings for cleanup only, preserve all accepted UX/scoring/lifecycle/contract semantics and run unchanged regressions; record a no-op if no cleanup is justified. Unfinished functionality requires a separate planned entry."
+verify = "Compare accepted behaviors and all existing compile/lint/domain/database/browser/denial/lifecycle checks before and after; no checks are weakened or new requirements hidden in cleanup."
+covers = []
+after = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 11
+type = "story"
+title = "Integrated assessment suite and authorized release verification"
+description = "Close the epic with integrated allowed/denied/error/accessibility/lifecycle and actual-AI assessment-journey checks across the Done-when paths: normal and recovered completion, boundary thresholds, partial-target recovery, disputed-item pause, guidance distinctions, roadmap mapping and deletion races. An explicitly authorized operator deploys/smoke-checks the selected environment only after the relevant gates pass; a blocked release cannot be recorded Done."
+verify = "Run the complete plan → test → fail → guided recovery → retest → completion → roadmap journeys with keyboard/360px/desktop and failure/race/deletion checks; attach actual re-gated provider evidence (fresh retests, AI guidance) and separately authorized deployed smoke results."
+covers = ["R1", "R2", "R3", "R4"]
+after = [10]
+hitl = true
+risk = "high"
+unknown = "F-C-pattern deployment authorization: actual provisioning/deployment scope, region/plan/budget, operator responsibilities and managed copy/backup retention evidence need separate approval and verification; live-AI acceptance additionally waits on the re-gated provider eligibility recorded on entries 2 and 5. Current authorization permits story planning only."
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D7 access/content/assessment bars", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Flow 2 and the Accessibility Floor"]

@@ -64,7 +64,7 @@ export async function assertObjects(
 export async function registerObject(
   client: PoolClient,
   rootId: string,
-  kind: 'original' | 'extraction' | 'selection' | 'plan',
+  kind: 'original' | 'extraction' | 'selection' | 'plan' | 'course' | 'supplement',
   parents: string[],
   key?: string,
 ) {

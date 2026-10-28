@@ -105,6 +105,70 @@ container — and the parser fails closed without fresh matching admission evide
 read [docs/bounded-document-extraction.md](docs/bounded-document-extraction.md)
 before touching parser, sandbox or batch code.
 
+## React handler conventions (the course-stage pattern)
+
+`src/app/course-stage.tsx` is the worked example for the handler shape this
+codebase converged on after the epic-2 react-hooks compiler fights (purity and
+ref rules rejected the earlier ref-based wait machinery). New client-component
+handler code follows it:
+
+- **Command-envelope caches live in state, not refs.** Per-item/per-depth
+  `Map`s are held in `useState`, so handlers fired from the rendered view stay
+  ref-free and impure-free — the compiler rules hold by construction, and a
+  lost response replays the SAME command while a retry mints a fresh one.
+- **Effect-owned polling with scalar deps.** The dispatch handler only
+  dispatches; the pending WAIT (polling loop, the 120-second honest cap,
+  settle focus) is owned by a `useEffect` whose dependency array is SCALARS
+  (ids and booleans) — an object dep would reset the interval and its clock on
+  every server read. Handler-owned interval polls that predate this rule (the
+  generate/supplement waits) still use the `poll`/`supPoll` refs and are the
+  accepted exception; do not add new ones.
+- **DOM-id focus choreography.** The element that should receive focus next is
+  recorded as STATE (`{ kind, id }`), and a `useEffect` resolves it through
+  `document.getElementById` with a few-frame retry under load. Refs are never
+  read during render, and focus is never stolen by polling.
+
+## Shared dev-database fixture drift (`processor_configuration`)
+
+The integration and browser suites seed their OWN synthetic processor
+configurations with a `max(version)+1` insert (e.g. `consent.test.ts` /
+`restore.test.ts`), so the shared `.local/pg18` dev database accumulates
+hundreds of clearly-labeled fixture rows — on the machine that ran the epics,
+versions far above the honest chain are fixtures and `max(version)` is a
+fixture, never an honest row. The honest migration rows use FIXED ids
+(`52410003-0000-4000-8000-0000000000NN`, one per version) and insert in two
+styles: migration 003 seeds versions 1 and 2 with PLAIN inserts, so a squatted
+version fails that migration loudly instead of silently shadowing; the
+cumulative purpose-widening migrations (012/013/015/016/018, versions 3–7)
+insert `ON CONFLICT (version) DO NOTHING`, so on a long-lived dev DB a fixture
+that claimed one of those versions first silently shadows the honest row (this
+machine: v3/v4/v6/v7 squatted, v5 repaired by un-recording and re-applying its
+migration). A fresh database gets the honest cumulative chain either way.
+Nothing needs repairing — discover the honest rows in one place with:
+
+```sh
+/opt/homebrew/opt/postgresql@18/bin/psql "host='$PWD/.local/pg-socket' port=55432 user=tracer_bootstrap dbname=tracer_synthetic" \
+  -c "SELECT version,id,provider,eligibility FROM app.processor_configuration
+      WHERE id::text LIKE '52410003-0000-4000-8000-%' ORDER BY version"
+```
+
+Optional, clearly-labeled cleanup wedge (run it manually from the repo root;
+it deletes ONLY unreferenced synthetic fixture rows — never migration-UUID
+rows, and fixtures still referenced by immutable decisions or dispatch
+admissions stay because of their foreign keys):
+
+```sh
+/opt/homebrew/opt/postgresql@18/bin/psql "host='$PWD/.local/pg-socket' port=55432 user=tracer_bootstrap dbname=tracer_synthetic" \
+  -c "DELETE FROM app.processor_configuration p
+      WHERE p.id::text NOT LIKE '52410003-0000-4000-8000-%'
+        AND NOT EXISTS (SELECT 1 FROM app.processing_decision d WHERE d.configuration_id=p.id)
+        AND NOT EXISTS (SELECT 1 FROM app.dispatch_admission a WHERE a.configuration_id=p.id)"
+```
+
+The suites re-seed their fixtures on the next run, so this changes no suite's
+behavior; the ordered-version contract is untouched (no renumbering, no
+honest-row deletion).
+
 ## Gotchas
 
 - **`next-env.d.ts`**: the user's development imports stay uncommitted. Before

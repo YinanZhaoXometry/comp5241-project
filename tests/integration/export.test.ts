@@ -12,11 +12,16 @@ import { acknowledge } from '../../src/modules/materials-setup/batches';
 import { runExtraction } from '../../src/modules/materials-setup/extraction';
 import { removeRoot, reconcileCopies } from '../../src/modules/lifecycle-platform/service';
 import { objectsActive } from '../../src/modules/lifecycle-platform/repository';
+import { getDisclosure, decide } from '../../src/modules/processing-consent/service';
+import { createBatch, uploadSlot, getBatch } from '../../src/modules/materials-setup/batches';
+import { requestCourseGeneration, requestSupplements, requestWhyStep, submitPracticeCard } from '../../src/modules/course-generation/service';
+import { runCourseGeneration, runSupplementFetch, runWhyStep } from '../../src/modules/course-generation/worker';
 import { requestExport, downloadExport, listExports } from '../../src/modules/setup-export/service';
 import { runExport, sweepExports } from '../../src/modules/setup-export/worker';
 import { purgeExportRoots, exportRootsForOwner } from '../../src/modules/setup-export/repository';
 import { config } from '../../src/platform/config';
 import type { Command, Identity, Plan } from '../../src/contracts/setup';
+import type { CourseJob, SupplementJob, WhyJob } from '../../src/contracts/courses';
 import { canonical, type Manifest } from '../../src/contracts/export';
 
 const command = (revision = 0): Command => ({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: revision });
@@ -132,10 +137,24 @@ describe('authenticated consistent personal-setup export', () => {
     expect(manifest.entries.some(entry => foreign.rows.some(item => item.id === entry.objectId))).toBe(false);
     // Integrated deployment: P1's receipt tables are owner-scoped and
     // inventoried; the diagnostic bundle/item tables key by root/bundle rather
-    // than owner, so exactly those two are honestly skipped while the
-    // owner-scoped diagnostic evidence is captured.
-    expect(manifest.skipped.map(item => item.category)).toEqual(['diagnostic-evidence', 'diagnostic-evidence']);
-    expect(manifest.skipped.every(item => item.reason.includes('owner-scoped'))).toBe(true);
+    // than owner, so exactly those two are skipped — deliberately, as the
+    // answer-key item bank is not owner content — while the owner-scoped
+    // diagnostic evidence is captured.
+    // Epic-2 S8 flipped generated-courses, practice-evidence and
+    // why-explanations INTO the artifact (owner derivative content), so the
+    // skip set is exactly: the two diagnostic answer-key tables, advisory AI
+    // drafts, and fetched supplement passages.
+    expect(manifest.skipped.map(item => item.category)).toEqual(['diagnostic-evidence', 'diagnostic-evidence', 'ai-drafts', 'supplements']);
+    expect(manifest.skipped.filter(item => item.category === 'diagnostic-evidence').every(item => item.reason.includes('Deliberately excluded') && item.reason.includes('answer keys'))).toBe(true);
+    // S6: advisory AI drafts are deliberately excluded (suggestions, not owner
+    // content); no excerpt or provider reply ever enters the artifact.
+    expect(manifest.skipped.find(item => item.category === 'ai-drafts')!.reason).toContain('Deliberately excluded');
+    // Epic-2 S8: fetched supplement passages stay the one deliberate class
+    // skip — external-source content, not owner material; only their
+    // identity/location metadata rides along inside each exported course.
+    expect(manifest.skipped.find(item => item.category === 'supplements')!.reason).toContain('Deliberately excluded');
+    expect(manifest.skipped.find(item => item.category === 'supplements')!.reason).toContain('external-source content');
+    expect(manifest.skipped.find(item => item.category === 'supplements')!.reason).toContain('not owner material');
     // Every storage key in the manifest is a real registered copy of this owner.
     const withKeys = manifest.entries.filter(entry => entry.storageKey);
     expect(withKeys.length).toBeGreaterThanOrEqual(2);
@@ -294,5 +313,143 @@ describe('authenticated consistent personal-setup export', () => {
     await transaction(client => purgeExportRoots(client, [receipt.rootId]));
     expect((await database().query('SELECT 1 FROM app.export_request WHERE id=$1', [receipt.rootId])).rowCount).toBe(0);
     expect(await transaction(client => exportRootsForOwner(client, seeded.owner.userId))).not.toContain(receipt.rootId);
+  });
+
+  // -------------------------------------------------------------------------
+  // Epic-2 S8: the recorded export scope decision, asserted end-to-end through
+  // the real artifact. Generated courses (full stored content INCLUDING the
+  // recall answers — the owner can already reveal them by submitting), typed
+  // practice evidence and why explanations join the artifact; fetched
+  // supplement passages stay the one deliberate class skip with their
+  // identity/location metadata riding along inside the course payload;
+  // deleted roots are excluded by snapshot scope exactly like every class.
+  // -------------------------------------------------------------------------
+  it('includes course content, practice evidence and why explanations honestly; supplements skip with reason; deleted roots excluded', async () => {
+    const owner = await actor('export-s8');
+    // Pin this test's own clearly-labeled synthetic fixture configuration:
+    // suite order can leave a low-quota fixture current (ai-draft's quota
+    // probe inserts a one-request limit), and this test admits several
+    // dispatches under one owner.
+    const maxVersion = await database().query<{ max: number }>('SELECT max(version) AS max FROM app.processor_configuration');
+    await database().query(
+      `INSERT INTO app.processor_configuration(id,version,provider,purpose,categories,retention_notice,eligibility,synthetic_test,daily_admission_limit)
+       VALUES($1,$2,'Synthetic test spy (fixture — not compliant live AI)','Boundary test purpose','["synthetic excerpts"]'::jsonb,'Synthetic test fixture; nothing leaves this machine.','eligible',true,100)`,
+      [crypto.randomUUID(), maxVersion.rows[0].max + 1],
+    );
+    const disclosure = await getDisclosure(owner);
+    await decide(owner, { ...command(), configurationVersion: disclosure.configuration.version, decision: 'granted', acknowledgedTerms: true });
+    const textA = 'Unit testing checks a single unit of behavior. Arrange inputs, act, assert outcomes.';
+    const textB = 'A test double stands in for a dependency. Coverage reports executed lines, not assertion quality.';
+    const canonicalAnswer = 'Unit testing checks a single unit of behavior.';
+    const gapPlan: Plan = {
+      topic: 'Unit testing',
+      goal: 'Understand a topic',
+      clarification: '',
+      outcomes: ['Explain arrange-act-assert', 'Explain test doubles', 'Judge coverage reports'],
+      miniCourse: { title: 'First test', lessons: ['Arrange, act, assert'], practice: 'Test an addition function', estimatedMinutes: 20 },
+      // The S2 gap markers: supported, conflict and unsupported fixtures.
+      missingExplanations: 'Sources do not cover mock frameworks. A conflicting statement about coverage and assertion quality appears in public documentation. One unverifiable claim exists about coverage.',
+    };
+    const derivativeStudy = async (label: string, data: string[]) => {
+      const slotIds = data.map(() => crypto.randomUUID());
+      const batch = await createBatch(owner, { ...command(), inputs: data.map((value, index) => ({ slotId: slotIds[index], filename: `${label}-${index}.txt`, mime: 'text/plain', byteLength: Buffer.byteLength(value) })) });
+      for (const [index, value] of data.entries()) {
+        const up = await uploadSlot(owner, batch.rootId, slotIds[index], command(), new Blob([value]).stream());
+        await runExtraction(up.operationId!, async input => input);
+      }
+      const preview = await getBatch(owner, batch.rootId);
+      const slots = preview.slots.filter(slot => slotIds.includes(slot.slotId));
+      if (slots.length !== data.length || slots.some(slot => !slot.extractionId)) throw new Error('fixture setup failed');
+      await acknowledge(owner, batch.rootId, {
+        ...command(preview.revision),
+        selected: slots.map(slot => ({ slotId: slot.slotId, extractionId: slot.extractionId!, acknowledged: true as const })),
+        excluded: [],
+      });
+      const acknowledged = await getBatch(owner, batch.rootId);
+      const saved = await savePlan(owner, batch.rootId, { ...command(acknowledged.revision), plan: gapPlan, extractionId: acknowledged.selection!.sources[0].extractionId, selectionId: acknowledged.selection!.id });
+      const confirmed = await confirmPlan(owner, batch.rootId, { ...command(saved.revision), planRevisionId: saved.planRevisionId! });
+      return { owner, rootId: batch.rootId, revision: confirmed.revision };
+    };
+    const live = await derivativeStudy('s8-live', [textA, textB]);
+    // Generate, practice, supplement, why — the full derivative set.
+    await requestCourseGeneration(live.owner, live.rootId, { ...command(live.revision) });
+    const courseJob = (await database().query<{ id: string; root_id: string; admission_id: string }>(
+      'SELECT id,root_id,admission_id FROM app.generated_course WHERE root_id=$1 ORDER BY created_at DESC LIMIT 1', [live.rootId],
+    )).rows[0];
+    await runCourseGeneration({ schemaVersion: 1, requestId: courseJob.id, admissionId: courseJob.admission_id, rootId: courseJob.root_id, ownerId: live.owner.userId, sessionId: live.owner.sessionId } satisfies CourseJob);
+    const courseId = (await database().query<{ id: string }>("SELECT id FROM app.generated_course WHERE root_id=$1 AND status='ready'", [live.rootId])).rows[0].id;
+    await submitPracticeCard(live.owner, live.rootId, { ...command(live.revision), courseId, cardId: 'practice:0', attempted: 'arrange first', assisted: false });
+    await submitPracticeCard(live.owner, live.rootId, { ...command(live.revision), courseId, cardId: 'practice:1', attempted: 'a standing double', assisted: true });
+    await requestSupplements(live.owner, live.rootId, { ...command(live.revision), courseId });
+    const supplementJob = (await database().query<{ id: string; root_id: string; admission_id: string }>(
+      'SELECT id,root_id,admission_id FROM app.supplement_request WHERE course_id=$1 ORDER BY created_at DESC LIMIT 1', [courseId],
+    )).rows[0];
+    await runSupplementFetch({ schemaVersion: 1, requestId: supplementJob.id, admissionId: supplementJob.admission_id, courseId, rootId: supplementJob.root_id, ownerId: live.owner.userId, sessionId: live.owner.sessionId } satisfies SupplementJob);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.course_supplement WHERE course_id=$1', [courseId])).rows[0].count).toBe(3);
+    for (const depth of [1, 2]) {
+      await requestWhyStep(live.owner, live.rootId, { ...command(live.revision), courseId, lessonIndex: 0, depth });
+      const whyRow = (await database().query<{ id: string; root_id: string; admission_id: string }>(
+        'SELECT id,root_id,admission_id FROM app.why_explanation WHERE course_id=$1 AND lesson_index=0 AND depth=$2', [courseId, depth],
+      )).rows[0];
+      await runWhyStep({ schemaVersion: 1, requestId: whyRow.id, admissionId: whyRow.admission_id, courseId, rootId: whyRow.root_id, ownerId: live.owner.userId, sessionId: live.owner.sessionId, lessonIndex: 0, depth } satisfies WhyJob);
+    }
+    // A second study of the SAME owner, then deleted: its derivatives must be
+    // excluded by snapshot scope exactly like every other class.
+    const doomed = await derivativeStudy('s8-doomed', ['Doomed synthetic study that must not survive the snapshot.', 'A second doomed source so the fixture parses.']);
+    await requestCourseGeneration(owner, doomed.rootId, { ...command(doomed.revision) });
+    const doomedJob = (await database().query<{ id: string; root_id: string; admission_id: string }>(
+      'SELECT id,root_id,admission_id FROM app.generated_course WHERE root_id=$1 ORDER BY created_at DESC LIMIT 1', [doomed.rootId],
+    )).rows[0];
+    await runCourseGeneration({ schemaVersion: 1, requestId: doomedJob.id, admissionId: doomedJob.admission_id, rootId: doomedJob.root_id, ownerId: owner.userId, sessionId: owner.sessionId } satisfies CourseJob);
+    const doomedCourse = (await database().query<{ id: string }>("SELECT id FROM app.generated_course WHERE root_id=$1 AND status='ready'", [doomed.rootId])).rows[0].id;
+    await submitPracticeCard(owner, doomed.rootId, { ...command(doomed.revision), courseId: doomedCourse, cardId: 'practice:0', attempted: 'doomed attempt', assisted: false });
+    await removeRoot(owner, doomed.rootId, { ...command(doomed.revision) });
+    await reconcileCopies();
+    // Live preview counts are honest after the deletion (deleted root out).
+    const preview = await listExports(owner);
+    expect(preview.categories.find(item => item.category === 'generated-courses')).toMatchObject({ count: 1, available: true });
+    expect(preview.categories.find(item => item.category === 'practice-evidence')).toMatchObject({ count: 2, available: true });
+    expect(preview.categories.find(item => item.category === 'why-explanations')).toMatchObject({ count: 2, available: true });
+    expect(preview.categories.find(item => item.category === 'supplements')).toMatchObject({ count: null, available: true });
+    expect(preview.categories.find(item => item.category === 'supplements')!.note).toContain('deliberately excluded');
+    // Build and decode the real artifact.
+    const { receipt, row } = await readyExport(owner);
+    expect(row.state).toBe('ready');
+    const manifest = row.manifest!;
+    expect(manifest.entries.filter(entry => entry.category === 'generated-courses').map(entry => entry.rootId)).toEqual([live.rootId]);
+    expect(manifest.entries.filter(entry => entry.category === 'practice-evidence')).toHaveLength(2);
+    expect(manifest.entries.filter(entry => entry.category === 'why-explanations')).toHaveLength(2);
+    expect(manifest.entries.every(entry => entry.rootId !== doomed.rootId)).toBe(true);
+    expect(manifest.skipped.find(item => item.category === 'supplements')!.reason).toContain('external-source content');
+    const response = await downloadExport(owner, receipt.rootId, new AbortController().signal);
+    const entries = decodeArtifact(Buffer.from(await response.arrayBuffer()));
+    // Course payload: full stored content INCLUDING the recall answers (owner
+    // derivative content — the owner can already reveal them by submitting),
+    // lineage tables, and supplement identity/location metadata only.
+    const coursePayload = JSON.parse(new TextDecoder().decode(entries.get(`courses/${courseId}.json`)!)) as {
+      row: { content: { practice?: { cards?: Array<{ answer: string }> } } };
+      objectives: unknown[];
+      sources: unknown[];
+      supplementReferences: Array<Record<string, unknown>>;
+    };
+    expect(coursePayload.objectives.length).toBeGreaterThan(0);
+    expect(coursePayload.sources.length).toBeGreaterThan(0);
+    const storedAnswers = (coursePayload.row.content.practice?.cards ?? []).map(card => card.answer);
+    expect(storedAnswers).toContain(canonicalAnswer);
+    expect(coursePayload.supplementReferences).toHaveLength(3);
+    for (const reference of coursePayload.supplementReferences)
+      expect(Object.keys(reference).sort()).toEqual(['contentHash', 'locator', 'origin', 'outcome', 'position', 'retrievedAt', 'url']);
+    // Practice payload: the typed rows with the attempted text.
+    const practicePayload = JSON.parse(new TextDecoder().decode(entries.get('practice/practice-evidence.json')!)) as { rows: Array<{ attempted: string; evidence_kind: string }> };
+    expect(practicePayload.rows.map(row => row.attempted).sort()).toEqual(['a standing double', 'arrange first']);
+    expect(practicePayload.rows.map(row => row.evidence_kind).sort()).toEqual(['assisted', 'unaided']);
+    // Why payload: the settled explanations with their text.
+    const whyPayload = JSON.parse(new TextDecoder().decode(entries.get('why/why-explanations.json')!)) as { rows: Array<{ explanation: string | null; status: string; depth: number }> };
+    expect(whyPayload.rows.filter(row => row.status === 'ready').map(row => row.depth).sort()).toEqual([1, 2]);
+    expect(whyPayload.rows.every(row => typeof row.explanation === 'string' && row.explanation.length > 0)).toBe(true);
+    // Supplement passages never enter the artifact: the conflict fixture's
+    // fetched passage ('not the case') exists only in the excluded class.
+    const artifactText = new TextDecoder().decode(gunzipSync(Buffer.from(await (await downloadExport(owner, receipt.rootId, new AbortController().signal)).arrayBuffer())));
+    expect(artifactText).not.toContain('not the case');
   });
 });

@@ -42,5 +42,20 @@ it("additively migrates legacy confirmed singleton identities and queued v1 jobs
     expect((await pool.query("SELECT data FROM queue.job WHERE id=$1", [jobId])).rows[0].data).toEqual(envelope);
     const client = await pool.connect(); try { expect(await objectsActive(client, owner, [plan, plan])).toBe(true); } finally { client.release(); }
     await expect(pool.query("UPDATE app.selection_revision SET excluded='[]' WHERE id=$1", [migrated.selection_id])).rejects.toThrow("Immutable revision");
+    // The double migrate() above also proves 018's idempotency. On this FRESH
+    // database the canonical disclosure versions all insert (the long-lived dev
+    // database can carry sibling suites' synthetic spy fixtures on small
+    // version numbers, which the ON CONFLICT (version) DO NOTHING guards then
+    // skip — the standing drift the integration suites' grant() helpers
+    // tolerate); pin migration 018's v7 row here where no spy can squat it:
+    // cumulative purpose naming the stated background, honest local-fixture
+    // retention notice, eligible.
+    const v7 = (await pool.query("SELECT id,version,purpose,categories,retention_notice,eligibility FROM app.processor_configuration WHERE version=7")).rows[0];
+    expect(v7).toMatchObject({ id: "52410003-0000-4000-8000-000000000007", version: 7, eligibility: "eligible" });
+    expect(v7.categories).toContain("stated background");
+    expect(v7.categories).toContain("selected source excerpts"); // cumulative: nothing dropped from v6
+    expect(v7.purpose).toContain("pitched to the stated background");
+    expect(v7.purpose).toContain("supplement proposals"); // cumulative over the v6 purpose
+    expect(v7.retention_notice).toContain("identical for every track");
   } finally { await pool.end(); await admin.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`); await admin.end(); }
 }, 60000);

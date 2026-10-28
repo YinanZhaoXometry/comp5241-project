@@ -3,7 +3,7 @@ title: Private TXT-to-confirmed-plan tracer
 type: feature
 ticket: 1
 created: 2026-10-21
-status: built
+status: done
 approved: 2026-10-21
 execution_gate: local-verified-reviewed-runtime-exception
 baseline_revision: d123d79317055a801f2957b985e05cfd45b20b1b

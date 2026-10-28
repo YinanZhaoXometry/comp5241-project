@@ -1,9 +1,9 @@
 ---
 title: 'Bounded retention and archive contract'
 type: 'feature'
-ticket: S10
+ticket: 10
 created: '2026-10-22'
-status: 'built'
+status: done
 baseline_revision: '558a381712a38faebc1b0884aec4a2beeddb2070'
 route: 'full'
 route_source: 'auto'

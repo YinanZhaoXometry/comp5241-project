@@ -1,10 +1,14 @@
 # Delegated epic plan, 2026-10-21. Table order is delivery order, not an execution instruction.
 # Covers assigns one accountable epic per initiative requirement; consumers verify integrations.
 # Constraints C1–C7 and product policies D1–D8 apply through each epic's References.
-# Shared architecture adopted; epic 1 has thirteen planned child entries, epic 2 ten (refined 2026-10-23), other epics unrefined.
-# Epic 1's leaf tickets are pulled and locally built (see its tickets/ directory);
-# its metadata fields are unchanged and epics 2–6 have no leaf tickets. Build,
-# live-AI activation and deployment remain separately gated.
+# Shared architecture adopted. All six epics are refined. Epic 1 CONDITIONALLY CLOSED
+# (done) 2026-10-25: entries 1.1–1.13 done with live owner-admitted AI; 1.14 (authorized
+# release) dropped-deferred by owner decision. The whole-epic gates on epics 2–6 are
+# therefore SATISFIED as defined. Later epics' own per-entry unknowns still gate
+# their STARTS (e.g. epic 2's F-A must be settled at build time by a new
+# purpose-scoped processor configuration under the same owner decision — the
+# current v4 consent does not cover full course generation); no later-epic entry
+# is started, assigned or authorized to build.
 # Draft id 7 retired after tree validation: pilot/closure is not a horizontal testing epic.
 next_id = 8
 

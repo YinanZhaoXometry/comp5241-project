@@ -107,7 +107,7 @@ async function currentState(client: PoolClient, identity: Identity, rootId: stri
     rootId,
     revision,
     synthetic: true,
-    source: "manual-synthetic",
+    source: shown?.source as CheckState["source"] ?? null,
     status,
     historical,
     bundleId: shown?.id ?? null,
@@ -157,6 +157,16 @@ export async function takeCheck(identity: Identity, rawId: string, raw: Command)
     await lifecycle.assertObjects(client, identity.userId, [batch.confirmed_id]);
     const confirmed = await planRevision(client, batch.confirmed_id);
     if (!confirmed) fail("CONFLICT");
+    // An existing bundle for THIS confirmed plan revision (generated through
+    // the owner-admitted processor, S7) is the check to take — never shadowed
+    // by a second manual materialization.
+    const existing = await repository.bundleByPlan(client, batch.confirmed_id);
+    if (existing) {
+      await lifecycle.assertObjects(client, identity.userId, [existing.id]);
+      const result: TakenCheck = { rootId, bundleId: existing.id, revision: batch.revision };
+      await lifecycle.receipt(client, identity, command, "take-check", hash, result);
+      return result;
+    }
     // Unsupported links stay Unavailable (skip still finishes setup); items
     // are never renumbered or fabricated to fit the plan.
     const materialized = materializeBundle(confirmed.plan, confirmed.sources);

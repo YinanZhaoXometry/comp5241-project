@@ -26,6 +26,35 @@ and fresh admission was written. The image digest and fingerprint changed; the
 quarantined Expat admission remains rejected. This is a maintenance pin of an
 already-admitted component, not a new risk waiver.
 
+**Active admission record.** The authoritative image digest, fingerprint and
+audit hash of the *currently admitted* parser live in the git-ignored
+`.local/parser-admission.json` (mode 0600), re-written on every
+`npm run extractor:build` re-admission — runtime verifies against that file,
+never against this document, and maintenance re-admissions legitimately change
+it (see the musl re-pin above). To print the active values:
+`python3 -c "import json;d=json.load(open('.local/parser-admission.json'));print(d['image'],d['fingerprint'],d['auditHash'],d['verifiedAt'])"`.
+Digest of record as of 2026-10-25: image
+`sha256:06f9590579e56c63ee12a49b4956c8e5074c6bd0e3c818860b4abda0384f6554`,
+fingerprint and audit hash per the admission file, admitted 2026-10-25T07:23Z
+after the pypdf 6.21.1→6.21.2 DoS re-pin below (Python 3.14.8, lxml 6.1.3,
+libxml2 2.15.4, libxslt 1.1.45, XMP disabled). Earlier digests named in
+revision history are superseded, not active.
+
+**pypdf DoS re-pin, 2026-10-25.** The updated Trivy database flags three HIGH
+denial-of-service CVEs (CVE-2026-115572/115580/115585) against `pypdf 6.21.1`,
+all fixed in 6.21.2. The wheel was re-pinned with its verified hash
+(`1d44d1a3…`), and the XMP-removal shim re-assessed the new source before
+patching: the only `xmp.py` change vs 6.21.1 is a `ValueError` wrap around
+datetime construction — the Expat/XMP structure the shim removes is
+byte-identical — so the pristine-source pin moved to the assessed
+`0fb1996e…`. Probes, hostile fixtures and the audit re-passed; fresh admission
+written (see the digest of record above). This is a maintenance pin of an
+already-admitted component, not a new risk waiver. (Incidental: the same
+morning a stale Colima `vz` instance wedged after the daemon lost its host
+agent; it was recovered with a stop --force/start — the rebuild ran after that
+recovery, with the fail-closed audit correctly refusing the first rebuilt
+image until the pin landed.)
+
 Also on 2026-10-22 the gate's `migrate` step refused with "Applied migration
 changed": an editor had appended a trailing newline to both applied migration
 files after the last passing gate. The byte-exact applied content was restored
@@ -143,7 +172,7 @@ pure-Python PDF dependency, streaming native XML and stdlib ZIP.
 | Component | Verified candidate version / provenance | License reference |
 | --- | --- | --- |
 | Python | 3.14.8, official linux/arm64 Alpine 3.24 image, base digest `sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9` | [PSF v2 and incorporated notices](https://docs.python.org/3.14/license.html) |
-| pypdf | 6.21.1, wheel SHA256 `553e2d42f5bb3bb2a785a7d3de8ef90bb7df74b5413eff5a7b4388007ea9254b`; no extras/dependencies on this Python | [BSD-3-Clause](https://raw.githubusercontent.com/py-pdf/pypdf/6.21.1/LICENSE), [PyPI release metadata](https://pypi.org/pypi/pypdf/6.21.1/json) |
+| pypdf | 6.21.2 (re-pinned from 6.21.1 on 2026-10-24: CVE-2026-115572/115580/115585, HIGH DoS, fixed in 6.21.2), wheel SHA256 `1d44d1a3a200f25062adff0085b02040e4646431ac2ccac22e42679e91466084`; no extras/dependencies on this Python | [BSD-3-Clause](https://raw.githubusercontent.com/py-pdf/pypdf/6.21.2/LICENSE), [PyPI release metadata](https://pypi.org/pypi/pypdf/6.21.2/json) |
 | lxml | 6.1.3 source SHA256 `45222d94ddd511536f3b2f7d9deae3b2339b4ce0f075f1ca25703b07cad9dd21` | [BSD-3-Clause and incorporated notices](https://raw.githubusercontent.com/lxml/lxml/lxml-6.1.3/LICENSES.txt) |
 | libxml2 | 2.15.4 source SHA256 `98087fd181d9070724f3fbc65c7377db03038eb92bd882374daff44940138821` | [MIT-style](https://raw.githubusercontent.com/GNOME/libxml2/v2.15.4/Copyright) |
 | libxslt/libexslt | 1.1.45 source SHA256 `9acfe68419c4d06a45c550321b3212762d92f41465062ca4ea19e632ee5d216e` | [MIT-style incorporated notices](https://raw.githubusercontent.com/GNOME/libxslt/v1.1.45/Copyright) |

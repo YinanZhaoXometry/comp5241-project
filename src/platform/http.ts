@@ -33,7 +33,7 @@ export function uploadCommand(request: Request, binary = false) {
 }
 export function safeFailure(error: unknown, requestId = crypto.randomUUID()) {
   const code = errorCode(error);
-  const statuses = { UNAUTHENTICATED: 401, FORBIDDEN_OR_NOT_FOUND: 404, INVALID_INPUT: 400, CONFLICT: 409, RATE_LIMITED: 429, RETRYABLE_FAILURE: 503 };
+  const statuses = { UNAUTHENTICATED: 401, FORBIDDEN_OR_NOT_FOUND: 404, INVALID_INPUT: 400, CONFLICT: 409, RATE_LIMITED: 429, AI_BUDGET_EXHAUSTED: 429, RETRYABLE_FAILURE: 503 };
   return Response.json({ error: { code, message: messages[code], requestId, retryable: code === "RETRYABLE_FAILURE" || code === "RATE_LIMITED" } }, { status: statuses[code], headers: privateHeaders });
 }
 export async function authenticated(request: Request) {

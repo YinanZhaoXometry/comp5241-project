@@ -1,4 +1,4 @@
-"""Build-only downstream pypdf 6.21.1 feature removal, not a new XML parser.
+"""Build-only downstream pypdf 6.21.2 feature removal, not a new XML parser.
 
 Verify pristine upstream bytes before editing, preserve notices and constants,
 and update installed RECORD integrity metadata. Any upstream drift fails build.
@@ -13,7 +13,10 @@ import sysconfig
 site = Path(sysconfig.get_path("purelib"))
 target = site / "pypdf/xmp.py"
 original = target.read_bytes()
-if hashlib.sha256(original).hexdigest() != "0853e82701b820b96d14ecfdd9f49cf04f1a734ce2314ff0e9b16976e753d494":
+# 6.21.2 source assessed 2026-10-24: the only change vs 6.21.1 is a ValueError
+# wrap around datetime construction in a date helper; the Expat/XMP structure
+# this shim removes is byte-identical. Wheel sha256 1d44d1a3…, xmp.py sha256:
+if hashlib.sha256(original).hexdigest() != "0fb1996e355223d8ad669d289f16eb7e0ad9cd3314e8005cdb4c03defd876fea":
     raise RuntimeError("Unassessed pypdf XMP source; do not apply this patch")
 source = original.decode("utf-8")
 for line in (
@@ -34,7 +37,7 @@ source = source[:start] + '''    def __init__(self, stream: StreamObject) -> Non
 ''' + source[end:]
 patched = source.encode("utf-8")
 target.write_bytes(patched)
-record = site / "pypdf-6.21.1.dist-info/RECORD"
+record = site / "pypdf-6.21.2.dist-info/RECORD"
 with record.open(newline="", encoding="utf-8") as handle:
     rows = list(csv.reader(handle))
 matches = [row for row in rows if row[0] == "pypdf/xmp.py"]

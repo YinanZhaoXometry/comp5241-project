@@ -1,0 +1,157 @@
+# Ordered instructor-courses stories, 2026-10-24; no leaf files or execution plans yet.
+# covers uses THIS epic's R1-R4 (parent R3/R4/R5/R16), not initiative R ids.
+# Entry `after` pins stage the four earlier epics per provider: numeric "1.<id>"/"2.x" for
+# built/refined epic-1/2 entries; sibling pins repointed 2026-10-24 to epic-2 generation
+# 2.1, player 2.3, provenance 2.7 and why 2.6; epic-3 scoring 3.3/retest chain 3.2/handoff
+# 3.8; epic-4 scoped due-state/cancellation 4.6. The epic file's whole-epic `after` on
+# epics 1-4 stays the execution gate.
+# One lane protects shared scope/approval/enrollment/reporting surfaces.
+# unknown gates the start; hitl identifies actual human work but is not a readiness gate.
+next_id = 13
+
+[[entry]]
+id = 1
+type = "story"
+title = "Manual-course approval-enrollment tracer"
+description = "The thinnest full path through every layer this epic touches: on the operator-provisioned synthetic instructor principal, create one course, draft one mini-course version manually (one lesson with one required content item — no AI, no tests), approve that exact version with approver/time/version recorded, owner-enroll one verified learner through a single-row preview/confirm action (CSV import is entry 4), and port the static /instructor/courses and /instructor/approvals references to live instructor-shell routes with the honesty label preserved. The learner studies through the learner shell, never the instructor studio. Human step: the operator provisions/confirms the synthetic instructor principal and grants the explicit start authorization for instructor-course work."
+verify = "After a web/worker restart the instructor reopens the course with the approved version immutable; the enrolled learner studies the approved lesson and can see no other version or draft; a non-enrolled learner, a second instructor and an ordinary admin all receive the same no-existence-leak denial; duplicate approve/enroll commands yield exactly one receipt each; the tracer's course/enrollment records register in the epic-1 lifecycle inventory."
+covers = ["R1", "R2", "R3"]
+after = ["1.1", "2.3"]
+hitl = true
+risk = "high"
+unknown = "Whole-epic execution gates and start authorization: epics 1–4 are not complete (epic 1 remains open on entries 1.6, 1.7 take-path closure and 1.12) and no explicit permission to start instructor-course implementation exists; this refinement authorizes planning only."
+references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Information Architecture (instructor shell) and Component Patterns (Approval inspector)", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D4 approval unit and D5 enrollment"]
+
+[[entry]]
+id = 2
+type = "story"
+title = "Versioned authoring and teaching-material substrate"
+description = "Expand the tracer's single-version draft into the authoring substrate: course/mini-course/lesson/content-item/activity editing with immutable revisions and dependency identity (AD-5), required/optional and required-outcome declarations, pass-mark configuration consumed from epic-3 policy contracts, draft-versus-published separation, and course-scoped teaching-material upload through the bounded four-format extraction contract (epic-1 S2) — course-owned material never becomes a personal upload and vice versa. AI-assisted generation is entry 6; this entry is manual."
+verify = "Iterative edits create new revisions while the published release stays pinned; a dependency edit marks affected drafts as needing reapproval rather than silently changing published content; a course-scoped upload extracts under the same limits/preview honesty and is invisible to learners until approved; cross-scope material reads are denied; keyboard-only authoring works at 360px and desktop."
+covers = ["R1"]
+after = [1, "1.2", "2.7"]
+hitl = false
+risk = "high"
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-5 immutable publication and dependency identity", "PRD — _bmad-output/initiative-ai-learning-platform/prd-ai-learning-platform/prd-ai-learning-platform.md, FR-3 consequences"]
+
+[[entry]]
+id = 3
+type = "story"
+title = "Exact-version approval inspector, invalidation and withdrawal"
+description = "Build the spine's approval inspector on the authoring substrate: side-by-side exact-version inspection of lessons, supplementary sources and question/answer/rubric/feedback bundles with the keyboard-operable \"I have inspected these exact versions\" gate enabling Approve; approver/time/version records; batch approval only over listed inspected versions; dependency-edit invalidation of affected draft approvals; withdrawal of an erroneous published item blocks new use immediately, identifies affected evidence and routes correction through epic-3's D3 process without revoking earned passes or rewriting past attempts."
+verify = "An unapproved or stale-draft version is invisible to enrolled learners, who get the honest \"Pending instructor approval\" state; editing a rubric invalidates the dependent approval while the published release and pinned attempts stay intact; withdrawal stops new use at once, a previously earned pass remains and only pending decisions pause; approval records name approver, time and versions; batch approval cannot cover uninspected versions."
+covers = ["R3"]
+after = [2]
+hitl = false
+risk = "high"
+references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Component Patterns (Approval inspector) and State Patterns (Pending approval)", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D4 approval unit, dynamic content and changes"]
+
+[[entry]]
+id = 4
+type = "story"
+title = "CSV roster preview/confirm import and verified invitations"
+description = "UTF-8 name-and-email CSV import with row-level preview before any commit: normalized row errors (malformed email, missing name, oversize), duplicate detection within the file and against existing enrollment, honest summary and explicit confirmation; invite records for emails without accounts; server-side association only with verified accounts whose email matches — never by client assertion (AD-14); no imported passwords or grades; the roster appears in no learner-visible surface and no provider payload; re-importing an enrolled learner creates no duplicate enrollment."
+verify = "A fixture roster with duplicates, malformed rows and new/known emails previews every error before confirmation and enrolls exactly the confirmed verified matches once the operator provisions matching accounts; an unverified or wrong-email account is denied course access; the roster is absent from learner surfaces and dispatch payloads; duplicate confirm yields one enrollment per learner; preview/confirm and row focus behavior follow the spine's interaction primitives."
+covers = ["R2"]
+after = [1]
+hitl = false
+risk = "high"
+unknown = "Real verified-account invitation delivery (email tokens or account creation for people without operator-provisioned accounts) has no product surface under D6's in-app-only rule and no authorization; synthetic association with operator-provisioned verified accounts proceeds, but any real-invitation path stays blocked until mechanics are chosen, evidenced and authorized."
+references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Component Patterns (CSV import preview)", "architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-14 roster rules"]
+
+[[entry]]
+id = 5
+type = "story"
+title = "Enrollment revocation and immediate reminder cancellation"
+description = "Owner-side enrollment management over the confirmed roster: remove learners after explicit confirmation; removal immediately ends future course-content access and cancels that course's reminders through epic-4's course-scoped cancellation contract (authorization-epoch rechecks on reads, jobs and delivery); a removed verified learner retains only a distinct self-history export of their own progress/scores through epic-1 export classes — no question bank, roster or other learners; revocation never silently deletes the instructor's legitimate course records; deletion/revocation races follow AD-4 fences."
+verify = "After removal, the former learner's next request, queued job and reminder delivery are denied or canceled with no late output recommitting; the self-history export contains only their own progress/scores; the instructor's course records and other learners are untouched; a race between removal and an in-flight attempt yields denial without duplicate effects; course-enrollment derivatives are registered in the lifecycle inventory."
+covers = ["R2"]
+after = [4, "4.6", "3.8", "1.8", "1.9"]
+hitl = false
+risk = "high"
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-3 post-removal actions, AD-4 fences and AD-13 delivery rechecks", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D5 enrollment and owner controls"]
+
+[[entry]]
+id = 6
+type = "story"
+title = "AI-assisted authoring (synthetic-first, live gated)"
+description = "Instructor topic/requirements/teaching-content requests generate draft mini-courses and AI customize/refine existing drafts through epic-1's versioned processor configuration and consent/dispatch/accounting ports plus epic-2's generation contracts, re-gated for the changed instructor-authoring purpose (AD-10 — no blanket inherited eligibility or consent); generated drafts land in the authoring substrate as unapproved revisions feeding entry 3's inspector; declined consent preserves full manual authoring; no roster or learner identifier enters any dispatch payload. Synthetic deterministic fixtures drive the pipeline; live generation waits for eligibility evidence."
+verify = "With synthetic fixtures, a topic/requirements request yields a versioned draft the instructor can edit and approve through the normal path, with consent refusal, quota/timeout and stale-conflict honesty by 120 seconds and one tracked result per command; declined consent performs zero external calls and leaves manual authoring untouched; no dispatch payload contains roster or learner-identifier data; live acceptance stays blocked per the unknown."
+covers = ["R1"]
+after = [2, "2.1", "1.3", "1.6"]
+hitl = false
+risk = "high"
+unknown = "Live provider eligibility for the instructor-authoring purpose is unverified: a D5-compatible provider/model/endpoint with retention/deletion/non-training/location proof and operator authorization for synthetic non-personal tests (the epic-1 S6 / epic-2 F-A blocker, re-gated for this purpose). Synthetic-fixture development proceeds; live dispatch and live acceptance stay blocked."
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-10 policy-enforced provider boundary", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D5 processing minimization"]
+
+[[entry]]
+id = 7
+type = "story"
+title = "Dynamic-content approval gate: approved-bank retests and pending variants"
+description = "The learner-side dynamic-output gate (AD-6): tailored retests assemble only from approved question/feedback bundles through epic-3's targeted-retest contracts; newly generated retest questions, feedback variants and deeper-why responses enter a pending queue until the instructor personally approves the exact version — enrolled learners see existing approved material or an honest \"Pending instructor approval\" state, never partial or unseen output; no generation-on-demand bypass; live generation rides entry 6's gate."
+verify = "A triggered tailored retest draws only approved-bank items; a fresh generated variant is invisible until approved and appears without learner action afterward; a deeper-why request returns approved depth or the pending state; no unapproved byte reaches a learner in any fixture or browser check; approving a pending variant follows entry 3's inspector rules and records."
+covers = ["R3"]
+after = [3, 6, "2.6", "3.2"]
+hitl = false
+risk = "high"
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-6 exact-version gate includes dynamic output", "PRD — _bmad-output/initiative-ai-learning-platform/prd-ai-learning-platform/prd-ai-learning-platform.md, FR-5 consequences"]
+
+[[entry]]
+id = 8
+type = "story"
+title = "Instructor pass marks and provisional-grade confirmation"
+description = "Instructor-controlled pass marks for their courses over epic-3's attempt-snapshotted policy contracts (80% default; changes apply only to new attempts, never retroactively); subjective AI grading of instructor-course submissions stays Provisional until the instructor confirms it and cannot award completion while pending; confirmation resolves idempotently through the epic-3/epic-4 evidence contracts; no second scoring or progress truth is built here."
+verify = "A course-configured mark snapshots at attempt start and a later edit changes only new attempts; a provisional grade displays as provisional, blocks the completion decision while pending, and one confirmation commits exactly once; unrounded threshold behavior matches D3; denied/withdrawn consent never grades."
+covers = ["R1", "R3"]
+after = [7, "3.3"]
+hitl = false
+risk = "medium"
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D3 pass mark, scoring and correction", "UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, State Patterns (Provisional grade, Pass-mark boundary)"]
+
+[[entry]]
+id = 9
+type = "story"
+title = "Scoped participation reporting"
+description = "The participation surface (the spine's Participation row; the static /instructor/participation reference ported live): enrolled learner, last course activity, required-item progress, attempt/pass/recovery status and due/overdue reviews, read through epic-3/epic-4 scoped query contracts (AD-14) filtered to the instructor's own course and current enrollment; active time, if shown, is a labeled estimate from active sessions; no private-study evidence, no other instructor's roster, no raw question-bank export, no engagement-as-mastery claims; removal stops ordinary enrolled views."
+verify = "The report renders the full row set for the owning instructor and the no-existence-leak denial for a second instructor, a non-enrolled learner and an ordinary admin; removed learners disappear from ordinary views while controller-retained history stays purge-protected; estimate labels are explicit; an empty course shows the honest empty state with one primary action."
+covers = ["R4"]
+after = [5, "3.8", "4.6"]
+hitl = false
+risk = "medium"
+references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Component Patterns (Participation row) and Inspiration & Anti-patterns (engagement-pressure reporting rejected)", "architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-14 reporting is a scoped read model"]
+
+[[entry]]
+id = 10
+type = "story"
+title = "Course lifecycle, archive and role-audit integration"
+description = "Integrate the epic's records with epic-1 lifecycle: course archive triggers the ninety-day notice/export/purge contract over real instructor records (generalizing the S10 synthetic fixture); instructor-course derivatives (drafts, approvals, enrollment/invitation records, rosters, report reads) register in the export/deletion/retention inventory; account/personal deletion never silently deletes legitimate course records while scope fences handle enrollment derivatives; privileged operations (role assignment, approval, withdrawal, revocation, archive) audit-log content-free metadata (AD-17); protective restore replays revocation/withdrawal fences before any grant becomes usable."
+verify = "Archiving a course records the notice and export windows and purges at the deadline with pre-purge export available; a personal-data deletion leaves course-controlled records intact per D5; the audit trail records who approved/withdrew/revoked/archived what and when without private content; a restored backup replays revocation and withdrawal fences so no removed enrollment, revoked consent or withdrawn approval becomes usable before reconciliation."
+covers = ["R2", "R4"]
+after = [3, 9, "1.8", "1.9", "1.10", "1.13"]
+hitl = false
+risk = "high"
+references = ["architecture — _bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md, AD-4 retention/backup rules and AD-17 audit/restore reconciliation", "policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D5 retention and D6 instructor report"]
+
+[[entry]]
+id = 11
+type = "story"
+title = "Refactor sweep"
+description = "Inspect completed-story plans and deferred review findings for cleanup only, preserve all accepted UX/privacy/approval/lifecycle/contract semantics and run unchanged regressions; record a no-op if no cleanup is justified. Unfinished functionality requires a separate planned entry."
+verify = "Compare accepted behaviors and all existing compile/lint/domain/database/browser/denial/lifecycle checks before and after; no checks are weakened or new requirements hidden in cleanup."
+covers = []
+after = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+hitl = false
+risk = "medium"
+
+[[entry]]
+id = 12
+type = "story"
+title = "Integrated instructor suite and authorized release verification"
+description = "Close the epic with D7 milestone-2 exit evidence: integrated enrolled/revoked/unapproved/cross-owner/cross-course journeys with role test accounts across manual and eligible-AI authoring, CSV import/invitations, exact-version approval including dynamic retests/why/feedback, pass marks/provisional confirmation, participation reporting and lifecycle/archive, plus keyboard/360px/desktop and failure/race checks. An explicitly authorized operator deploys and smoke-checks the selected environment only after the epics 1–4 integrations and release gates pass. Test accounts are functional checks, not pilot participants or instructor-usability evidence."
+verify = "Run the complete instructor journey set end to end with all denial paths and attach actual gate evidence plus separately authorized deployed smoke results; a blocked release cannot be recorded Done."
+covers = ["R1", "R2", "R3", "R4"]
+after = [11]
+hitl = true
+risk = "high"
+unknown = "Deployment/release authorization mirrors epic-1 F6 and epic-2 F-C: actual provisioning/deployment scope, region/plan/budget, operator responsibilities and managed copy/backup retention evidence need separate approval and verification; current authorization permits story planning only."
+references = ["policy — _bmad-output/initiative-ai-learning-platform/product-policies.md, D7 delivery order and quality gates (milestone 2)", "PRD — _bmad-output/initiative-ai-learning-platform/prd-ai-learning-platform/prd-ai-learning-platform.md, SM-5"]

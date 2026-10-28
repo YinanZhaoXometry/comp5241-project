@@ -1,11 +1,11 @@
-# Ordered private-study-setup stories, 2026-10-21. Leaf ticket files now exist for
-# entries 1, 2, 3, 4, 5, 7, 8, 9, 10 and 13 with status 'built' — local synthetic
-# gate evidence only. Entries 6, 7-closure and 12 remain blocked on F3/F6; the epic
-# is not closed. No entry status/assignee/estimate field below has been advanced.
+# Ordered private-study-setup stories, 2026-10-21. CONDITIONALLY CLOSED 2026-10-25:
+# entries 1-13 done; 14 (authorized release verification) DROPPED-DEFERRED by
+# owner decision "do it later" — revivable as a new entry under its own
+# authorization, never silently resurrected. No deployment/release claim.
 # covers uses THIS epic's R1-R4, not initiative R IDs. Details live in adopted companions.
 # One lane protects shared schema, scoped fixtures and lifecycle evolution.
 # unknown gates the start; hitl identifies actual human work but is not a readiness gate.
-next_id = 14
+next_id = 15
 
 [[entry]]
 id = 1
@@ -156,12 +156,23 @@ references = ["story contract — _bmad-output/initiative-ai-learning-platform/t
 [[entry]]
 id = 12
 type = "story"
-title = "Integrated setup suite and authorized release verification"
-description = "Close the setup journey with integrated allowed/denied/error/accessibility/lifecycle and actual-AI checks. An explicitly authorized operator verifies region/plan/budget/copy inventory, secure account provisioning/recovery, monitoring and measured limits, then deploys/smoke-checks the selected environment only after relevant gates pass. No deployment or paid resources are authorized now."
-verify = "Run the complete four-format manual/eligible-AI plan, skip/take diagnostic, export/delete and protected-restore journeys, with keyboard360px/desktop and failure/race checks; attach actual F1/F2/F3/F5/F6 evidence and separately authorized deployed smoke results. A blocked release cannot be recorded Done."
+title = "Integrated local setup suite (re-sliced local half of S12)"
+description = "Close the setup journey's LOCAL integrated verification: the full gate as one run — four-format manual AND owner-admitted AI plan drafts and generated starting checks, skip/take diagnostic paths, export/delete/retention/protected-restore journeys, keyboard/360px browser flows and failure/race checks — with the actual-AI smoke evidence and the standing F1/F2/F3/F5 evidence attached. Re-sliced 2026-10-25 (memlog 30): deployment moved to entry 14; nothing here claims deployment, managed hosting or release readiness."
+verify = "Full local gate green at the closing commit with live AI smoke evidence recorded; F1's accepted runtime exception stated as open; no F6 or release claim."
 covers = ["R1", "R2", "R3", "R4"]
 after = [11]
+hitl = false
+risk = "high"
+references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S12 local half after the 2026-10-25 re-slice", "plan — story-integrated-local-suite-plan.md"]
+
+[[entry]]
+id = 14
+type = "story"
+title = "Authorized release verification (deferred deployment half of S12)"
+description = "The separately authorized release half the original S12 carried: an explicitly authorized operator verifies region/plan/budget/copy inventory, secure account provisioning/recovery, monitoring and measured limits, then deploys and smoke-checks the selected environment only after the gates pass. Split out 2026-10-25 so the epic's local work is not held hostage to deployment authorization; stays blocked on its recorded unknown."
+verify = "Deployed smoke results on the authorized environment attached with actual gate evidence; a blocked release cannot be recorded Done."
+covers = ["R1", "R2", "R3", "R4"]
+after = [12]
 hitl = true
 risk = "high"
-unknown = "Actual provisioning/deployment/live-data scope, region/plan/budget, operator responsibilities and managed copy/backup retention evidence need separate approval and verification; current request permits story planning only."
-references = ["story contract — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/delivery-checks.md, S12/F6 and downstream handoff", "UX — _bmad-output/initiative-ai-learning-platform/tickets/epic-private-study-setup/setup-experience.md, U0-U8 and shared rules"]
+unknown = "Deployment/release authorization (F6 family): actual provisioning/deployment scope, region/plan/budget, operator responsibilities and managed copy/backup retention evidence need separate owner approval and verification; nothing is authorized now."

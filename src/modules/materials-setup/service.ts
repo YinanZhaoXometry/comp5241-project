@@ -8,6 +8,7 @@ import { createOperation } from "../lifecycle-platform/operations";
 import { fail } from "../../platform/errors";
 import { parse, requestHash } from "../../platform/commands";
 import * as repository from "./repository";
+import { hasReadyCourse, hasReadyCourses } from "../course-generation/repository";
 import { preferenceRevision } from "./handoff";
 import { getBatch, batchRow } from "./batches";
 
@@ -74,7 +75,12 @@ export async function getStudy(identity: Identity, rawId: string) {
     // state would be fictional, so consumers poll `slots` for those.
     const slot = batch.slots[0];
     const operation = singleton && slot.operationId ? { id: slot.operationId, state: slot.state, pending: slot.pending } : null;
-    return { ...batch, extractionId: source?.extractionId ?? null, text, operation };
+    // Content-free course-generated signal (epic-2 S3): a boolean from the
+    // generated_course existence query, so the library line and the plan
+    // panel's confirmed heading stop claiming "course not generated" once one
+    // exists. No course data crosses into this module.
+    const courseGenerated = await hasReadyCourse(client, rootId);
+    return { ...batch, extractionId: source?.extractionId ?? null, text, operation, courseGenerated };
   });
 }
 export async function listStudies(identity: Identity) {
@@ -84,7 +90,11 @@ export async function listStudies(identity: Identity) {
       CASE WHEN r.deleted_at IS NOT NULL THEN 'deleted' ELSE 'saved' END AS state,
       b.confirmed_id IS NOT NULL AS confirmed,r.cleanup_state AS "cleanupState"
       FROM app.lifecycle_root r JOIN app.study_batch b ON b.id=r.id WHERE r.owner_id=$1 ORDER BY r.created_at DESC LIMIT 100`, [identity.userId]);
-    return result.rows;
+    // Content-free course-generated signal (epic-2 S3), composed through the
+    // course-generation module's own batch read function — no course data
+    // crosses into this module beyond root-id existence.
+    const generated = await hasReadyCourses(client, result.rows.map(row => row.rootId));
+    return result.rows.map(row => ({ ...row, courseGenerated: generated.has(row.rootId) }));
   });
 }
 export async function savePlan(identity: Identity, rawId: string, raw: SavePlan) {

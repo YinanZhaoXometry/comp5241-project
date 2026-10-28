@@ -22,6 +22,7 @@
     "db:stop": "tsx scripts/local-db.ts stop",
     "migrate": "tsx scripts/migrate.ts",
     "extractor:build": "tsx scripts/build-extractor.ts",
+    "ai:smoke": "tsx scripts/ai-smoke.ts",
     "provision": "tsx scripts/provision-synthetic.ts",
     "worker": "tsx src/worker/main.ts",
     "backup": "tsx scripts/backup.ts",

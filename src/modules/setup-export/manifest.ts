@@ -131,6 +131,42 @@ export async function captureManifest(
   await captureReceiptTable(client, ownerId, 'processing_decision', 'processing-decisions', 'processing/processing-decisions.json', { entries, payloads, skipped });
   await captureReceiptTable(client, ownerId, 'dispatch_admission', 'dispatch-admissions', 'processing/dispatch-admissions.json', { entries, payloads, skipped });
   await captureDiagnostics(client, ownerId, { entries, payloads, skipped });
+  // Epic-2 S8 export scope decision (this entry's recorded call): generated
+  // courses, practice evidence and why explanations are OWNER derivative
+  // content and join the artifact honestly. The stored course content
+  // includes every recall answer because the owner can already reveal any of
+  // them by submitting (the diagnostic answer-key exclusion never applied to
+  // owner-specific courses); practice evidence carries the learner's own
+  // attempted text; why explanations are the owner's settled derivative rows.
+  await captureCourseDerivatives(client, ownerId, { entries, payloads, skipped });
+  // S6: advisory AI draft requests are deliberately excluded from the artifact
+  // (the simpler honest option per the S6 plan): they are suggestions the
+  // learner edits, not canonical owner content, and no source excerpt or
+  // provider reply belongs in an export. The skip line records the exclusion.
+  if (await tableColumns(client, 'ai_draft_request')) {
+    skipped.push({
+      category: 'ai-drafts',
+      reason:
+        'Deliberately excluded: advisory AI draft requests (topics/plan suggestions the learner edits before any save) and their provider replies are not exported; the accepted plan the learner actually confirmed is exported under plans',
+    });
+  } else {
+    skipped.push({ category: 'ai-drafts', reason: 'Table app.ai_draft_request is not present in this deployment' });
+  }
+  // Epic-2 S8: fetched supplement passages stay a deliberate, honestly-
+  // reasoned skip — they are external-source content, not owner material, and
+  // neither the fetched passage nor the upload excerpt it may conflict with
+  // belongs in the owner's artifact. Their identity/location metadata (source,
+  // locator, content hash, retrieval time) rides along inside each exported
+  // course's provenance context, so the skip loses nothing the owner owned.
+  if (await tableColumns(client, 'course_supplement')) {
+    skipped.push({
+      category: 'supplements',
+      reason:
+        'Deliberately excluded: fetched supplement passages are external-source content, not owner material — passages and conflict excerpts stay out of the artifact, while their identity/location metadata (source, locator, content hash, retrieval time) rides along inside each exported course\u2019s provenance context',
+    });
+  } else {
+    skipped.push({ category: 'supplements', reason: 'Table app.course_supplement is not present in this deployment' });
+  }
 
   return {
     capturedAt,
@@ -185,6 +221,193 @@ const diagnosticTables = [
   { table: 'diagnostic_evidence', payload: 'diagnostics/diagnostic-evidence.json' },
 ] as const;
 
+// The epic-2 S8 owner-derivative classes. Every query below is snapshot-scoped
+// exactly like the lifecycle classes above: rows of deleted roots are excluded
+// by the root tombstone, and a ready course whose own lifecycle object was
+// invalidated is excluded the same way invalidated objects are.
+type CourseRow = {
+  id: string;
+  root_id: string;
+  plan_revision_id: string;
+  selection_id: string;
+  admission_id: string;
+  object_id: string | null;
+  status: string;
+  failure_code: string | null;
+  version: number | null;
+  superseded_by: string | null;
+  content: unknown;
+  model: string | null;
+  usage: unknown;
+  preference_pin: unknown;
+  created_at: Date;
+  settled_at: Date | null;
+};
+type PracticeRow = {
+  id: string;
+  course_id: string;
+  root_id: string;
+  card_id: string;
+  attempted: string;
+  outcome: string;
+  evidence_kind: string;
+  submitted_at: Date;
+};
+type WhyRow = {
+  id: string;
+  course_id: string;
+  root_id: string;
+  lesson_index: number;
+  depth: number;
+  status: string;
+  failure_code: string | null;
+  dimension: string | null;
+  explanation: string | null;
+  sources: unknown;
+  model: string | null;
+  created_at: Date;
+  settled_at: Date | null;
+};
+
+async function supplementReferenceRows(client: PoolClient, ownerId: string, courseId: string) {
+  // Identity/location metadata ONLY (the S7 provenance derivative shape):
+  // never the fetched passage, never the upload excerpt, never the claim.
+  const rows = await client.query<Record<string, unknown>>(
+    `WITH latest AS (
+       SELECT id, status FROM app.supplement_request
+       WHERE course_id=$1 AND owner_id=$2 ORDER BY created_at DESC, id DESC LIMIT 1
+     )
+     SELECT s.position, s.outcome, s.url, s.origin, s.locator, s.content_hash AS "contentHash", s.retrieved_at AS "retrievedAt"
+     FROM app.course_supplement s JOIN latest l ON l.id=s.request_id AND l.status='ready'
+     WHERE s.course_id=$1 ORDER BY s.position`,
+    [courseId, ownerId],
+  );
+  return rows.rows;
+}
+
+async function captureCourseDerivatives(client: PoolClient, ownerId: string, sink: CaptureSink) {
+  // generated-courses: full stored rows (content included — recall answers are
+  // owner derivative content per the recorded S8 decision) plus the course's
+  // lineage and provenance context.
+  if (await tableColumns(client, 'generated_course')) {
+    const courses = await client.query<CourseRow>(
+      `SELECT c.id, c.root_id, c.plan_revision_id, c.selection_id, c.admission_id, c.object_id,
+         c.status, c.failure_code, c.version, c.superseded_by, c.content, c.model, c.usage,
+         c.preference_pin, c.created_at, c.settled_at
+       FROM app.generated_course c
+       JOIN app.lifecycle_root r ON r.id=c.root_id
+       LEFT JOIN app.lifecycle_object o ON o.id=c.object_id
+       WHERE c.owner_id=$1 AND r.deleted_at IS NULL
+         AND (c.object_id IS NULL OR o.invalidated_at IS NULL)
+       ORDER BY c.created_at, c.id`,
+      [ownerId],
+    );
+    for (const course of courses.rows) {
+      sink.entries.push({
+        category: 'generated-courses',
+        objectId: course.id,
+        rootId: course.root_id,
+        storageKey: null,
+        parents: [course.object_id ?? course.plan_revision_id],
+        createdAt: iso(course.created_at),
+        metadata: { status: course.status, version: course.version, failureCode: course.failure_code, model: course.model },
+      });
+      const objectives = (
+        await client.query<{ position: number; objective: string }>(
+          'SELECT position,objective FROM app.course_objective WHERE course_id=$1 ORDER BY position',
+          [course.id],
+        )
+      ).rows;
+      const sources = (
+        await client.query<{ position: number; extraction_id: string; filename: string }>(
+          'SELECT position,extraction_id,filename FROM app.course_source WHERE course_id=$1 ORDER BY position',
+          [course.id],
+        )
+      ).rows;
+      const payload = {
+        table: 'app.generated_course',
+        row: {
+          ...course,
+          created_at: iso(course.created_at),
+          settled_at: course.settled_at ? iso(course.settled_at) : null,
+        },
+        objectives,
+        sources,
+        supplementReferences: await supplementReferenceRows(client, ownerId, course.id),
+      };
+      sink.payloads.push({ name: `courses/${course.id}.json`, value: payload });
+    }
+  } else {
+    sink.skipped.push({ category: 'generated-courses', reason: 'Table app.generated_course is not present in this deployment' });
+  }
+  // practice-evidence: the typed submission rows, attempted text included —
+  // owner content per the recorded S8 decision.
+  if (await tableColumns(client, 'practice_attempt')) {
+    const practice = await client.query<PracticeRow>(
+      `SELECT p.id, p.course_id, c.root_id, p.card_id, p.attempted, p.outcome, p.evidence_kind, p.submitted_at
+       FROM app.practice_attempt p
+       JOIN app.generated_course c ON c.id=p.course_id
+       JOIN app.lifecycle_root r ON r.id=c.root_id
+       LEFT JOIN app.lifecycle_object o ON o.id=c.object_id
+       WHERE p.owner_id=$1 AND r.deleted_at IS NULL AND (c.object_id IS NULL OR o.invalidated_at IS NULL)
+       ORDER BY p.submitted_at, p.id`,
+      [ownerId],
+    );
+    for (const item of practice.rows) {
+      sink.entries.push({
+        category: 'practice-evidence',
+        objectId: item.id,
+        rootId: item.root_id,
+        storageKey: null,
+        parents: [item.course_id],
+        createdAt: iso(item.submitted_at),
+        metadata: { cardId: item.card_id, outcome: item.outcome, evidenceKind: item.evidence_kind },
+      });
+    }
+    sink.payloads.push({
+      name: 'practice/practice-evidence.json',
+      value: { table: 'app.practice_attempt', rows: practice.rows.map(item => ({ ...item, submitted_at: iso(item.submitted_at) })) },
+    });
+  } else {
+    sink.skipped.push({ category: 'practice-evidence', reason: 'Table app.practice_attempt is not present in this deployment' });
+  }
+  // why-explanations: the settled explanation rows — owner derivative content
+  // per the recorded S8 decision.
+  if (await tableColumns(client, 'why_explanation')) {
+    const why = await client.query<WhyRow>(
+      `SELECT w.id, w.course_id, w.root_id, w.lesson_index, w.depth, w.status, w.failure_code,
+         w.dimension, w.explanation, w.sources, w.model, w.created_at, w.settled_at
+       FROM app.why_explanation w
+       JOIN app.generated_course c ON c.id=w.course_id
+       JOIN app.lifecycle_root r ON r.id=w.root_id
+       LEFT JOIN app.lifecycle_object o ON o.id=c.object_id
+       WHERE w.owner_id=$1 AND r.deleted_at IS NULL AND (c.object_id IS NULL OR o.invalidated_at IS NULL)
+       ORDER BY w.created_at, w.id`,
+      [ownerId],
+    );
+    for (const item of why.rows) {
+      sink.entries.push({
+        category: 'why-explanations',
+        objectId: item.id,
+        rootId: item.root_id,
+        storageKey: null,
+        parents: [item.course_id],
+        createdAt: iso(item.created_at),
+        metadata: { lessonIndex: item.lesson_index, depth: item.depth, status: item.status, dimension: item.dimension, model: item.model },
+      });
+    }
+    sink.payloads.push({
+      name: 'why/why-explanations.json',
+      value: {
+        table: 'app.why_explanation',
+        rows: why.rows.map(item => ({ ...item, created_at: iso(item.created_at), settled_at: item.settled_at ? iso(item.settled_at) : null })),
+      },
+    });
+  } else {
+    sink.skipped.push({ category: 'why-explanations', reason: 'Table app.why_explanation is not present in this deployment' });
+  }
+}
+
 async function captureDiagnostics(client: PoolClient, ownerId: string, sink: CaptureSink) {
   const bundleColumns = await tableColumns(client, 'diagnostic_bundle');
   const bundleOwned = !!bundleColumns?.has('owner_id');
@@ -204,7 +427,9 @@ async function captureDiagnostics(client: PoolClient, ownerId: string, sink: Cap
     } else if (part.table !== 'diagnostic_bundle' && columns.has('bundle_id') && bundleIds.length) {
       rows = (await client.query<Record<string, unknown>>(`SELECT * FROM app.${part.table} WHERE bundle_id=ANY($1::uuid[]) ORDER BY 1 LIMIT 10000`, [bundleIds])).rows;
     } else {
-      sink.skipped.push({ category, reason: `Table app.${part.table} is not owner-scoped in this deployment; this export version cannot inventory it` });
+      // The item-bank tables (answer ids, rationales, the bank itself) are not
+      // owner content; owners receive their diagnostic evidence, not the key.
+      sink.skipped.push({ category, reason: `Deliberately excluded: app.${part.table} holds the diagnostic item bank (answer keys and rationales), which is not owner content; owner diagnostic evidence is exported separately` });
       continue;
     }
     for (const [index, item] of rows.entries()) {
@@ -238,6 +463,36 @@ export async function activeCounts(client: PoolClient, ownerId: string) {
      WHERE r.owner_id=$1 AND lo.invalidated_at IS NULL AND r.deleted_at IS NULL`,
     [ownerId],
   );
+  // Epic-2 S8 flipped classes: live counts use the same snapshot scope as the
+  // capture itself (deleted roots excluded; invalidated course objects out).
+  // Absent tables report no count (null in the preview) exactly like the
+  // capture's own absence guards.
+  const courses = (await tableColumns(client, 'generated_course'))
+    ? await client.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM app.generated_course c
+         JOIN app.lifecycle_root r ON r.id=c.root_id
+         LEFT JOIN app.lifecycle_object o ON o.id=c.object_id
+         WHERE c.owner_id=$1 AND r.deleted_at IS NULL AND (c.object_id IS NULL OR o.invalidated_at IS NULL)`,
+        [ownerId],
+      )
+    : null;
+  const practice = (await tableColumns(client, 'practice_attempt'))
+    ? await client.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM app.practice_attempt p
+         JOIN app.generated_course c ON c.id=p.course_id
+         JOIN app.lifecycle_root r ON r.id=c.root_id
+         WHERE p.owner_id=$1 AND r.deleted_at IS NULL`,
+        [ownerId],
+      )
+    : null;
+  const why = (await tableColumns(client, 'why_explanation'))
+    ? await client.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM app.why_explanation w
+         JOIN app.lifecycle_root r ON r.id=w.root_id
+         WHERE w.owner_id=$1 AND r.deleted_at IS NULL`,
+        [ownerId],
+      )
+    : null;
   const byKind = new Map(objects.rows.map((item) => [item.kind, item.count]));
   return {
     originals: byKind.get('original') ?? 0,
@@ -245,6 +500,9 @@ export async function activeCounts(client: PoolClient, ownerId: string) {
     selections: byKind.get('selection') ?? 0,
     plans: byKind.get('plan') ?? 0,
     confirmations: confirmations.rows[0]?.count ?? 0,
+    courses: courses?.rows[0]?.count ?? null,
+    practice: practice?.rows[0]?.count ?? null,
+    why: why?.rows[0]?.count ?? null,
   };
 }
 

@@ -167,6 +167,16 @@ describe("dormant OpenAI-compatible foundation", () => {
     expect(transport).toHaveBeenCalledTimes(1); expect(log).not.toHaveBeenCalled();
   });
 
+  it("tolerates the separate reasoning channel (Kimi k3 / DeepSeek-R style) and projects only the answer content", async () => {
+    const choice = payload().choices[0];
+    const transport = vi.fn(async () => json({ ...payload(), choices: [{ ...choice, message: { ...choice.message, content: "ok", reasoning_content: "internal deliberation provider-secret" } }] }));
+    const result = await createOpenAICompatibleAdapter(config, transport).complete(request);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.text).toBe("ok");
+    expect(JSON.stringify(result)).not.toContain("provider-secret");
+    expect(JSON.stringify(result)).not.toContain("deliberation");
+  });
+
   it.each([
     null, {}, { ...payload(), object: "response" }, { ...payload(), model: "" },
     { ...payload(), choices: [] }, { ...payload(), choices: [...payload().choices, ...payload().choices] },

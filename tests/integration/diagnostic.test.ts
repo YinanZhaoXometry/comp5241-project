@@ -68,7 +68,7 @@ it("withholds answers before submission, records typed evidence once, and never 
   const a = await actor("main");
   const study = await confirmedStudy(a, 2, 3);
   const before = await getCheckState(a, study.rootId);
-  expect(before).toMatchObject({ status: "offered", synthetic: true, source: "manual-synthetic", bundleId: null, skipRecorded: false, finishRecorded: false });
+  // source is null until a bundle exists (S7: an AI-generated bundle would\n    // name its own origin); offered still means the manual fixture can link.\n    expect(before).toMatchObject({ status: "offered", synthetic: true, source: null, bundleId: null, skipRecorded: false, finishRecorded: false });
   expect(leaks(before)).toEqual([]);
   expect(JSON.stringify(before)).not.toContain("rationale");
   expect(JSON.stringify(before)).not.toContain("answerId");
@@ -78,7 +78,11 @@ it("withholds answers before submission, records typed evidence once, and never 
   expect(take.bundleId).toBeTruthy();
   expect(leaks(take)).toEqual([]);
   expect(await takeCheck(a, study.rootId, takeCommand)).toEqual(take); // one bundle per replay
-  await expect(takeCheck(a, study.rootId, cmd(study.revision))).rejects.toMatchObject({ code: "CONFLICT" });
+  // S7: a take with a NEW command on a plan revision that already has a bundle
+  // (generated or manual) is idempotent — it returns that bundle instead of
+  // conflicting; the one-bundle-per-plan constraint itself is unchanged.
+  const retake = await takeCheck(a, study.rootId, cmd(study.revision));
+  expect(retake.bundleId).toBe(take.bundleId);
   const state = await getCheckState(a, study.rootId);
   expect(state).toMatchObject({ status: "active", bundleId: take.bundleId, planId: study.planId });
   expect(state.items).toHaveLength(4);
@@ -118,9 +122,11 @@ it("withholds answers before submission, records typed evidence once, and never 
   const done = await getCheckState(a, study.rootId);
   expect(done.status).toBe("finished");
   expect(done.finishRecorded).toBe(true);
-  // Direct conversion attempt: the check cannot be retaken into a new award,
+  // Direct conversion attempt: a retake after finishing resolves to the SAME
+  // bundle (S7 idempotent per plan revision — never a second bundle or award),
   // and recorded payloads carry no score/credit/completion semantics at all.
-  await expect(takeCheck(a, study.rootId, cmd(study.revision))).rejects.toMatchObject({ code: "CONFLICT" });
+  const retakeFinished = await takeCheck(a, study.rootId, cmd(study.revision));
+  expect(retakeFinished.bundleId).toBe(take.bundleId);
   const serialized = JSON.stringify(done);
   for (const banned of ['"score"', '"credit"', '"completion"', '"grade"', '"passed"', '"awarded"']) expect(serialized).not.toContain(banned);
   expect((await database().query("SELECT count(*)::int AS n FROM app.diagnostic_evidence WHERE bundle_id=$1", [take.bundleId])).rows[0].n).toBe(3);

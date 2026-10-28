@@ -1,0 +1,877 @@
+import { z } from "zod";
+import { commandSchema, uuid, type Receipt } from "./setup";
+
+// Epic-2 S1 (confirmed-plan-to-generated-course tracer) contracts. A generated
+// course is a VERSIONED derivative of the exact confirmed plan revision: one
+// lesson with per-section source locations, resolved objectives, and ONE
+// recall item. The recall item's canonical answer and rationale are NEVER part
+// of any read model — they exist only in the stored content and in submission
+// feedback. There are deliberately no score, grade, attempt-evidence,
+// completion or credit fields here: typed practice evidence belongs to entry 5.
+
+export const COURSE_QUEUE = "course-generation";
+// The synthetic fixture's honest model provenance: local, deterministic,
+// zero-token. A live processor (gate F-A) would record its own model string.
+export const SYNTHETIC_COURSE_MODEL = "local-synthetic-course-fixture-v1";
+
+const sourceRefSchema = z.strictObject({
+  extractionId: uuid,
+  filename: z.string().trim().min(1).max(184),
+  locator: z.string().trim().min(1).max(120),
+});
+
+export const courseSectionSchema = z.strictObject({
+  text: z.string().trim().min(1).max(2000),
+  sourceRef: sourceRefSchema,
+});
+export const courseObjectiveSchema = z.strictObject({
+  index: z.number().int().min(0).max(7),
+  text: z.string().trim().min(1).max(300),
+});
+// Canonical answer/rationale live here and in the submission feedback ONLY.
+export const courseRecallSchema = z.strictObject({
+  objectiveIndex: z.number().int().min(0).max(7),
+  sourceRef: sourceRefSchema,
+  prompt: z.string().trim().min(1).max(1200),
+  answer: z.string().trim().min(1).max(800),
+  rationale: z.string().trim().min(1).max(800),
+});
+export type CourseRecall = z.infer<typeof courseRecallSchema>;
+// Legacy single-lesson content (pre-2.3 stored rows). Kept verbatim so those
+// rows keep serving unchanged; the v2 union below wraps them at read time —
+// no regeneration-on-read, no silent rewrite.
+export const courseContentV1Schema = z.strictObject({
+  // The lesson title is taken from the confirmed plan's own lesson list by the
+  // strict parser — the processor never supplies or renames it.
+  lessonTitle: z.string().trim().min(1).max(200),
+  sections: z.array(courseSectionSchema).min(1).max(8),
+  objectives: z.array(courseObjectiveSchema).min(1).max(8),
+  recall: courseRecallSchema,
+});
+export type CourseContentV1 = z.infer<typeof courseContentV1Schema>;
+
+// ---------------------------------------------------------------------------
+// Epic-2 S3: content v2 — the confirmed plan's FULL lesson set with per-lesson
+// sections and explicit tracker items. Required items are the lessons' own
+// readings; optional enrichment is generated, labeled and never blocks. There
+// are deliberately no score, credit, completion, dwell or scroll fields: done
+// is ONLY an explicit learner action recorded in the owner-scoped tracker
+// table (migration 017), never inferred from anything here.
+// ---------------------------------------------------------------------------
+
+export const courseItemKinds = ["reading", "enrichment"] as const;
+export type CourseItemKind = (typeof courseItemKinds)[number];
+// Stable tracker identity per (course version, lesson, item kind) — plain
+// string ids so no new uuid surface enters URLs.
+export const courseItemIdPattern = /^(lesson:[1-8]:reading|enrichment:[1-8])$/u;
+
+export const courseItemSchema = z.strictObject({
+  id: z.string().regex(courseItemIdPattern),
+  kind: z.enum(courseItemKinds),
+  required: z.boolean(),
+  title: z.string().trim().min(1).max(200),
+});
+export type CourseItem = z.infer<typeof courseItemSchema>;
+
+export const courseLessonSchema = z.strictObject({
+  // From the confirmed plan's own lesson list — the strict parser substitutes
+  // titles in plan order; the processor never supplies or renames them.
+  title: z.string().trim().min(1).max(200),
+  sections: z.array(courseSectionSchema).min(1).max(8),
+  items: z.array(courseItemSchema).min(1).max(4),
+});
+
+// Optional enrichment: exactly one overall, labeled optional, never blocking.
+export const courseEnrichmentSchema = z.strictObject({
+  id: z.literal("enrichment:1"),
+  kind: z.literal("enrichment"),
+  required: z.literal(false),
+  title: z.string().trim().min(1).max(200),
+  text: z.string().trim().min(1).max(2000),
+  sourceRef: sourceRefSchema,
+});
+export type CourseEnrichment = z.infer<typeof courseEnrichmentSchema>;
+
+// Each lesson carries EXACTLY its own required reading item, identified by its
+// 1-based position in the numbered sequence (shared by content v2 and v3).
+function refinePositionalReadingItems(
+  content: { lessons: Array<{ items: CourseItem[] }> },
+  context: z.RefinementCtx,
+): void {
+  content.lessons.forEach((lesson, index) => {
+    const expected = `lesson:${index + 1}:reading`;
+    const ok = lesson.items.length === 1
+      && lesson.items[0].id === expected
+      && lesson.items[0].kind === "reading"
+      && lesson.items[0].required === true;
+    if (!ok)
+      context.addIssue({
+        code: "custom",
+        path: ["lessons", index, "items"],
+        message: `lesson ${index + 1} must carry exactly its required reading item ${expected}`,
+      });
+  });
+}
+
+export const courseContentV2Schema = z
+  .strictObject({
+    contentVersion: z.literal(2),
+    lessons: z.array(courseLessonSchema).min(1).max(8),
+    objectives: z.array(courseObjectiveSchema).min(1).max(8),
+    recall: courseRecallSchema,
+    enrichment: courseEnrichmentSchema.optional(),
+  })
+  .superRefine((content, context) => refinePositionalReadingItems(content, context));
+export type CourseContentV2 = z.infer<typeof courseContentV2Schema>;
+
+// ---------------------------------------------------------------------------
+// Epic-2 S4: content v3 — background/goal adaptation. The FACTUAL core (lesson
+// titles and order, per-section text and source links, objectives, required
+// tracker items, the recall item and the optional enrichment) is IDENTICAL
+// across tracks; only the TREATMENT differs — one framing paragraph per lesson
+// (rendered before that lesson's sections) plus the course-level adaptation
+// record. Keeping the framing OUT of the factual sections is what makes
+// "identical factual claims and source links across tracks" structurally
+// checkable (see adaptation.ts) rather than eyeballed. The track itself is
+// never processor-supplied: deterministic code derives it from the stated
+// background, exactly like lesson titles come from the confirmed plan.
+// ---------------------------------------------------------------------------
+
+export const courseTracks = ["beginner", "advanced", "neutral"] as const;
+export type CourseTrack = (typeof courseTracks)[number];
+
+// The stored adaptation basis: the deterministic track derived from the stated
+// background (empty, missing or unmatched ⇒ neutral — no invention) plus a
+// bounded summary of what was actually stated. `backgroundSummary` may be
+// empty; the served pitch line renders only for a non-neutral track.
+export const courseAdaptationSchema = z.strictObject({
+  track: z.enum(courseTracks),
+  backgroundSummary: z.string().trim().max(400),
+});
+export type CourseAdaptation = z.infer<typeof courseAdaptationSchema>;
+
+// v3 lesson = the v2 lesson shape plus the treatment framing paragraph. The
+// framing is prose only: it may pitch plain language, examples, prerequisites
+// or trade-off depth, never a factual claim its sources do not state.
+export const courseLessonV3Schema = courseLessonSchema.extend({
+  framing: z.string().trim().min(1).max(600),
+});
+
+export const courseContentV3Schema = z
+  .strictObject({
+    contentVersion: z.literal(3),
+    lessons: z.array(courseLessonV3Schema).min(1).max(8),
+    objectives: z.array(courseObjectiveSchema).min(1).max(8),
+    recall: courseRecallSchema,
+    enrichment: courseEnrichmentSchema.optional(),
+    adaptation: courseAdaptationSchema,
+    // SHA-256 hex over the FACTUAL core only (lesson titles in order, every
+    // section's text, its source's filename + locator — the study-independent
+    // ref parts — objectives, the full recall item including its answer, and
+    // the optional enrichment; everything the cross-track validator calls the
+    // factual core, a narrower digest could report false identity). Computed
+    // by the strict parser at settle time and stored with the content so any
+    // consumer (entry 7's provenance surface included) can check cross-course
+    // fact identity cheaply. Treatment (framing, adaptation) and per-upload
+    // extraction ids never enter the digest.
+    factsDigest: z.string().regex(/^[0-9a-f]{64}$/u),
+  })
+  .superRefine((content, context) => refinePositionalReadingItems(content, context));
+export type CourseContentV3 = z.infer<typeof courseContentV3Schema>;
+
+// ---------------------------------------------------------------------------
+// Epic-2 S5: content v4 — the active recall PRACTICE SET. One recall card per
+// confirmed-plan objective replaces the single recall item in STORED content
+// (the served `recall` view and the 2.1 single-recall endpoint derive from
+// card 0 — one judge, two thin verbs, no parallel path). Canonical answers and
+// rationales live in the stored cards and in per-card submission feedback
+// ONLY, never in any GET payload. There are still deliberately no score,
+// grade, completion, course-attempt or credit fields: typed practice evidence
+// (unaided vs assisted) is recorded per submission in app.practice_attempt
+// (migration 019) and owns nothing but the submission event itself.
+// ---------------------------------------------------------------------------
+
+// Stable per-card identity, exactly the tracker pattern: the card binds to the
+// objective index it examines. Plain string ids so no new uuid surface enters
+// URLs.
+export const practiceCardIdPattern = /^practice:[0-7]$/u;
+
+// Canonical answer/rationale live here and in the submission feedback ONLY.
+export const practiceCardSchema = z.strictObject({
+  id: z.string().regex(practiceCardIdPattern),
+  objectiveIndex: z.number().int().min(0).max(7),
+  sourceRef: sourceRefSchema,
+  prompt: z.string().trim().min(1).max(1200),
+  answer: z.string().trim().min(1).max(800),
+  rationale: z.string().trim().min(1).max(800),
+});
+export type PracticeCard = z.infer<typeof practiceCardSchema>;
+
+export const coursePracticeSetSchema = z.strictObject({
+  cards: z.array(practiceCardSchema).min(1).max(8),
+});
+export type CoursePracticeSet = z.infer<typeof coursePracticeSetSchema>;
+
+// Practice-set integrity, enforced structurally at every parse: EXACTLY one
+// card per stored objective (every objective covered, no duplicates, no
+// invented objectives), and each card's id is its objective index.
+function refinePracticeSet(
+  content: { objectives: Array<{ index: number }>; practice: { cards: PracticeCard[] } },
+  context: z.RefinementCtx,
+): void {
+  const indexes = content.objectives.map(objective => objective.index);
+  const cards = content.practice.cards;
+  if (cards.length !== indexes.length) {
+    context.addIssue({ code: "custom", path: ["practice", "cards"], message: "the practice set must carry exactly one card per objective" });
+    return;
+  }
+  const seen = new Set<number>();
+  cards.forEach((card, position) => {
+    if (card.id !== `practice:${card.objectiveIndex}`)
+      context.addIssue({ code: "custom", path: ["practice", "cards", position, "id"], message: `card id must be practice:${card.objectiveIndex}` });
+    if (seen.has(card.objectiveIndex))
+      context.addIssue({ code: "custom", path: ["practice", "cards", position], message: "duplicate objective index in the practice set" });
+    seen.add(card.objectiveIndex);
+  });
+  for (const index of indexes)
+    if (!seen.has(index))
+      context.addIssue({ code: "custom", path: ["practice", "cards"], message: `objective ${index} has no card` });
+}
+
+export const courseContentV4Schema = z
+  .strictObject({
+    contentVersion: z.literal(4),
+    lessons: z.array(courseLessonV3Schema).min(1).max(8),
+    objectives: z.array(courseObjectiveSchema).min(1).max(8),
+    practice: coursePracticeSetSchema,
+    enrichment: courseEnrichmentSchema.optional(),
+    adaptation: courseAdaptationSchema,
+    // SHA-256 hex over the FACTUAL core only (lesson titles in order, every
+    // section's text, its source's filename + locator, objectives, the FULL
+    // practice set including every withheld answer, and the optional
+    // enrichment). Computed by the strict parser at settle time; treatment
+    // (framing, adaptation) and per-upload extraction ids never enter it.
+    factsDigest: z.string().regex(/^[0-9a-f]{64}$/u),
+  })
+  .superRefine((content, context) => {
+    refinePositionalReadingItems(content, context);
+    refinePracticeSet(content, context);
+  });
+export type CourseContentV4 = z.infer<typeof courseContentV4Schema>;
+
+// The stored-content union: v4 rows parse natively; pre-2.5 v3 rows, pre-2.4
+// v2 rows and pre-2.3 v1 rows keep their exact stored shapes and serve
+// unchanged (the legacy single recall becomes their one-card set view).
+export const courseContentSchema = z.union([courseContentV4Schema, courseContentV3Schema, courseContentV2Schema, courseContentV1Schema]);
+export type CourseContent = CourseContentV4 | CourseContentV3 | CourseContentV2 | CourseContentV1;
+// What every settled row serves as after storedCourseContent: v4 native, v3,
+// or v2 (a wrapped legacy v1 row is its own single-lesson v2 degenerate case).
+export type CourseContentServing = CourseContentV4 | CourseContentV3 | CourseContentV2;
+export type CourseSection = z.infer<typeof courseSectionSchema>;
+export type CourseSourceRef = z.infer<typeof sourceRefSchema>;
+
+// The single required reading item a lesson (or a wrapped legacy lesson)
+// carries. Pure and shared by the parser and the legacy wrap below.
+export function readingItemFor(lessonIndex: number, title: string): CourseItem {
+  return {
+    id: `lesson:${lessonIndex + 1}:reading`,
+    kind: "reading",
+    required: true,
+    title: `Read lesson ${lessonIndex + 1}: ${title}`.slice(0, 200),
+  };
+}
+
+// One serving path, no forked UI: a stored v1 row wraps into the v2 shape as
+// its own single-lesson degenerate case (derived tracker item, no enrichment —
+// v1 content never gains content it did not store).
+export function wrapLegacyCourseContent(v1: CourseContentV1): CourseContentV2 {
+  return {
+    contentVersion: 2,
+    lessons: [{
+      title: v1.lessonTitle,
+      sections: v1.sections,
+      items: [readingItemFor(0, v1.lessonTitle)],
+    }],
+    objectives: v1.objectives,
+    recall: v1.recall,
+  };
+}
+
+// Parse any stored content row into the serving shape; null when the stored
+// document matches neither version (the honest RETRYABLE_FAILURE path).
+export function storedCourseContent(raw: unknown): CourseContentServing | null {
+  const v4 = courseContentV4Schema.safeParse(raw);
+  if (v4.success) return v4.data;
+  const v3 = courseContentV3Schema.safeParse(raw);
+  if (v3.success) return v3.data;
+  const v2 = courseContentV2Schema.safeParse(raw);
+  if (v2.success) return v2.data;
+  const v1 = courseContentV1Schema.safeParse(raw);
+  if (v1.success) return wrapLegacyCourseContent(v1.data);
+  return null;
+}
+
+// The epic-2 S5 practice set over ANY stored content: v4 rows carry their own
+// per-objective cards; a pre-2.5 row's stored single recall becomes its own
+// one-card set view (its objective index names the card) — the stored row is
+// never rewritten and never gains content it did not store.
+export function practiceCardsOf(content: CourseContentServing): PracticeCard[] {
+  if ("practice" in content) return content.practice.cards;
+  const recall = content.recall;
+  return [{ id: `practice:${recall.objectiveIndex}`, ...recall }];
+}
+
+// The 2.1 single-recall view over any stored content, derived from card 0 —
+// one judge, two thin verbs, no parallel submission path.
+export function recallOf(content: CourseContentServing): CourseRecall {
+  const card = practiceCardsOf(content)[0];
+  return {
+    objectiveIndex: card.objectiveIndex,
+    sourceRef: card.sourceRef,
+    prompt: card.prompt,
+    answer: card.answer,
+    rationale: card.rationale,
+  };
+}
+
+// Treatment accessors over the serving union: pre-2.4 rows (v2, wrapped v1)
+// carry no adaptation and no framing — they present neutrally, exactly as
+// stored, and nothing is invented for them.
+export function contentAdaptation(content: CourseContentServing): CourseAdaptation | null {
+  return "adaptation" in content ? content.adaptation : null;
+}
+export function lessonFraming(lesson: CourseContentServing["lessons"][number]): string | null {
+  return "framing" in lesson ? lesson.framing : null;
+}
+// The stored factual-core digest (v3 rows); null on pre-2.4 rows.
+export function contentFactsDigest(content: CourseContentServing): string | null {
+  return "factsDigest" in content ? content.factsDigest : null;
+}
+
+// Flat tracker-item derivation from content (pure): required reading per
+// lesson plus the optional overall enrichment, in sequence order.
+export type CourseItemServing = {
+  id: string;
+  kind: CourseItemKind;
+  required: boolean;
+  title: string;
+  lessonNumber: number | null;
+  text: string | null;
+  source: { filename: string; locator: string } | null;
+};
+export function courseTrackerItems(content: CourseContentServing): CourseItemServing[] {
+  const items: CourseItemServing[] = [];
+  content.lessons.forEach((lesson, index) => {
+    for (const item of lesson.items)
+      items.push({ id: item.id, kind: item.kind, required: item.required, title: item.title, lessonNumber: index + 1, text: null, source: null });
+  });
+  if (content.enrichment)
+    items.push({
+      id: content.enrichment.id,
+      kind: "enrichment",
+      required: false,
+      title: content.enrichment.title,
+      lessonNumber: null,
+      text: content.enrichment.text,
+      source: { filename: content.enrichment.sourceRef.filename, locator: content.enrichment.sourceRef.locator },
+    });
+  return items;
+}
+
+// The processor's DRAFT shapes: index/position links only. Everything that
+// identifies a source or objective is resolved against the confirmed plan and
+// the handoff's source list by the strict parser — never trusted from output.
+export const courseDraftSectionSchema = z.strictObject({
+  text: z.string().trim().min(1).max(2000),
+  sourcePosition: z.number().int().min(0).max(9),
+  locator: z.string().trim().min(1).max(120),
+});
+// The pre-2.5 single-recall draft shape (kept inside the legacy draft schemas
+// below for the contract record); the v4 practice draft carries cards instead.
+export const courseDraftRecallSchema = z.strictObject({
+  objectiveIndex: z.number().int().min(0).max(7),
+  sourcePosition: z.number().int().min(0).max(9),
+  locator: z.string().trim().min(1).max(120),
+  prompt: z.string().trim().min(1).max(1200),
+  answer: z.string().trim().min(1).max(800),
+  rationale: z.string().trim().min(1).max(800),
+});
+
+// Epic-2 S3 v2 draft: one lessons entry per CONFIRMED PLAN lesson, in listed
+// order (the parser enforces count/order and substitutes every title), plus an
+// optional overall enrichment passage. Lesson count and titles are plan-owned.
+export const courseDraftLessonSchema = z.strictObject({
+  sections: z.array(courseDraftSectionSchema).min(1).max(8),
+});
+export const courseDraftEnrichmentSchema = z.strictObject({
+  sourcePosition: z.number().int().min(0).max(9),
+  locator: z.string().trim().min(1).max(120),
+  text: z.string().trim().min(1).max(2000),
+});
+// Epic-2 S4 v3 draft: the v2 shape plus the per-lesson TREATMENT framing
+// paragraph. The track itself is NEVER part of the reply — deterministic code
+// derives it from the stated background (adaptation.ts) and the parser
+// substitutes the adaptation record, exactly like it substitutes lesson titles
+// from the plan.
+export const courseDraftLessonV3Schema = courseDraftLessonSchema.extend({
+  framing: z.string().trim().min(1).max(600),
+});
+export const courseDraftV3Schema = z.strictObject({
+  lessons: z.array(courseDraftLessonV3Schema).min(1).max(8),
+  objectiveIndexes: z.array(z.number().int().min(0).max(7)).min(1).max(8),
+  recall: courseDraftRecallSchema,
+  enrichment: courseDraftEnrichmentSchema.optional(),
+});
+export type CourseDraftV3 = z.infer<typeof courseDraftV3Schema>;
+
+// Epic-2 S5 v4 draft: the v3 shape with the single recall REPLACED by the
+// practice set — one card per listed plan outcome (the parser enforces full
+// coverage, exactly one card per objective, resolvable links). Card ids are
+// DERIVED at settle time from each card's objective index, exactly like lesson
+// titles come from the plan; nothing card-identifying is trusted from output.
+export const courseDraftCardSchema = z.strictObject({
+  objectiveIndex: z.number().int().min(0).max(7),
+  sourcePosition: z.number().int().min(0).max(9),
+  locator: z.string().trim().min(1).max(120),
+  prompt: z.string().trim().min(1).max(1200),
+  answer: z.string().trim().min(1).max(800),
+  rationale: z.string().trim().min(1).max(800),
+});
+export const courseDraftV4Schema = z.strictObject({
+  lessons: z.array(courseDraftLessonV3Schema).min(1).max(8),
+  objectiveIndexes: z.array(z.number().int().min(0).max(7)).min(1).max(8),
+  cards: z.array(courseDraftCardSchema).min(1).max(8),
+  enrichment: courseDraftEnrichmentSchema.optional(),
+});
+export type CourseDraftV4 = z.infer<typeof courseDraftV4Schema>;
+
+// The legacy single-lesson draft shape (pre-2.3 processors); kept so the
+// contract record stays complete. Generation now emits and accepts v4 only.
+export const courseDraftV1Schema = z.strictObject({
+  sections: z.array(courseDraftSectionSchema).min(1).max(8),
+  objectiveIndexes: z.array(z.number().int().min(0).max(7)).min(1).max(8),
+  recall: courseDraftRecallSchema,
+});
+export type CourseDraftV1 = z.infer<typeof courseDraftV1Schema>;
+
+// The pre-2.4 multi-lesson draft shape (no framing); kept so the contract
+// record stays complete. A draft without per-lesson framing is now INVALID —
+// the v4 parser rejects it, never repairs it.
+export const courseDraftV2Schema = z.strictObject({
+  lessons: z.array(courseDraftLessonSchema).min(1).max(8),
+  objectiveIndexes: z.array(z.number().int().min(0).max(7)).min(1).max(8),
+  recall: courseDraftRecallSchema,
+  enrichment: courseDraftEnrichmentSchema.optional(),
+});
+export type CourseDraftV2 = z.infer<typeof courseDraftV2Schema>;
+
+// Restart-safe job envelope: id = request id, one attempt (retryLimit 0), the
+// recorded owner identity re-authorizes every fence at consume time.
+export const courseJobSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  requestId: uuid,
+  admissionId: uuid,
+  rootId: uuid,
+  ownerId: uuid,
+  sessionId: uuid,
+});
+export type CourseJob = z.infer<typeof courseJobSchema>;
+
+// The request-time PIN of the pitch-relevant preference fields, stored on the
+// generated_course row (migration 018's nullable preference_pin jsonb). The
+// worker consumes the pin — never a live re-read — so a background edited
+// between request and worker-run cannot re-pitch the settled course. Rows
+// without a valid pin (pre-review legacy rows) fall back to the current
+// preference row.
+export const coursePreferencePinSchema = z.strictObject({
+  goal: z.string().max(200),
+  topic: z.string().max(160),
+  background: z.string().max(400),
+});
+export type CoursePreferencePin = z.infer<typeof coursePreferencePinSchema>;
+
+// Recall submission (2.1, legacy thin verb): the plain command envelope plus
+// the attempted recall text. It derives from card 0 of the latest ready course
+// through the SAME machinery as submitPracticeCard — one judge, no parallel
+// path — but by the 2.1 contract it returns feedback and records a
+// content-free receipt ONLY: no typed evidence row, because evidence kinds
+// are learner-declared and this schema declares none.
+export const submitRecallSchema = commandSchema.extend({
+  attempted: z.string().trim().min(1).max(2000),
+});
+export type SubmitRecall = z.infer<typeof submitRecallSchema>;
+
+// Epic-2 S5 typed practice evidence kinds. The kind is LEARNER-DECLARED at
+// submission (never inferred) and the two kinds are never conflated (D2).
+export const evidenceKinds = ["unaided", "assisted"] as const;
+export type EvidenceKind = (typeof evidenceKinds)[number];
+
+// Per-card practice submission: the command envelope plus the exact ready
+// course version, the stable card id and the learner-declared assisted flag.
+// Feedback is computed and returned (and replayed by command key); ONE typed
+// evidence row is written per submission event — retries are fresh rows under
+// fresh commands, never deduplicated, never double-counted as anything.
+export const submitPracticeSchema = commandSchema.extend({
+  courseId: uuid,
+  cardId: z.string().regex(practiceCardIdPattern),
+  attempted: z.string().trim().min(1).max(2000),
+  assisted: z.boolean(),
+});
+export type SubmitPractice = z.infer<typeof submitPracticeSchema>;
+
+// Epic-2 S3 explicit content-item mark-done: the plain command envelope plus
+// the exact ready course version and the stable item id being marked. Only
+// required items are markable — optional enrichment is labeled and never
+// tracked. Replay rides the existing command_receipt machinery.
+export const markItemDoneSchema = commandSchema.extend({
+  courseId: uuid,
+  itemId: z.string().trim().min(3).max(40),
+});
+export type MarkItemDone = z.infer<typeof markItemDoneSchema>;
+
+export type CourseUsage = { inputTokens: number; outputTokens: number; totalTokens: number };
+
+// Owner-scoped study state. `none` is the honest empty state of a confirmed
+// plan whose course has not been generated; the recall answer appears in no
+// state below, only in RecallFeedback after submission.
+export type CourseState =
+  | { state: "none"; rootId: string; revision: number }
+  | { state: "pending"; rootId: string; revision: number; requestId: string }
+  | { state: "failed"; rootId: string; revision: number; requestId: string; failureCode: string | null }
+  | { state: "ready"; rootId: string; revision: number; course: CourseView };
+
+export type CourseLessonView = {
+  // 1-based: the numbered sequence of the player shell.
+  number: number;
+  title: string;
+  // Epic-2 S4 treatment paragraph rendered before this lesson's sections;
+  // null on pre-2.4 rows (no adaptation field ⇒ neutral presentation).
+  framing: string | null;
+  sections: Array<{ text: string; source: { filename: string; locator: string } }>;
+};
+
+// One tracker row with its server-persisted done state. `done` is ONLY the
+// explicit mark-done outcome — there is no dwell, scroll or visibility
+// inference anywhere, and optional rows are served labeled, never blocking.
+export type CourseItemView = CourseItemServing & {
+  done: boolean;
+  doneAt: string | null;
+};
+
+export type CourseView = {
+  courseId: string;
+  requestId: string;
+  planRevisionId: string;
+  selectionId: string;
+  version: number;
+  // A newer ready course version exists for this root (re-confirm → regenerate).
+  superseded: boolean;
+  // The newest ready per-root version number when superseded (what an explicit
+  // switch moves to); null otherwise.
+  supersededBy: number | null;
+  // The course belongs to a previous confirmed plan revision.
+  historical: boolean;
+  model: string;
+  usage: CourseUsage | null;
+  createdAt: string;
+  settledAt: string;
+  // Epic-2 S4 adaptation basis stored with the content (track derived
+  // deterministically from the stated background at generation time + the
+  // bounded summary of what was stated); null on pre-2.4 rows, which serve
+  // unchanged and present neutrally. A neutral track claims no track.
+  adaptation: CourseAdaptation | null;
+  // SHA-256 hex of the factual core (v3 rows) — two courses generated from
+  // the same plan and sources under different tracks share it; null on
+  // pre-2.4 rows.
+  factsDigest: string | null;
+  // The full numbered lesson sequence (a stored v1 course serves as its own
+  // single-lesson degenerate case through the same shape).
+  lessons: CourseLessonView[];
+  // Flat tracker items (required readings per lesson + optional enrichment)
+  // with this owner's done state for THIS course version.
+  items: CourseItemView[];
+  objectives: Array<{ index: number; text: string }>;
+  // The epic-2 S5 practice set: one recall card per objective, prompts and
+  // source locations only — the canonical answer and rationale of every card
+  // appear in NO view, only in per-card submission feedback.
+  practice: {
+    cards: Array<{
+      id: string;
+      objective: string;
+      prompt: string;
+      source: { filename: string; locator: string };
+    }>;
+  };
+  // The 2.1 single-recall view, derived from card 0 for compatibility.
+  recall: {
+    prompt: string;
+    objective: string;
+    source: { filename: string; locator: string };
+  };
+};
+
+// Released exactly once per submission command; the sole reveal path for the
+// canonical answers and rationales. `evidenceKind` is ALWAYS present on
+// practice-verb feedback (the learner's own assisted declaration) and ABSENT
+// on the legacy 2.1 single-recall verb, which records no typed evidence at
+// all — a kind is never inferred (D2).
+export type PracticeFeedback = {
+  rootId: string;
+  revision: number;
+  courseId: string;
+  cardId: string;
+  outcome: "correct" | "incorrect";
+  attempted: string;
+  answer: string;
+  rationale: string;
+  source: { filename: string; locator: string };
+  evidenceKind?: EvidenceKind;
+};
+// The 2.1 single-recall feedback, now the card-0 member of the same family
+// (one feedback shape, no parallel path) — evidence-free by the 2.1 contract.
+export type RecallFeedback = PracticeFeedback;
+
+// ---------------------------------------------------------------------------
+// Epic-2 S2: bounded source retrieval and attributed supplementation. A
+// supplement pass runs over ONE ready course version: the processor only ever
+// PROPOSES candidate public sources for the plan's declared gaps; the bounded
+// fetcher retrieves them; deterministic code verifies every claimed passage
+// against the fetched bytes. There are deliberately no score, credit or
+// completion semantics here, and supplements never rewrite uploads.
+// ---------------------------------------------------------------------------
+
+export const SUPPLEMENT_QUEUE = "supplement-fetch-v1";
+// The synthetic proposal fixture's honest model provenance (the fetch side
+// is not a model at all). A live proposal processor (F-A) would record its
+// own model string.
+export const SYNTHETIC_PROPOSAL_MODEL = "local-synthetic-supplement-proposal-fixture-v1";
+
+// The dispatch command pins the exact ready course version being
+// supplemented (the stage knows it from the served course view).
+export const requestSupplementsSchema = commandSchema.extend({ courseId: uuid });
+export type RequestSupplements = z.infer<typeof requestSupplementsSchema>;
+
+// Restart-safe job envelope: id = request id, one attempt (retryLimit 0), the
+// recorded owner identity re-authorizes every fence at consume time.
+export const supplementJobSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  requestId: uuid,
+  admissionId: uuid,
+  courseId: uuid,
+  rootId: uuid,
+  ownerId: uuid,
+  sessionId: uuid,
+});
+export type SupplementJob = z.infer<typeof supplementJobSchema>;
+
+// One declared gap, derived server-side from the confirmed plan's own
+// missingExplanations plus the generated lesson's outcome context — never
+// model-supplied.
+export type CourseGap = { index: number; description: string; objective: string };
+export const supplementOutcomes = ["supported", "conflict", "unsupported"] as const;
+export type SupplementOutcome = (typeof supplementOutcomes)[number];
+
+// The processor's DRAFT shape: index links only. Host must be allowlisted,
+// the claim must restate the gap it answers, and everything identifying real
+// content (the gap, the outcome, the upload section) is resolved against the
+// course and plan by the strict parser — never trusted from output.
+export const supplementCandidateDraftSchema = z.strictObject({
+  gapIndex: z.number().int().min(0).max(7),
+  host: z.string().trim().toLowerCase().min(4).max(253),
+  // A path only: no query, no fragment, no credentials — the fetch URL is
+  // built as https://{allowlisted host}{path} and revalidated by the boundary.
+  path: z.string().max(512).regex(/^\/[A-Za-z0-9._~!$&'()*+,;=:@/-]*$/u),
+  claim: z.string().trim().min(1).max(300),
+  expectedPassage: z.string().trim().min(1).max(2000),
+  outcomeIndex: z.number().int().min(0).max(7),
+  sectionIndex: z.number().int().min(0).max(7),
+});
+export const supplementProposalDraftSchema = z.strictObject({
+  candidates: z.array(supplementCandidateDraftSchema).min(1).max(8),
+});
+export type SupplementCandidateDraft = z.infer<typeof supplementCandidateDraftSchema>;
+
+// A persisted, verified supplement record (served shape). 'unsupported'
+// carries no passage/hash — only the honest record that the claimed passage
+// was checked against the fetched source and not found.
+export type SupplementRecord = {
+  position: number;
+  outcome: SupplementOutcome;
+  url: string;
+  origin: string;
+  locator: string | null;
+  passage: string | null;
+  contentHash: string | null;
+  retrievedAt: string | null;
+  claim: string;
+  conflict: { uploadExcerpt: string; uploadSource: string } | null;
+};
+export type GapResolution = { gap: CourseGap; outcome: SupplementOutcome | "unaddressed"; supplement: SupplementRecord | null };
+
+// Owner-scoped supplement state for one course version. `none` is the honest
+// state of gaps the pass has not run on; per-gap outcomes are honest in every
+// state and never become a scored item. `gapCount` is the plan's DECLARED gap
+// total — `gaps` carries at most the first MAX_GAPS (8) and `gapsTruncated`
+// states honestly when the release's cap dropped declared gaps.
+export type SupplementsState = {
+  state: "none" | "pending" | "failed" | "ready";
+  rootId: string;
+  revision: number;
+  courseId: string;
+  version: number;
+  gapCount: number;
+  gapsTruncated: boolean;
+  requestId?: string;
+  failureCode?: string | null;
+  gaps: GapResolution[];
+};
+
+// ---------------------------------------------------------------------------
+// Epic-2 S6: learner-controlled why exploration with honest stopping. A
+// per-lesson "Go deeper" command dispatches ONE generation through the existing
+// admission/settle machinery and persists a why-explanation derivative: one row
+// per (owner, course version, lesson index, depth) whose dimension is FIXED BY
+// SEQUENCING (level 1 purpose, level 2 assumptions/trade-offs) so "beyond
+// restatement" stays deterministically checkable. Evidence availability is pure
+// server-side code over the stored course/supplement material computed BEFORE
+// any dispatch — a request past it gets an honest exhaustion verdict and zero
+// dispatch (no invented cause). Depth NEVER unlocks content, credit, tracker
+// state or completion anywhere; every response carries the AI-generated ·
+// Unreviewed label and cascades with the course lineage.
+// ---------------------------------------------------------------------------
+
+export const WHY_QUEUE = "why-step-v1";
+// The synthetic why fixture's honest model provenance: local, deterministic,
+// zero-token. A live processor (gate F-A) would record its own model string.
+export const SYNTHETIC_WHY_MODEL = "local-synthetic-why-fixture-v1";
+
+export const whyDimensions = ["purpose", "assumptions-trade-offs"] as const;
+export type WhyDimension = (typeof whyDimensions)[number];
+// The release's fixed dimension ladder: exactly two levels, so the stepper
+// never offers a level it cannot ground and availability caps structurally.
+export const MAX_WHY_DEPTH = 2;
+
+// Fixed dimension sequencing (level 1 purpose, level 2 assumptions/trade-offs)
+// — derived from the depth in code, never trusted from processor output.
+export function whyDimensionForDepth(depth: number): WhyDimension {
+  if (depth === 1) return "purpose";
+  if (depth === 2) return "assumptions-trade-offs";
+  throw new Error("why depth out of range");
+}
+
+// The "Go deeper" command: the command envelope plus the exact ready course
+// version, the 0-based lesson index and the requested depth. Anything past the
+// server-computed availability returns the honest exhaustion verdict — an
+// honest state, not an error — with zero dispatch and zero stored response.
+export const requestWhySchema = commandSchema.extend({
+  courseId: uuid,
+  lessonIndex: z.number().int().min(0).max(7),
+  depth: z.number().int().min(1).max(8),
+});
+export type RequestWhy = z.infer<typeof requestWhySchema>;
+
+// Restart-safe job envelope: id = request id (the why_explanation row id), one
+// attempt (retryLimit 0), the recorded owner identity re-authorizes every fence
+// at consume time. lessonIndex/depth ride the envelope so the worker re-derives
+// the same bounds it re-fences.
+export const whyJobSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  requestId: uuid,
+  admissionId: uuid,
+  courseId: uuid,
+  rootId: uuid,
+  ownerId: uuid,
+  sessionId: uuid,
+  lessonIndex: z.number().int().min(0).max(7),
+  depth: z.number().int().min(1).max(2),
+});
+export type WhyJob = z.infer<typeof whyJobSchema>;
+
+// A level's visible-source citation. Lesson citations name the lesson's own
+// source excerpt (filename + locator); supplement citations name a VERIFIED
+// S2 supplement record (origin + url + its locator inside the fetched source).
+export const whySourceLessonSchema = z.strictObject({
+  kind: z.literal("lesson"),
+  filename: z.string().trim().min(1).max(184),
+  locator: z.string().trim().min(1).max(120),
+});
+export const whySourceSupplementSchema = z.strictObject({
+  kind: z.literal("supplement"),
+  origin: z.string().trim().min(1).max(253),
+  url: z.string().trim().min(8).max(512),
+  locator: z.string().trim().min(1).max(200),
+});
+export const whySourceSchema = z.discriminatedUnion("kind", [whySourceLessonSchema, whySourceSupplementSchema]);
+export type WhySource = z.infer<typeof whySourceSchema>;
+
+// The stored/served explanation: prose beyond restatement plus at least one
+// resolved visible-source citation. The dimension is derived from the depth.
+export const whyExplanationSchema = z.strictObject({
+  depth: z.number().int().min(1).max(MAX_WHY_DEPTH),
+  dimension: z.enum(whyDimensions),
+  text: z.string().trim().min(1).max(2000),
+  sources: z.array(whySourceSchema).min(1).max(4),
+});
+export type WhyExplanation = z.infer<typeof whyExplanationSchema>;
+
+export type WhyExplanationView = WhyExplanation & {
+  model: string;
+  createdAt: string;
+};
+
+export type WhyLevelStatus = "available" | "exhausted" | "pending" | "failed" | "ready";
+// One ladder rung per fixed dimension (depth 1..MAX_WHY_DEPTH). `available`
+// means groundable-but-not-requested; `exhausted` means past the evidence —
+// the stepper never offers it; `pending`/`failed`/`ready` mirror the row.
+export type WhyLevelView = {
+  depth: number;
+  dimension: WhyDimension;
+  status: WhyLevelStatus;
+  requestId?: string;
+  failureCode?: string | null;
+  explanation?: WhyExplanationView;
+};
+
+// Owner-scoped why state for ONE lesson of ONE ready course version.
+export type WhyState = {
+  rootId: string;
+  revision: number;
+  courseId: string;
+  version: number;
+  lessonIndex: number;
+  lessonTitle: string;
+  // The server-computed evidence availability (0..MAX_WHY_DEPTH) — pure over
+  // the stored course content plus the verified supplements of the latest
+  // settled supplement pass, computed before any dispatch.
+  availableDepth: number;
+  levels: WhyLevelView[];
+};
+
+// The honest exhaustion verdict: zero dispatch, zero writes, no stored
+// response — deterministic, so an identical retry verdicts identically.
+export type WhyExhausted = {
+  rootId: string;
+  revision: number;
+  courseId: string;
+  lessonIndex: number;
+  depth: number;
+  state: "exhausted";
+  availableDepth: number;
+};
+export type WhyReceipt = Receipt & { courseId: string; lessonIndex: number; depth: number };
+
+// The processor's DRAFT shape: prose + index links only. Citation indexes are
+// GLOBAL piece indexes into the prompt's evidence listing (the lesson's own
+// sections first, the verified supplements continuing after them). Everything
+// that identifies a real source is resolved against that listing by the strict
+// parser — never trusted from output — and restatement-shaped prose is
+// rejected, never repaired.
+export const whyCitationDraftSchema = z.strictObject({
+  kind: z.enum(["lesson", "supplement"]),
+  index: z.number().int().min(0).max(15),
+});
+export const whyDraftSchema = z.strictObject({
+  explanation: z.string().trim().min(1).max(2000),
+  citations: z.array(whyCitationDraftSchema).min(1).max(4),
+});
+export type WhyDraft = z.infer<typeof whyDraftSchema>;

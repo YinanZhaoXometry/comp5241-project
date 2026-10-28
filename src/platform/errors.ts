@@ -6,6 +6,8 @@ export const messages = {
   CONFLICT:
     'The saved revision changed. Reload the latest version before reapplying your edits.',
   RATE_LIMITED: 'The local processing limit has been reached. Try again later.',
+  AI_BUDGET_EXHAUSTED:
+    'The local AI budget is exhausted. No request was dispatched; the operator must review the ledger before more.',
   RETRYABLE_FAILURE:
     'The operation could not finish. Saved work is unchanged; retry when available.',
 } as const;

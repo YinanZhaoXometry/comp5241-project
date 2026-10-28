@@ -8,16 +8,19 @@ import { FilePicker, Materials } from "./materials";
 import { PrivacyPanel } from "./privacy-panel";
 import { GoalStage } from "./goal-stage";
 import { CheckStage } from "./check-stage";
+import { CourseStage } from "./course-stage";
 import { ExportPanel } from "./export-panel";
 import { DangerZone } from "./danger-zone";
+import { AiAssist } from "./ai-assist";
+import type { Plan } from "../contracts/setup";
 import { errorCode, messages } from "../platform/errors";
 import type { Study } from "../modules/materials-setup/service";
 import type { Receipt } from "../contracts/setup";
 
 type Session = { user: { id: string; name: string }; needsRefresh: boolean };
-type Entry = { rootId: string; filename: string; revision: number; state: string; confirmed: boolean; cleanupState: string };
+type Entry = { rootId: string; filename: string; revision: number; state: string; confirmed: boolean; cleanupState: string; courseGenerated: boolean };
 
-export function StudyApp({ prefillEmail, prefillPassword }: Readonly<{ prefillEmail?: string; prefillPassword?: string }>) {
+export function StudyApp({ prefillEmail }: Readonly<{ prefillEmail?: string }>) {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -29,6 +32,8 @@ export function StudyApp({ prefillEmail, prefillPassword }: Readonly<{ prefillEm
   const [receipt, setReceipt] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [viewGeneration, setViewGeneration] = useState(0);
+  const [aiTopic, setAiTopic] = useState<{ value: string; stamp: number } | null>(null);
+  const [aiDraft, setAiDraft] = useState<{ plan: Plan; stamp: number } | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const actionKeys = useRef(new Map<string, ReturnType<typeof command>>());
   const generation = useRef(0);
@@ -36,7 +41,7 @@ export function StudyApp({ prefillEmail, prefillPassword }: Readonly<{ prefillEm
     generation.current += 1;
     uploadAbort.current?.abort(); uploadAbort.current = null; setUploading(false);
     setViewGeneration(generation.current); setBusy(false);
-    setSession(null); setEntries([]); setStudy(null); setDirty(false); setReceipt(null); actionKeys.current.clear();
+    setSession(null); setEntries([]); setStudy(null); setDirty(false); setReceipt(null); actionKeys.current.clear(); setAiTopic(null); setAiDraft(null);
   }, []);
   const failure = useCallback((error: unknown) => {
     const code = errorCode(error);
@@ -108,7 +113,7 @@ export function StudyApp({ prefillEmail, prefillPassword }: Readonly<{ prefillEm
   }
   async function open(root: string) {
     if (dirty && !globalThis.confirm("Leave unsaved edits? Only saved work can be reopened.")) return;
-    await act(async current => { const value = await api<Study>(`studies/${root}`); if (!current()) return; setStudy(value); setDirty(false); setReceipt(null); actionKeys.current.clear(); moveFocus(); });
+    await act(async current => { const value = await api<Study>(`studies/${root}`); if (!current()) return; setStudy(value); setDirty(false); setReceipt(null); actionKeys.current.clear(); setAiTopic(null); setAiDraft(null); moveFocus(); });
   }
   async function upload(files: File[]) {
     const intent = `inputs:${study?.rootId ?? "new"}:${files.map(file => `${file.name}:${file.size}:${file.lastModified}`).join("|")}`;
@@ -136,14 +141,14 @@ export function StudyApp({ prefillEmail, prefillPassword }: Readonly<{ prefillEm
     <a className="skip-link" href="#main">Skip to study workspace</a>
     <header className="topbar"><Link href="/" className="brand" prefetch={false}>Fieldnotes<span>PRIVATE STUDY</span></Link><span className="tag">Local · synthetic only</span>{session && <button className="quiet" onClick={() => { void signOut(); }}>Sign out</button>}</header>
     <main id="main" className="workspace">
-      <aside className="sidebar"><p className="eyebrow">YOUR WORKSPACE</p><h2>Make room<br />for understanding.</h2><p>Read a source. Choose a direction. Shape a small, deliberate plan.</p><ol className="steps"><li>01 · Materials</li><li>02 · Topic & goal</li><li>03 · Manual plan</li></ol><p className="fine">No external AI calls. No generated courses. No completion credit.</p></aside>
+      <aside className="sidebar"><p className="eyebrow">YOUR WORKSPACE</p><h2>Make room<br />for understanding.</h2><p>Read a source. Choose a direction. Shape a small, deliberate plan.</p><ol className="steps"><li>01 · Materials</li><li>02 · Topic & goal</li><li>03 · Manual plan</li></ol><p className="fine">AI runs locally and stays labeled. Generated courses are AI-generated · Unreviewed. No completion credit.</p></aside>
       <div className="content">
         <p className="eyebrow">COMP5241 / PRIVATE STUDY SETUP</p>
         <h1 ref={heading} tabIndex={-1}>{session ? study ? "From source to study plan" : "My study library" : "A private place to begin"}</h1>
         <p className="subtitle">A small, source-led learning journey. Your plan stays yours.</p>
         <div role="alert" className={notice ? "notice" : undefined}>{notice}</div>
         {!ready && <output>Checking your session…</output>}
-        {ready && !session && <section className="panel signin"><h2>Sign in</h2><p>Use an operator-provisioned synthetic account. Public sign-up and self-promotion are unavailable.</p><form onSubmit={event => { void signIn(event); }}><label htmlFor="email">Email</label><input id="email" name="email" type="email" autoComplete="username" required maxLength={254} defaultValue={prefillEmail} /><label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="current-password" required minLength={16} maxLength={128} defaultValue={prefillPassword} /><button disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form><p className="fine">{prefillEmail ? "Prefilled with the local synthetic learner account — just press Sign in." : "Contact the local operator for account access or recovery."}</p></section>}
+        {ready && !session && <section className="panel signin"><h2>Sign in</h2><p>Use an operator-provisioned synthetic account. Public sign-up and self-promotion are unavailable.</p><form onSubmit={event => { void signIn(event); }}><label htmlFor="email">Email</label><input id="email" name="email" type="email" autoComplete="username" required maxLength={254} defaultValue={prefillEmail} /><label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="current-password" required minLength={16} maxLength={128} /><button disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form><p className="fine">{prefillEmail ? "Email prefilled from the local synthetic learner account." : "Contact the local operator for account access or recovery."}</p></section>}
         {session && <>
           <p className="fine">Signed in as {session.user.name}</p>
           {uploading && <button className="quiet" onClick={() => uploadAbort.current?.abort()}>Cancel upload</button>}
@@ -152,12 +157,14 @@ export function StudyApp({ prefillEmail, prefillPassword }: Readonly<{ prefillEm
           {study && <>
             <div className="section-heading"><h2>Your materials</h2><button className="quiet" onClick={() => { if (!dirty || globalThis.confirm("Leave unsaved edits?")) { setStudy(null); setDirty(false); } }}>Back to library</button></div>
             <Materials key={`${session.user.id}:${study.rootId}`} study={study} busy={busy} onWork={act} onUpload={upload} onSaved={value => { if (viewGeneration === generation.current) { setStudy(value); void load(); } }} />
-            <GoalStage key={session.user.id} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onDirty={value => { if (viewGeneration === generation.current) setDirty(value); }} />
-            {study.extractionId && <PlanEditor key={`${session.user.id}:${study.rootId}:${study.slots.filter(slot => slot.state === "removed").map(slot => slot.slotId).join(":")}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onDirty={value => { if (viewGeneration === generation.current) setDirty(value); }} onSaved={value => { if (viewGeneration === generation.current) { setStudy(value); void load(); } }} />}
+            <GoalStage key={session.user.id} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onDirty={value => { if (viewGeneration === generation.current) setDirty(value); }} appliedTopic={aiTopic} />
+            {study.extractionId && <PlanEditor key={`${session.user.id}:${study.rootId}:${study.slots.filter(slot => slot.state === "removed").map(slot => slot.slotId).join(":")}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onDirty={value => { if (viewGeneration === generation.current) setDirty(value); }} onSaved={value => { if (viewGeneration === generation.current) { setStudy(value); void load(); } }} draft={aiDraft} />}
+            <AiAssist key={`${session.user.id}:${study.rootId}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onTopic={setAiTopic} onDraft={setAiDraft} />
             {study.confirmed && <CheckStage key={`${session.user.id}:${study.rootId}:${study.revision}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} />}
+            {study.confirmed && <CourseStage key={`course:${session.user.id}:${study.rootId}:${study.revision}`} study={study} busy={busy} onBusy={value => { if (viewGeneration === generation.current) setBusy(value); }} onFailure={error => { if (viewGeneration === generation.current) failure(error); }} onCourseReady={() => { if (viewGeneration === generation.current) void api<Study>(`studies/${study.rootId}`).then(value => { if (viewGeneration === generation.current) setStudy(value); }).catch(() => { /* the stage's own state stays authoritative */ }); }} />}
             <DangerZone study={study} busy={busy} onWork={act} onDeleted={message => { setStudy(null); setDirty(false); setReceipt(message); void load().then(() => moveFocus()); }} />
           </>}
-          <section className="library"><h2>Saved studies</h2>{entries.length === 0 ? <p>No saved studies yet.</p> : <ul>{entries.map(entry => <li key={entry.rootId}><div><strong>{entry.filename}</strong><p className="fine">{entry.state === "deleted" ? `Access revoked · cleanup ${entry.cleanupState}` : entry.confirmed ? "Plan confirmed — course not generated" : `Manual draft · ${entry.state} · revision ${entry.revision}`}</p></div>{entry.state !== "deleted" && <button className="quiet" disabled={busy} onClick={() => { void open(entry.rootId); }}>{entry.confirmed ? "View plan" : "Resume"}</button>}</li>)}</ul>}</section>
+          <section className="library"><h2>Saved studies</h2>{entries.length === 0 ? <p>No saved studies yet.</p> : <ul>{entries.map(entry => <li key={entry.rootId}><div><strong>{entry.filename}</strong><p className="fine">{entry.state === "deleted" ? `Access revoked · cleanup ${entry.cleanupState}` : entry.confirmed ? (entry.courseGenerated ? "Plan confirmed · mini-course generated" : "Plan confirmed — course not generated") : `Manual draft · ${entry.state} · revision ${entry.revision}`}</p></div>{entry.state !== "deleted" && <button className="quiet" disabled={busy} onClick={() => { void open(entry.rootId); }}>{entry.confirmed ? "View plan" : "Resume"}</button>}</li>)}</ul>}</section>
           <ExportPanel busy={busy} onWork={act} />
           <PrivacyPanel />
         </>}
