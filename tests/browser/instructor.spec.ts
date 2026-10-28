@@ -104,6 +104,11 @@ test("instructor authors, approves and enrolls; the learner studies only the app
   // ── learner: studies through the learner shell, never the studio ───────
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByText("Signed out. Views cleared.", { exact: true })).toBeVisible();
+  // The auth limiter fixture is reset between the grouped sign-in phases of
+  // this single long test (the course.spec beforeEach precedent): better-
+  // auth's per-endpoint sign-in limit is far below this journey's seven
+  // sign-ins, and only this test's own synthetic rows are cleared.
+  await database().query('DELETE FROM auth."rateLimit"');
   await signInOn(page, "/enrolled", learner.email, learner.password);
   await expect(page.getByRole("heading", { name: "Enrolled courses", level: 1, exact: true })).toBeVisible();
   const courseRow = page.getByRole("article").filter({ hasText: "Browser tracer course" });
@@ -124,6 +129,7 @@ test("instructor authors, approves and enrolls; the learner studies only the app
   const stranger = await provisionSynthetic("stranger-browser", "learner");
   const secondInstructor = await provisionSynthetic("second-instructor-browser", "instructor");
   const admin = await provisionSynthetic("admin-browser", "admin");
+  await database().query('DELETE FROM auth."rateLimit"');
   const courseId = (await database().query<{ id: string }>("SELECT id FROM app.instructor_course WHERE title='Browser tracer course'")).rows[0].id;
   for (const account of [stranger, secondInstructor, admin]) {
     const context = await playwright.request.newContext({ baseURL: origin });
