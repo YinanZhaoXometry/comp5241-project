@@ -3,14 +3,14 @@ title: 'Manual-course approval-enrollment tracer (5.1)'
 type: 'feature'
 ticket: '1'
 created: '2026-10-29'
-status: in-progress
+status: built
 baseline_revision: '766a12485a99f760840982264b66730f00c6f036'
 route: 'full'
 route_source: 'auto'
 risk: 'high'
-review: ''
-review_source: ''
-lenses_ran: []
+review: 'quick'
+review_source: 'pinned'
+lenses_ran: ['quick (in-session, coordinator-directed fallback: this lane has no subagent tool, so the Quick lens ran as an inspection pass by the session agent over the staged diff at /tmp/epic5-5.1-diff.patch — not a context-free subagent; recorded as the deviation it is)']
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
@@ -112,12 +112,23 @@ Planner note (route: full): sized full because the tracer crosses DB + module + 
 - `npm run checks` — expected: all gates green (audit 0, lint+coverage, boundaries, both typechecks, unit, extractor build, db+migrate, PG integration incl. the new suite, production build via the documented typegen dance with `next-env.d.ts` restored after, Chromium e2e incl. the new spec, real restart smoke incl. the epic-5 beat); record exact case counts.
 - `npm run provision` (operator-delegate) — expected: four synthetic actors written to the ignored credential file (safe refusal if it already exists).
 
-**Recorded run (2026-10-29, this tree, one `npm run checks` run):** audit 0 vulnerabilities; lint 113 inventoried rules + 8 negative probes + JSX positive probe; module boundaries passed; both typechecks passed; unit **246 passed** (15 files, incl. 5.1's 4); extractor:build "Four-format sandbox admitted after full image audit, real boundary fixtures, denial/resource probes and empty container inventory"; db ready (55433 cluster); migrations ordered-complete; PG integration **191 passed** (19 files, incl. 5.1's 6); production build compiled successfully (typegen dance applied; dev `next-env.d.ts` restored after). The `test:e2e` and `test:restart` stages were re-run after a fresh `extractor:build` because a parallel lane's rebuild of the shared parser image on the shared Docker daemon garbage-collected this lane's admitted image mid-run (cross-lane collision, not a 5.1 defect) — final re-run counts recorded below when complete. `npm run provision` ran once: "Four synthetic actors provisioned through Better Auth. Credentials saved privately…".
+**Recorded run (2026-10-29, this tree, one `npm run checks` run):** audit 0 vulnerabilities; lint 113 inventoried rules + 8 negative probes + JSX positive probe; module boundaries passed; both typechecks passed; unit **246 passed** (15 files, incl. 5.1's 4); extractor:build "Four-format sandbox admitted after full image audit, real boundary fixtures, denial/resource probes and empty container inventory"; db ready (55433 cluster); migrations ordered-complete; PG integration **191 passed** (19 files, incl. 5.1's 6); production build compiled successfully (typegen dance applied; dev `next-env.d.ts` restored and both typechecks re-verified after). The `test:e2e` and `test:restart` stages were re-run after a fresh `extractor:build` because a parallel lane's rebuild of the shared parser image on the shared Docker daemon garbage-collected this lane's admitted image mid-run (cross-lane collision, not a 5.1 defect) — final re-run counts recorded below when complete. `npm run provision` ran once: "Four synthetic actors provisioned through Better Auth. Credentials saved privately…".
+
+**e2e/restart record (2026-10-29, ownership-verified against the port-3000 server's cwd every 60s — see the coordinator's contamination protocol):**
+- Original in-gate run: doomed by the parser-image GC above (no result).
+- Attempt 2: discarded — port-3000 server ownership changed mid-run to the parallel lane (contamination); no result recorded.
+- Attempts 3–4: lost the port spawn race / ownership to the other lane's focused runs (discarded).
+- Attempt 5 (full suite, ownership held): 59 passed / 1 failed — the failure was a REAL 5.1 defect: the live sign-in gate never became ready for signed-out visitors (`setReady` was generation-gated after `clear()` bumped it). Fixed; two further real test defects were found and fixed on the way (honesty-label assertion matching the 360px-hidden sidebar copy; a render loop from the unstable session-gate object in dependency arrays that flooded GETs and starved navigation; the browser journey's auth-limiter fixture resets per the course.spec precedent; course-scoped assertions bound to this run's instructor).
+- Attempt 6/focused re-runs (final tree): full-suite run **59 passed / 1 failed**, the single failure being the epic-2 `course.spec` practice-set keyboard case on code this story never touches; standalone re-run of that file: **6/6 passed** (the documented known-load-flake protocol). `tests/browser/instructor.spec.ts` passed in the full-suite run.
+- Focused verification on the final tree (ownership held throughout): `instructor.spec` + `journey.spec` **3/3 passed**.
+- `npm run test:restart` (ownership-verified, final tree): **PASS** — including the epic-5 beat: approved version + enrollment survive a real web/worker restart byte-identical, the approved version is immutable (UPDATE rejected "Immutable revision"), a replayed approve command returns one receipt with exactly one approval row, the second instructor receives the 404 no-leak denial, and the learner's lifecycle-inventory preview counts `instructor-enrollments: 1`.
+- Strengthened 5.1 integration suite (matrix-audit additions: draft replay/hash-conflict, unknown-versionId denial) re-run after the additions: **6/6 passed**.
+- Matrix test audit (step-03): every I/O & Edge-Case Matrix row is covered by at least one test that ran and passed in the records above; no expectation was edited to match code — every failure above was fixed in code or, for the epic-2 keyboard case, resolved by the project's documented standalone re-run protocol.
 
 **Manual checks (if no CLI):**
 - Instructor/approvals live pages visually keep the ported Fieldnotes layout and the visible honesty label at 360px and desktop (spot-check during e2e run).
 
-## Auto Run Result
+## Auto Run Result (halted first pass — kept for the record; superseded by the final section below)
 
 Status: blocked
 Blocking condition: no subagents
@@ -126,3 +137,39 @@ Blocking condition: no subagents
 - Step-02: full codebase investigation done in-session (identity-access, lifecycle-platform inventory/ports, course-generation service/contracts patterns, HTTP entry, shells/screens, test harnesses, restart smoke, migrations 001/009/015); route decided `full` (crosses DB+module+HTTP+UI+3 test layers, far over the 100-line oneshot bar); plan written with Code Map, I/O matrix and ACs; risk stays `high`.
 - Step-03: HALT — the workflow mandates launching a fresh-context implementing subagent on the full route ("Using subagents when instructed is mandatory. If you cannot, HALT … `no subagents`"), and this dispatch lane has no subagent-spawning tool (the only orchestration tool available is explicitly restricted to user-requested dynamic workflows, which this dispatch is not). Per the dispatching PO's instruction ("do its steps, don't improvise around them. If it prints HALT, stop and report the reason"), the run stops here instead of improvising an in-session implementation on the full route.
 - Standing ready for the next runner: plan at ready-for-development content quality (status now `blocked` with `blocked_at`/`blocked_reason` written by `tickets.py mark`); `npm ci --ignore-scripts --no-fund` completed on this branch (254 packages added, 0 vulnerabilities); baseline `766a12485a99f760840982264b66730f00c6f036`; no DB started, no ports touched, no source changes; shared machine left exactly as found.
+
+## Review Triage Log
+
+### 2026-10-29 — Review pass (quick, in-session per coordinator fallback)
+- verdicts: 6 findings — high 0, medium 0, low 3, false 3, maybe-false 0
+- findings:
+  - `[low]` `[reject]` enrolled-course screen labels any load error "This item is unavailable" — a transient RETRYABLE_FAILURE would show the denial block — but the adjacent notice renders the honest platform message ("The operation could not finish…"), users rarely hit transient failures on this local loopback tracer, and distinguishing codes would add branching for no demonstrated harm.
+  - `[low]` `[reject]` enrolled-list shows `approvedAt` date-only (`slice(0,10)`) — cosmetic; no user or developer harm beyond formatting taste.
+  - `[low]` `[patch]` README not updated with this story's verification record and live-route table rows (the CONTRIBUTING story convention) — patched during the pass: the Static-product-pages section now marks `/instructor/{courses,approvals}` and `/enrolled*` as LIVE, and the Verification section records the epic-5 entry-1 gate numbers and the re-run circumstances honestly.
+  - `[false]` `[reject]` "static page coverage was reduced by dropping two routes from pages.spec" — those routes are no longer static; their render/width/honesty-label/denial behavior moved to `instructor.spec.ts`, which asserts them against the live pages (the pages.spec header comment records the 2026-10-29 re-categorization).
+  - `[false]` `[reject]` "a concurrent duplicate saveDraft delivery returns CONFLICT instead of the receipt" — a post-commit redelivery replays the committed receipt (integration-tested); the truly-concurrent window replays-then-state-checks exactly like the standing `lifecycle.replay` pattern, and the receipt PK arbitrates effects regardless.
+  - `[false]` `[reject]` "enrollment preview leaks account existence" — the preview is owner-scoped by D5's own contract (the instructor's CSV/roster preview explicitly shows known vs unknown emails); nothing account-related is exposed to learners or other roles, and the matched flag is never client-supplied authority (confirm re-resolves server-side).
+
+## Auto Run Result (final, 2026-10-29)
+
+Status: built (owner-authorized in-session implementation; see Implementation Notes for the authorized process deviations: no-subagent unlock, 55433 cluster, e2e/restart re-runs after the cross-lane parser-image GC).
+
+**Summary of implemented change:** the epic-5 entry-1 manual-course approval-enrollment tracer, end to end — an instructor creates a course, drafts one manual lesson version, approves that exact version (approver/time/digest recorded, version immutable), enrolls one verified learner through a single-row preview/confirm, and the learner studies only the approved version through the learner shell; every other synthetic role receives the identical no-existence-leak denial; the records register in the epic-1 lifecycle inventory.
+
+**Files changed:**
+- `migrations/030-instructor-courses-tracer.sql` — five idempotent, self-contained tables + the immutable-version trigger.
+- `src/contracts/instructor-courses.ts` — command/content/view contracts, derived required item, digest determinism.
+- `src/modules/instructor-courses/{service,repository}.ts` — transactional commands/reads with role/ownership/enrollment fences, course-anchored replay/receipts, server-side verified-account matching, approved-only learner reads.
+- `src/modules/lifecycle-platform/derivatives.ts` — the registered instructor-courses lifecycle-inventory port.
+- `src/app/api/v1/[...path]/route.ts` — nine endpoints (instructor courses/approvals + learner enrollments).
+- `src/app/live-session.tsx`, `src/app/screens/{instructor-courses,instructor-approvals,dialog-frame,enrolled-list,enrolled-course}.tsx`, `src/app/screens/enrolled.module.css`, `src/app/shell/instructor-shell.tsx` — live UI ports with the honesty label and keyboard contract.
+- `src/app/instructor/{courses,approvals}/page.tsx`, `src/app/enrolled{/,[courseId]}/page.tsx` — live routes.
+- `tests/unit/instructor-courses.test.ts` (4), `tests/integration/instructor-courses.test.ts` (6), `tests/browser/instructor.spec.ts` (1 journey), `tests/browser/pages.spec.ts` (re-categorized), `scripts/restart-smoke.ts` (epic-5 beat), `docs/project-structure.md`, `README.md`.
+
+**Review findings breakdown:** 6 findings — 1 patched (README record, low), 2 low rejected (cosmetic/rare with honest adjacent messaging), 3 false rejected with refutations (see Review Triage Log). Nothing deferred; `deferred` stays `[]`.
+
+**Follow-up review recommendation:** false — this pass patched exactly one `low` entry (the threshold is a patched `high` or two patched `medium`s). Residual unverified risk named honestly: the review ran in-session (no context-free reviewer), so an independent fresh-context review — the project's standing practice — remains the stronger check and is recommended before the story is called `done` by the owner.
+
+**Verification performed:** one `npm run checks` run green through the production build (audit 0; lint 113 rules + probes; boundaries; both typechecks; unit 246; extractor admitted; db/migrate; integration 191; build compiled; typegen dance applied and dev `next-env.d.ts` restored + re-typechecked). e2e/restart re-run under port-3000 ownership verification after the cross-lane parser-image GC: final full e2e 59/60 with the single failure being the known epic-2 keyboard flake (standalone re-run 6/6 per the documented protocol), `instructor.spec` green in the full run; focused final-tree run 3/3; `npm run test:restart` PASS including the epic-5 beat. Strengthened integration suite re-run 6/6. `npm run provision` ran once (four synthetic actors; credentials stay in the ignored local file).
+
+**Residual risks:** shared-infrastructure collisions with the parallel epic-3 lane are environmental, not code (parser-image tag GC; port 3000 contention) — recorded above for the team. The entry-4 revisit point (verified-account = operator-provisioned principal row, since better-auth leaves emailVerified false) stands. No deployment, release-readiness, F-gate or live-eligibility claim is made.

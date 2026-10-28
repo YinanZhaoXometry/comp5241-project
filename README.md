@@ -39,8 +39,13 @@ later GenAI epics. The product shell keeps the **Sample prototype · No live AI*
 label.
 
 Pages with implemented business logic: the tracer flow at `/` (sign-in,
-materials, goal & manual plan, consent, export, deletion). The static styled
-pages (no business logic yet):
+materials, goal & manual plan, consent, export, deletion); and — since the
+epic-5 entry-1 tracer (2026-10-29) — the LIVE instructor routes
+`/instructor/courses` and `/instructor/approvals` (sign-in-gated manual
+authoring, exact-version approval and single-row enrollment over
+`/api/v1/instructor/*`) plus the enrolled learner path `/enrolled` and
+`/enrolled/[courseId]` (the approved-only study view behind the enrollment
+fence). The static styled pages (no business logic yet):
 
 | Page                                                   | Route                    |
 | ------------------------------------------------------ | ------------------------ |
@@ -55,7 +60,9 @@ pages (no business logic yet):
 | Optional starting check                                | `/starting-check`        |
 | New study plan — AI-assisted variant                   | `/plan-ai`               |
 | Privacy & data — export and deletion                   | `/data`                  |
-| Instructor studio — courses / approvals / students / participation | `/instructor/*` |
+| Instructor studio — approvals / courses (LIVE, epic-5 5.1)   | `/instructor/{courses,approvals}` |
+| Instructor studio — students / participation (static)        | `/instructor/{students,participation}` |
+| Enrolled learner — live approved-only study (epic-5 5.1)     | `/enrolled`, `/enrolled/{courseId}` |
 
 These pages need **no sign-in, database, worker, provider configuration or
 private credentials**. In-page interactions are memory-only and reset on
@@ -156,6 +163,25 @@ closure and S12 (integrated suite and separately authorized release) remain bloc
 on F3/F6 authorization, and independent review of the wave-1–3 and sweep work is
 still pending. Local passes are synthetic-only evidence and imply no release
 readiness.
+
+Epic 5 entry 1 (manual-course approval-enrollment tracer, recorded 2026-10-29):
+built on `feat/epic5-instructor-courses` — migration 030 (self-contained,
+idempotent), the `instructor-courses` module and contracts, a lifecycle-inventory
+port, live `/instructor/{courses,approvals}` + `/enrolled*` routes, and
+unit/integration/browser suites. The full local gate on that branch ran as one
+`npm run checks` pass for every stage through the production build — audit 0, the
+113-rule lint coverage and probes, boundaries, both typechecks, **246 unit** and
+**191 PostgreSQL integration tests** (incl. the tracer's 4 + 6), migrations and
+the parser admission — with the e2e and restart stages re-run separately after a
+parallel lane's parser-image rebuild garbage-collected this lane's admitted image
+on the shared Docker daemon mid-run (cross-lane collision, not a code defect;
+recorded in the story plan). Ownership-verified results on the final tree: full
+e2e **59/60** with the single failure being the known epic-2 keyboard flake
+(standalone re-run 6/6), `instructor.spec` green in the full run, and the real
+web/worker restart smoke **passed** including the epic-5 beat (restart survival,
+immutability, one-receipt replay, no-leak denial, lifecycle-inventory
+registration). No deployment, release or live-eligibility claim is made; this
+lane's PostgreSQL ran on 127.0.0.1:55433 (environment-only, coordinator-directed).
 
 Recorded on 2026-10-21; independent review findings corrected and regression-tested:
 
