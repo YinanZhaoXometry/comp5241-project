@@ -3,7 +3,7 @@ title: 'G4 feasibility spike: isolated code runner and offline narration (6.2)'
 type: 'chore' # spike evidence + disposable harness; no product code path changes
 ticket: 2
 created: '2026-10-29'
-status: 'in-progress'
+status: blocked
 baseline_revision: '766a12485a99f760840982264b66730f00c6f036'
 route: 'oneshot'
 route_source: 'auto'
@@ -18,6 +18,8 @@ context:
   - '{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-subject-and-activity-breadth/epic-subject-and-activity-breadth.md'
 warnings: ['oversized']
 deferred: []
+blocked_at: "2026-10-29"
+blocked_reason: "review lens unavailable: no subagent launcher in this execution environment (implementation complete at c7c492b; re-dispatch a review pass)"
 ---
 
 <intent-contract>
@@ -102,6 +104,51 @@ Implementation log (appended during the run, 2026-10-29):
 ## Plan Change Log
 
 ## Review Triage Log
+
+(No review pass ran — see Auto Run Result.)
+
+## Auto Run Result
+
+**Final status: blocked** — `review lens unavailable: no subagent launcher in this execution
+environment (implementation complete at c7c492b; re-dispatch a review pass)`.
+
+**What is complete (step-01 → step-03 fully executed):** the G4 feasibility spike is
+implemented, verified and committed as `c7c492b` on `feat/epic6-g4-spike` (42 files, +2566).
+
+- Runner: disposable harness `spikes/g4-feasibility/runner/` — per-job supervisor over the
+  pristine digest-pinned official Python base (zero new image pulls) with `--network none`,
+  nonroot 65532, read-only rootfs, `--cap-drop ALL`, no-new-privileges, default-deny seccomp
+  (clone/socket denied at syscall level), 256 MiB memory=swap, 0.5 CPU, pids-limit 16, capped
+  tmpfs scratch, wall/output caps, forced cleanup. 18-probe battery: **ALL_CONTAINED**
+  (escape/proc/privilege, DNS/HTTP/metadata egress, fork bomb under both seccomp and cgroup
+  layers, OOM 137, wall-kill, ENOSPC, bounded output capture, CPU-quota ratio 0.229); cleanup
+  verified (no containers/volumes/images/temp residue). Evidence:
+  `../g4-probe-results.json`, dossier `../g4-runner-dossier.md`.
+- Narration: local trials of Piper 1.8.0 (2.81 s/4 sentences, 267 MB RSS, 147 MB venv + 63 MB
+  voice), macOS `say` (3.24 s, ~28 MB, zero install) and espeak-ng 1.52.0 in a hardened
+  throwaway container (0.14–0.16 s/sentence incl. container start); Coqui assessed and
+  declined-with-reason. Licence findings with cited URLs: piper-tts 1.8.0 GPL-3.0-or-later
+  (MIT-era rhasspy/piper archived), espeak-ng GPL-3.0-or-later, Coqui engine MPL-2.0 with
+  XTTS-v2 under non-OSI CPML (canonical text URL currently 404), `say` under the Apple SLA
+  (Apple-branded hardware only). The trialed amy voice's licence chain terminates at
+  MycroftAI/mimic3-voices (CC-BY-SA-4.0, per-dataset terms unenumerated) → **quarantined on
+  doubt** for activation. Dossier: `../g4-narration-dossier.md`; owner-listenable WAVs under
+  `spikes/g4-feasibility/narration/samples/`.
+- Bookkeeping: epic file `status: in-progress` added per the 2026-10-29 decision; nothing
+  selected or activated; no product path touched (`git diff 766a124 -- src scripts tests
+  package.json package-lock.json migrations` empty); no lint/typecheck required (nothing under
+  scanned paths changed).
+
+**Why blocked:** step-04's Quick review lens mandates a context-free reviewer subagent; this
+execution environment (a dispatched builder subagent) has no subagent-launch tool, and the
+workflow's Subagents rule requires HALT with `no subagents` rather than a substitute. An
+author-self-review was deliberately NOT recorded as a review pass — it would misrepresent
+independent review. lenses_ran stays empty accordingly.
+
+**Continuation:** re-dispatch step-04 (or any fresh-context review) against this plan file in
+a session with subagent capability; the diff to review is `git diff 766a124..c7c492b`
+(representative copy written at `/tmp/g4-spike-diff.patch` during the run). On a passing
+review the plan can move to `built`/`done` and the blocked mark be cleared.
 
 ## Design Notes
 
