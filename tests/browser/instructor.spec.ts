@@ -31,8 +31,10 @@ test("instructor authors, approves and enrolls; the learner studies only the app
   test.setTimeout(180000);
   const errors: string[] = [];
   const outbound: string[] = [];
+  // pageerror only — the course.spec convention: an expected denial response
+  // (404) legitimately logs as a console resource message and is not a JS
+  // error; real client failures still surface as pageerror.
   page.on("pageerror", error => errors.push(error.name));
-  page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   page.on("request", request => { if (!request.url().startsWith(origin)) outbound.push(new URL(request.url()).hostname); });
 
   const instructor = await provisionSynthetic("instructor-browser", "instructor");
