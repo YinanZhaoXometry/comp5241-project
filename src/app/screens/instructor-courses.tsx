@@ -37,7 +37,7 @@ function StatusPill({ kind, label }: { kind: "success" | "warn" | "muted"; label
 
 export function InstructorCourses() {
   const gate = useSessionGate();
-  const { session, ready, notice, setNotice } = gate;
+  const { session, ready, notice, setNotice, failure } = gate;
   const [courses, setCourses] = useState<InstructorCourseSummary[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [detail, setDetail] = useState<InstructorCourseDetail | null>(null);
@@ -64,8 +64,8 @@ export function InstructorCourses() {
     try {
       const value = await api<{ courses: InstructorCourseSummary[] }>("instructor/courses");
       setCourses(value.courses);
-    } catch (error) { gate.failure(error); }
-  }, [gate]);
+    } catch (error) { failure(error); }
+  }, [failure]);
 
   const loadDetail = useCallback(async (courseId: string) => {
     try {
@@ -74,9 +74,9 @@ export function InstructorCourses() {
     } catch (error) {
       setDetail(null);
       setOpenId(null);
-      gate.failure(error);
+      failure(error);
     }
-  }, [gate]);
+  }, [failure]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -95,7 +95,7 @@ export function InstructorCourses() {
     setBusy(true);
     setNotice("");
     try { await work(); }
-    catch (error) { gate.failure(error); }
+    catch (error) { failure(error); }
     finally { setBusy(false); }
   }
 

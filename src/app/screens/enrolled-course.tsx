@@ -17,7 +17,7 @@ import type { EnrolledCourseView } from "../../contracts/instructor-courses";
 
 export function EnrolledCourse({ courseId }: Readonly<{ courseId: string }>) {
   const gate = useSessionGate();
-  const { session, ready, notice } = gate;
+  const { session, ready, notice, failure } = gate;
   const [course, setCourse] = useState<EnrolledCourseView | null>(null);
   const [denied, setDenied] = useState(false);
 
@@ -29,9 +29,9 @@ export function EnrolledCourse({ courseId }: Readonly<{ courseId: string }>) {
     } catch (error) {
       setCourse(null);
       setDenied(true);
-      gate.failure(error);
+      failure(error);
     }
-  }, [courseId, gate]);
+  }, [courseId, failure]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

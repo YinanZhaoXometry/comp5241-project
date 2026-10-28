@@ -17,7 +17,7 @@ import type { EnrolledCourseSummary } from "../../contracts/instructor-courses";
 
 export function EnrolledList() {
   const gate = useSessionGate();
-  const { session, ready, notice } = gate;
+  const { session, ready, notice, failure } = gate;
   const [courses, setCourses] = useState<EnrolledCourseSummary[]>([]);
 
   const load = useCallback(async () => {
@@ -25,9 +25,9 @@ export function EnrolledList() {
       const value = await api<{ courses: EnrolledCourseSummary[] }>("enrollments");
       setCourses(value.courses);
     } catch (error) {
-      gate.failure(error);
+      failure(error);
     }
-  }, [gate]);
+  }, [failure]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

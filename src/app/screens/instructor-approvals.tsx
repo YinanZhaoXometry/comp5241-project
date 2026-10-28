@@ -24,7 +24,7 @@ import type {
 
 export function InstructorApprovals() {
   const gate = useSessionGate();
-  const { session, ready, notice, setNotice } = gate;
+  const { session, ready, notice, setNotice, failure } = gate;
   const [approvals, setApprovals] = useState<ApprovalsState>({ pending: [], approved: [] });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspected, setInspected] = useState(false);
@@ -43,9 +43,9 @@ export function InstructorApprovals() {
           : value.pending[0]?.versionId ?? null,
       );
     } catch (error) {
-      gate.failure(error);
+      failure(error);
     }
-  }, [gate]);
+  }, [failure]);
   useEffect(() => {
     const timer = setTimeout(() => {
       if (session) void load();
@@ -88,7 +88,7 @@ export function InstructorApprovals() {
       setNotice(`Approved exact version v${receipt.version}. Approver, time and version are recorded.`);
       requestAnimationFrame(() => detailRef.current?.focus());
     } catch (error) {
-      gate.failure(error);
+      failure(error);
     } finally {
       setBusy(false);
     }
