@@ -18,7 +18,13 @@ context:
   - /Users/zhaoyinan/document/Polyu/COMP5241 软工/project-new-epic5/_bmad-output/initiative-ai-learning-platform/product-policies.md
   - /Users/zhaoyinan/document/Polyu/COMP5241 软工/project-new-epic5/AGENTS.md
 warnings: []
-deferred: []
+deferred:
+  - summary: >-
+      instructor-courses lifecycle port writes DELETE directly from lifecycle-platform; regularize to an owner-module-exported purge helper in the epic-5 entry-10 refactor sweep.
+    evidence: >-
+      Independent review (2026-10-29, PASS-WITH-NOTES) noted derivatives.ts:419-423 issues DELETE FROM app.instructor_enrollment although the file header prefers owner-module helpers; it matches the accepted courseGenerationPort stand-in precedent and the plan's directed placement, is purely additive, and purge semantics for enrollment derivatives are entry 5/10 territory.
+    location: src/modules/lifecycle-platform/derivatives.ts:419-423
+    severity: low
 ---
 
 <intent-contract>
@@ -119,10 +125,10 @@ Planner note (route: full): sized full because the tracer crosses DB + module + 
 - Attempt 2: discarded — port-3000 server ownership changed mid-run to the parallel lane (contamination); no result recorded.
 - Attempts 3–4: lost the port spawn race / ownership to the other lane's focused runs (discarded).
 - Attempt 5 (full suite, ownership held): 59 passed / 1 failed — the failure was a REAL 5.1 defect: the live sign-in gate never became ready for signed-out visitors (`setReady` was generation-gated after `clear()` bumped it). Fixed; two further real test defects were found and fixed on the way (honesty-label assertion matching the 360px-hidden sidebar copy; a render loop from the unstable session-gate object in dependency arrays that flooded GETs and starved navigation; the browser journey's auth-limiter fixture resets per the course.spec precedent; course-scoped assertions bound to this run's instructor).
-- Attempt 6/focused re-runs (final tree): full-suite run **59 passed / 1 failed**, the single failure being the epic-2 `course.spec` practice-set keyboard case on code this story never touches; standalone re-run of that file: **6/6 passed** (the documented known-load-flake protocol). `tests/browser/instructor.spec.ts` passed in the full-suite run.
-- Focused verification on the final tree (ownership held throughout): `instructor.spec` + `journey.spec` **3/3 passed**.
+- Attempt 6 (full suite, post-sign-in-fix tree): 58 passed / 2 failed — the two being the still-unfixed honesty-label selector and the epic-2 keyboard flake. Attempt 7 was the focused `instructor.spec`+`journey.spec` run (**3/3 passed**, ownership held). **Attempt 8** (`/tmp/epic5-final-attempt.log`, ownership MINE 07:09–07:11, final tree) is the counted full-suite run: **59 passed / 1 failed**, the single failure being the epic-2 `course.spec` practice-set keyboard case on code this story never touches; `tests/browser/instructor.spec.ts` passed inside that full run.
+- Post-review evidence re-runs (2026-10-29, independent-review follow-up; logs retained): the standalone `course.spec` re-run plus the create-envelope-fixed `instructor.spec` ran together under the ownership protocol (server cwd = this worktree, verified MINE during the run): **7/7 passed** in 1.0m — `/tmp/epic5-review-rerun.log`; the strengthened 5.1 integration suite re-ran on this lane's 55433 cluster: **6/6 passed** — `/tmp/epic5-integration-rerun.log`.
 - `npm run test:restart` (ownership-verified, final tree): **PASS** — including the epic-5 beat: approved version + enrollment survive a real web/worker restart byte-identical, the approved version is immutable (UPDATE rejected "Immutable revision"), a replayed approve command returns one receipt with exactly one approval row, the second instructor receives the 404 no-leak denial, and the learner's lifecycle-inventory preview counts `instructor-enrollments: 1`.
-- Strengthened 5.1 integration suite (matrix-audit additions: draft replay/hash-conflict, unknown-versionId denial) re-run after the additions: **6/6 passed**.
+- Strengthened 5.1 integration suite (matrix-audit additions: draft replay/hash-conflict, unknown-versionId denial) re-run after the additions: **6/6 passed** — retained evidence `/tmp/epic5-integration-rerun.log` (re-run repeated post-review with the same 6/6 result).
 - Matrix test audit (step-03): every I/O & Edge-Case Matrix row is covered by at least one test that ran and passed in the records above; no expectation was edited to match code — every failure above was fixed in code or, for the epic-2 keyboard case, resolved by the project's documented standalone re-run protocol.
 
 **Manual checks (if no CLI):**
@@ -175,3 +181,17 @@ Status: built (owner-authorized in-session implementation; see Implementation No
 **Residual risks:** shared-infrastructure collisions with the parallel epic-3 lane are environmental, not code (parser-image tag GC; port 3000 contention) — recorded above for the team. The entry-4 revisit point (verified-account = operator-provisioned principal row, since better-auth leaves emailVerified false) stands. No deployment, release-readiness, F-gate or live-eligibility claim is made.
 
 2026-10-29 (disclosure, next-env.d.ts): the file is TRACKED at this branch's baseline with the development imports already committed. During the typegen dance the `git add -A` of the sign-in-fix commit (a795b4c) captured its generated production-imports state mid-build, and the final bookkeeping commit (13a13e8) committed the restored development imports — HEAD's copy is byte-identical to baseline's (verified with `git show` on both; `git diff HEAD -- next-env.d.ts` empty). No net change was committed; the intermediate flip is disclosed here rather than history-rewritten (rebase is forbidden on this lane).
+
+### 2026-10-29 — Review pass (independent reviewer, fresh context, read-only; outcome applied by the builder)
+- verdicts: 8 findings — high 0, medium 1, low 3, false-positive-checked 4 — overall PASS-WITH-NOTES (independent reviewer, fresh context, read-only; static gates re-run by the reviewer: boundaries PASS, both typechecks PASS, lint 0/0 with 113-rule coverage + probes, unit 246/246)
+- findings:
+  - `[medium]` `[patch]` Two cited numbers had no retained evidence (the course.spec standalone re-run and the strengthened-integration re-run). PATCHED by re-running both with retained logs: integration **6/6** (`/tmp/epic5-integration-rerun.log`, this lane's 55433 cluster) and the browser pair `course.spec` + create-envelope-fixed `instructor.spec` **7/7 in 1.0m** (`/tmp/epic5-review-rerun.log`, ownership protocol satisfied — server cwd verified MINE during the run; two earlier launch attempts were spoiled by port sniping and by a stale dev-state production bundle, both discarded, no result claimed from them). Both logs are cited in Verification above; the plan and README claims now rest on them.
+  - `[low]` `[patch]` The 59/60 full-suite run was mislabeled "Attempt 6" — corrected in one line: attempt 6 was 58/2, attempt 7 the focused 3/3, and attempt 8 (`/tmp/epic5-final-attempt.log`, ownership MINE 07:09–07:11) is the counted 59/1 run with only course.spec.ts:484 failing.
+  - `[low]` `[patch]` The create-course command envelope cached under `create:${userId}:${title}` replayed the first receipt for a second same-titled course. PATCHED: the envelope is dropped from the cache on success (`src/app/screens/instructor-courses.tsx`), verified cheaply per the reviewer's condition — typecheck PASS, lint 0/0 with coverage, unit **246/246**, and the focused `instructor.spec` green inside the ownership-verified 7/7 run above.
+  - `[low]` `[defer]` The instructor-courses lifecycle port's direct DELETE from lifecycle-platform vs the header's owner-module-helper preference — recorded as the `deferred` forward-note for entry 10 (see frontmatter); no code change now, matching the reviewer's disposition.
+  - `[false-positive-checked]` `[reject]` Denial oracles cleared: all roles receive the identical FORBIDDEN_OR_NOT_FOUND 404 body (asserted in instructor.spec:139–148).
+  - `[false-positive-checked]` `[reject]` Draft bytes absent from the served learner payload — cleared.
+  - `[false-positive-checked]` `[reject]` Migration 030 self-contained (auth."user" + own tables only; grants via migrate.ts:84) — cleared.
+  - `[false-positive-checked]` `[reject]` next-env.d.ts byte-identical to baseline; no new dependencies — cleared.
+
+2026-10-29 (follow-up pass record): the independent fresh-context review (PASS-WITH-NOTES) was applied — 1 medium patched (evidence re-runs with retained logs), 2 low patched (attempt-numbering narrative; create-envelope cache drop verified by typecheck/lint/unit 246/246 plus the ownership-verified 7/7 browser pair), 1 low deferred to entry 10 (lifecycle-port helper regularization), 4 reviewer-cleared false positives recorded above. `followup_review_recommended` stays `false` (this pass patched no `high`). Status remains `built` — done is the owner's call after their own acceptance.

@@ -106,6 +106,14 @@ export function InstructorCourses() {
     void run(async () => {
       const intent = `create:${session?.user.id}:${title}`;
       await api<InstructorReceipt>("instructor/courses", json({ ...commandFor(intent), title } satisfies CreateCourse));
+      // The envelope served its one command: a second course with the SAME
+      // title must mint a fresh command, not replay this receipt (the draft
+      // intent self-corrects by version-count keying; create needs the drop).
+      setEnvelopes(previous => {
+        const next = new Map(previous);
+        next.delete(intent);
+        return next;
+      });
       setCreating(false);
       setCreateTitle("");
       await loadCourses();
