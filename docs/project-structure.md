@@ -40,9 +40,16 @@ project-new/
 │   │   │                                                                 verdict with per-item reveal and attempt
 │   │   │                                                                 history → derived roadmap line
 │   │   ├── shell/          product + instructor page shells (sidebar/topnav, honesty label)
-│   │   ├── screens/        static styled screen content (library, course, practice, …)
-│   │   └── library·course·practice·progress·recovery·roadmap·review·why·       static product pages
-│   │       starting-check·plan-ai·data·instructor/*                            (no business logic)
+│   │   ├── screens/        static styled screen content (library, course, practice, …) plus
+│   │   │                   the LIVE epic-5 screens: instructor-courses/approvals (ported
+│   │   │                   from their static prototypes), dialog-frame, enrolled-list/course,
+│   │   │                   live-session (shared client session gate)
+│   │   ├── library·course·practice·progress·recovery·roadmap·review·why·       static product pages
+│   │   │   starting-check·plan-ai·data·instructor/{students,participation}     (no business logic)
+│   │   ├── instructor/{courses,approvals}/    LIVE instructor routes (epic-5 5.1): authenticated
+│   │   │                                       studio over /api/v1/instructor/*, honesty label kept
+│   │   └── enrolled/ + enrolled/[courseId]/   LIVE learner routes (epic-5 5.1): enrolled index and
+│   │                                           the approved-only study view behind the enrollment fence
 │   ├── contracts/          domain contracts; import no adapters/modules/platform/next/pg
 │   │   ├── setup.ts        tracer setup/plan contracts
 │   │   ├── documents.ts    bounded document/extraction contracts
@@ -129,6 +136,16 @@ project-new/
 │   │   │                       roadmap node (required items done + passed
 │   │   │                       attempt on the current version — no award
 │   │   │                       rows, no recovery/partial credit)
+│   │   ├── instructor-courses/  epic-5 entry-1 manual-course approval-
+│   │   │                       enrollment tracer: instructor-owned courses
+│   │   │                       with immutable manual version rows (030),
+│   │   │                       exact-version approvals (approver/time/
+│   │   │                       digest), course-anchored command receipts,
+│   │   │                       server-side verified-account enrollment
+│   │   │                       (preview/confirm) and the learner-side
+│   │   │                       approved-only study reads; registered in the
+│   │   │                       epic-1 lifecycle inventory through the
+│   │   │                       instructor-courses derivative port
 │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
 │   │                           derivative ports, dependencies preview (S9),
 │   │                           retention registry/scheduler + archive contract (S10)
@@ -179,11 +196,17 @@ project-new/
 │   │                       (the epic-2 S7 synthetic consumer), assessment
 │   │                       (the epic-3 scored-attempt tracer: snapshot
 │   │                       pinning, exactly-once, denial sweep, answer
-│   │                       withholding, supersession stability)
+│   │                       withholding, supersession stability), instructor-
+│   │                       courses (the epic-5 5.1 tracer: approval
+│   │                       idempotency/immutability, enrollment preview/
+│   │                       confirm, approved-only learner visibility, the
+│   │                       no-leak denial sweep and lifecycle-inventory
+│   │                       registration)
 │   ├── browser/            Playwright: tracer, pages (static product pages), batches,
 │   │                       consent, preferences, handoff, check, export, lifecycle,
 │   │                       course, journey (epic-2 S10 integrated study suite),
-│   │                       attempt (epic-3 boundary honesty + roadmap line) —
+│   │                       attempt (epic-3 boundary honesty + roadmap line),
+│   │                       instructor (epic-5 5.1 live studio + learner path) —
 │   │                       production build
 │   └── fixtures/           original synthetic documents only
 ├── docs/                   guides: ai-provider-adapter, bounded-document-extraction,

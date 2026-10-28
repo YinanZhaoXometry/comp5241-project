@@ -356,3 +356,76 @@ const courseGenerationPort: LifecyclePort = {
 };
 
 registerLifecyclePort(courseGenerationPort);
+
+// Epic-5 entry 1: instructor-course tracer records. Courses, versions and
+// approvals are COURSE-CONTROLLER records (D5) — they appear in the personal
+// deletion-preview inventory (the epic-1 lifecycle inventory) so an instructor
+// sees them counted before removing personal data, but a personal purge never
+// deletes them: instructor-course records purge only through the archive
+// contract (entry 10). The person's OWN enrollment rows are their personal
+// derivatives and DO purge with the account. Deny rides the per-read fences:
+// every learner/instructor read re-authorizes role, ownership or enrollment
+// inside its transaction, so no blind state write is needed. Root scope is a
+// deliberate no-op — these records are not parented to personal lifecycle
+// roots.
+const instructorCoursesPort: LifecyclePort = {
+  name: "instructor-courses",
+  label: "Instructor course records",
+  async preview(client, scope) {
+    if (!scope.personal) return [];
+    if (!(await tableReady(client, "app.instructor_course", ["owner_id"]))) return [];
+    const courses = await client.query<{ count: number }>(
+      "SELECT count(*)::int AS count FROM app.instructor_course WHERE owner_id=$1",
+      [scope.ownerId],
+    );
+    const categories: PortCategory[] = [];
+    if (courses.rows[0].count > 0) {
+      categories.push({
+        key: "instructor-courses",
+        label: "Instructor courses (retained as course records)",
+        count: courses.rows[0].count,
+      });
+      if (await tableReady(client, "app.instructor_approval", ["approver_id"])) {
+        const approvals = await client.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM app.instructor_approval a
+           JOIN app.instructor_course_version v ON v.id=a.version_id
+           JOIN app.instructor_course c ON c.id=v.course_id WHERE c.owner_id=$1`,
+          [scope.ownerId],
+        );
+        categories.push({
+          key: "instructor-approvals",
+          label: "Exact-version approvals",
+          count: approvals.rows[0].count,
+        });
+      }
+    }
+    if (await tableReady(client, "app.instructor_enrollment", ["learner_id"])) {
+      const enrollments = await client.query<{ count: number }>(
+        "SELECT count(*)::int AS count FROM app.instructor_enrollment WHERE learner_id=$1",
+        [scope.ownerId],
+      );
+      if (enrollments.rows[0].count > 0)
+        categories.push({
+          key: "instructor-enrollments",
+          label: "Course enrollments (as learner)",
+          count: enrollments.rows[0].count,
+        });
+    }
+    return categories;
+  },
+  async deny() {
+    // Fenced by the per-read role/ownership/enrollment re-authorization; see above.
+  },
+  async purge(client, scope) {
+    if (!scope.personal) return;
+    if (await tableReady(client, "app.instructor_enrollment", ["learner_id"]))
+      await client.query(
+        "DELETE FROM app.instructor_enrollment WHERE learner_id=$1",
+        [scope.ownerId],
+      );
+    // Course/version/approval records survive personal removal (D5); the
+    // ninety-day archive contract owns their deletion (entry 10).
+  },
+};
+
+registerLifecyclePort(instructorCoursesPort);
