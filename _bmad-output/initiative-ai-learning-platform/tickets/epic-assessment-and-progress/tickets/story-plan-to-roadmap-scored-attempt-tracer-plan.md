@@ -3,7 +3,7 @@ title: 'Plan-to-roadmap scored-attempt tracer (3.1)'
 type: 'feature'
 ticket: 1
 created: '2026-10-28'
-status: 'built'
+status: done
 baseline_revision: 'dce12ce2d47cbf6c3bef68b130c56170eb2c4fe5'
 route: 'full'
 route_source: 'auto'
