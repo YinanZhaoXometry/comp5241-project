@@ -45,7 +45,11 @@ export function useSessionGate() {
     } catch (error) {
       if (stamp === generation.current) failure(error);
     } finally {
-      if (stamp === generation.current) setReady(true);
+      // Unconditional, exactly like study-app: a signed-out visitor took the
+      // clear() path above, and clear() bumps the generation — gating this on
+      // the stamp would leave the sign-in gate stuck on "Checking your
+      // session…" forever.
+      setReady(true);
     }
   }, [clear, failure]);
   useEffect(() => {
