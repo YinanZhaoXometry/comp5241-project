@@ -1,0 +1,4 @@
+Welcome to this mini-course on software engineering fundamentals.
+Every submission you write runs in an isolated sandbox with strict limits.
+Notice how each sentence becomes one caption line in the transcript.
+Take a moment to pause, or adjust the playback rate to suit your reading speed.

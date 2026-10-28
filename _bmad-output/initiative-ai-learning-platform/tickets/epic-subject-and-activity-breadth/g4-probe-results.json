@@ -1,0 +1,1103 @@
+{
+  "spike": "epic-6 entry 2 (6.2) G4 feasibility \u2014 isolated code runner probe battery",
+  "harness": "spikes/g4-feasibility/runner (disposable; not product code; selects/activates nothing)",
+  "supervisor_concurrency": "serialized battery: max 1 job at a time (per-host concurrency cap by construction)",
+  "environment": {
+    "started": "2026-10-29T01:13:20+0800",
+    "host_uname": "Darwin Neos-Mac-mini.local 27.0.0 Darwin Kernel Version 27.0.0: Tue Aug 11 21:20:40 PDT 2026; root:xnu-13432.1.9~1/RELEASE_ARM64_T6020 arm64",
+    "docker_client_server": "29.5.3 / 29.5.2",
+    "docker_context": "colima",
+    "colima": "colima version 0.10.3"
+  },
+  "image_evidence": {
+    "RepoDigests": [
+      "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9"
+    ],
+    "Architecture": "arm64",
+    "Os": "linux"
+  },
+  "cleanup": {
+    "docker_ps_a_g4spike_residue": "none",
+    "volumes_unchanged": true,
+    "images_unchanged": true,
+    "spike_workdir_state": "empty",
+    "containers_removed_count": 18
+  },
+  "cpu_quota_ratio_0.25_over_1.0": 0.229,
+  "overall": "ALL_CONTAINED",
+  "probes": [
+    {
+      "probe": "legal_correct",
+      "container": "g4spike-legal_correct-27572-600907",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 0,
+      "kill_reason": null,
+      "wall_seconds": 0.265,
+      "daemon_state": {
+        "ExitCode": 0,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:21.099008398Z",
+        "FinishedAt": "2026-10-28T17:13:21.188113942Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 151,
+      "stdout_capped": false,
+      "stdout_head": "{'results': [{'in': 80, 'out': 'pass'}, {'in': 79, 'out': 'recover'}, {'in': 100, 'out': 'pass'}, {'in': 0, 'out': 'recover'}], 'shape': 'sentinel-1'}\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: exit 0",
+        "PASS: approved deterministic tests grade the output CORRECT (server-side comparison)",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "legal_incorrect",
+      "container": "g4spike-legal_incorrect-27572-601253",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 0,
+      "kill_reason": null,
+      "wall_seconds": 0.162,
+      "daemon_state": {
+        "ExitCode": 0,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:21.440715569Z",
+        "FinishedAt": "2026-10-28T17:13:21.503236336Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 154,
+      "stdout_capped": false,
+      "stdout_head": "{'results': [{'in': 80, 'out': 'recover'}, {'in': 79, 'out': 'recover'}, {'in': 100, 'out': 'pass'}, {'in': 0, 'out': 'recover'}], 'shape': 'sentinel-1'}\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: exit 0",
+        "PASS: wrong solution graded INCORRECT by the same deterministic comparison",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "legal_runtime_error",
+      "container": "g4spike-legal_runtime_error-27572-601510",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 1,
+      "kill_reason": null,
+      "wall_seconds": 0.465,
+      "daemon_state": {
+        "ExitCode": 1,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:21.637957051Z",
+        "FinishedAt": "2026-10-28T17:13:22.007330148Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 0,
+      "stdout_capped": false,
+      "stdout_head": "",
+      "stderr_head": "Traceback (most recent call last):\n  File \"<stdin>\", line 9, in <module>\n  File \"<stdin>\", line 6, in verdict\nValueError: negative score is not a valid input\n",
+      "container_removed": true,
+      "assertions": [
+        "PASS: non-zero exit",
+        "PASS: explicit runtime-error traceback, no crash-to-pass",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "esc_host_paths",
+      "container": "g4spike-esc_host_paths-27572-602072",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 0,
+      "kill_reason": null,
+      "wall_seconds": 0.153,
+      "daemon_state": {
+        "ExitCode": 0,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:22.215303461Z",
+        "FinishedAt": "2026-10-28T17:13:22.284418671Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 864,
+      "stdout_capped": false,
+      "stdout_head": "CHECK|etc_passwd_image_own|READ|'root:x:0:0:root:/root:/bin/sh\\n'\nCHECK|etc_shadow|DENIED|PermissionError: [Errno 13] Permission denied: '/etc/shadow'\nCHECK|docker_socket|DENIED|FileNotFoundError: [Errno 2] No such file or directory: '/var/run/docker.sock'\nCHECK|host_user_dir|DENIED|FileNotFoundError: [Errno 2] No such file or directory: '/Users/zhaoyinan/document/Polyu/COMP5241 \u8f6f\u5de5/project-new/AGENTS.md'\nCHECK|host_root_guess|DENIED|FileNotFoundError: [Errno 2] No such file or directory: '/Users'\nCHECK|traversal_shadow|DENIED|PermissionError: [Errno 13] Permission denied: '../../../../../../etc/shadow'\nCHECK|docker_cli_binary|DENIED|FileNotFoundError: [Errno 2] No such file or directory: '/usr/bin/docker'\nCHECK|containerd_sock|DENIED|FileNotFoundError: [Errno 2] No such file or directory: '/run/containerd/containerd.sock'\nPROBE|esc_host_paths|done\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: docker socket absent/denied",
+        "PASS: host user path unreachable",
+        "PASS: /etc/shadow denied",
+        "PASS: traversal cannot escape the container root",
+        "PASS: no host data leaked",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "esc_proc_tricks",
+      "container": "g4spike-esc_proc_tricks-27572-602293",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 0,
+      "kill_reason": null,
+      "wall_seconds": 0.206,
+      "daemon_state": {
+        "ExitCode": 0,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:22.435204589Z",
+        "FinishedAt": "2026-10-28T17:13:22.517994405Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 707,
+      "stdout_capped": false,
+      "stdout_head": "CHECK|proc1_cmdline_pid_namespace|RESULT|'python -I -B - '\nCHECK|self_uid_nonroot|RESULT|['Uid:\\t65532\\t65532\\t65532\\t65532', 'Gid:\\t65532\\t65532\\t65532\\t65532']\nCHECK|tmpfs_mount_flags|RESULT|['tmpfs /tmp tmpfs rw,nosuid,nodev,noexec,relatime,size=16384k,inode64 0 0']\nCHECK|write_proc_self_mem|DENIED|OSError: [Errno 5] I/O error\nCHECK|read_proc_kcore|DENIED|PermissionError: [Errno 13] Permission denied: '/proc/kcore'\nCHECK|write_proc_sysrq|DENIED|OSError: [Errno 30] Read-only file system: '/proc/sys/kernel/sysrq'\nCHECK|read_proc_keys|RESULT|''\nCHECK|unshare_clone_newuser|DENIED|PermissionError: [Errno 1] EPERM\nCHECK|ptrace_traceme|DENIED|PermissionError: [Errno 1] EPERM\nPROBE|esc_proc_tricks|done\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: runs as non-root uid 65532",
+        "PASS: tmpfs scratch mounted nosuid,noexec",
+        "PASS: unshare(CLONE_NEWUSER) denied",
+        "PASS: ptrace denied",
+        "PASS: pid 1 is the container's own python (pid namespace)",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "esc_priv_escalation",
+      "container": "g4spike-esc_priv_escalation-27572-602557",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 0,
+      "kill_reason": null,
+      "wall_seconds": 0.16,
+      "daemon_state": {
+        "ExitCode": 0,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:22.68351966Z",
+        "FinishedAt": "2026-10-28T17:13:22.768557028Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 617,
+      "stdout_capped": false,
+      "stdout_head": "CHECK|setuid_root|DENIED|PermissionError: [Errno 1] Operation not permitted\nCHECK|setgid_root|DENIED|PermissionError: [Errno 1] Operation not permitted\nCHECK|chown_tmp_to_root|DENIED|PermissionError: [Errno 1] Operation not permitted: '/tmp'\nCHECK|mount_call|DENIED|PermissionError: [Errno 1] EPERM\nCHECK|write_etc|DENIED|OSError: [Errno 30] Read-only file system: '/etc/g4probe'\nCHECK|write_usr|DENIED|OSError: [Errno 30] Read-only file system: '/usr/g4probe'\nCHECK|write_var|DENIED|OSError: [Errno 30] Read-only file system: '/var/g4probe'\nCHECK|setuid_bit_on_tmpfs|RESULT|'0o104755'\nPROBE|esc_priv_escalation|done\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: setuid(0) denied",
+        "PASS: mount(2) denied",
+        "PASS: read-only rootfs denies /etc write",
+        "PASS: read-only rootfs denies /usr write",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "net_socket_create",
+      "container": "g4spike-net_socket_create-27572-602775",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 0,
+      "kill_reason": null,
+      "wall_seconds": 0.21,
+      "daemon_state": {
+        "ExitCode": 0,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:22.932125947Z",
+        "FinishedAt": "2026-10-28T17:13:23.028936209Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 191,
+      "stdout_capped": false,
+      "stdout_head": "CHECK|socket_create|DENIED|PermissionError: [Errno 1] Operation not permitted\nCHECK|dgram_socket_create|DENIED|PermissionError: [Errno 1] Operation not permitted\nPROBE|net_socket_create|done\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: socket(2) denied by seccomp (syscall layer)",
+        "PASS: udp socket(2) denied by seccomp",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "net_dns",
+      "container": "g4spike-net_dns-27572-603042",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 0,
+      "kill_reason": null,
+      "wall_seconds": 0.319,
+      "daemon_state": {
+        "ExitCode": 0,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:23.171812487Z",
+        "FinishedAt": "2026-10-28T17:13:23.353528115Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 177,
+      "stdout_capped": false,
+      "stdout_head": "CHECK|dns_resolve|DENIED|PermissionError: [Errno 1] Operation not permitted\nCHECK|dns_metadata_name|DENIED|PermissionError: [Errno 1] Operation not permitted\nPROBE|net_dns|done\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: DNS resolution fails (no netns + denied socket)",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "net_http",
+      "container": "g4spike-net_http-27572-603414",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 0,
+      "kill_reason": null,
+      "wall_seconds": 0.736,
+      "daemon_state": {
+        "ExitCode": 0,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:23.53454381Z",
+        "FinishedAt": "2026-10-28T17:13:24.136058945Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 217,
+      "stdout_capped": false,
+      "stdout_head": "CHECK|http_http://example.com/|DENIED|URLError: <urlopen error [Errno 1] Operation not permitted>\nCHECK|http_https://example.com/|DENIED|URLError: <urlopen error [Errno 1] Operation not permitted>\nPROBE|net_http|done\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: plain HTTP egress denied",
+        "PASS: HTTPS egress denied",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "net_metadata",
+      "container": "g4spike-net_metadata-27572-604202",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 0,
+      "kill_reason": null,
+      "wall_seconds": 0.676,
+      "daemon_state": {
+        "ExitCode": 0,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:24.340910396Z",
+        "FinishedAt": "2026-10-28T17:13:24.89704945Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 372,
+      "stdout_capped": false,
+      "stdout_head": "CHECK|tcp_169.254.169.254_80|DENIED|PermissionError: [Errno 1] Operation not permitted\nCHECK|tcp_169.254.169.254_8080|DENIED|PermissionError: [Errno 1] Operation not permitted\nCHECK|tcp_fd00:ec2::254_80|DENIED|PermissionError: [Errno 1] Operation not permitted\nCHECK|http_metadata|DENIED|URLError: <urlopen error [Errno 1] Operation not permitted>\nPROBE|net_metadata|done\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: metadata IP tcp denied",
+        "PASS: metadata HTTP denied",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "res_forkbomb_seccomp",
+      "container": "g4spike-res_forkbomb_seccomp-27572-604930",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 0,
+      "kill_reason": null,
+      "wall_seconds": 0.315,
+      "daemon_state": {
+        "ExitCode": 0,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:25.052036798Z",
+        "FinishedAt": "2026-10-28T17:13:25.261631526Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 254,
+      "stdout_capped": false,
+      "stdout_head": "CHECK|strict_fork|DENIED|PermissionError: [Errno 1] Operation not permitted\nCHECK|strict_subprocess|DENIED|PermissionError: [Errno 1] Operation not permitted\nCHECK|strict_thread|DENIED|RuntimeError: can't start new thread\nPROBE|res_forkbomb_seccomp|done\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: fork() denied by strict seccomp",
+        "PASS: subprocess denied (no fork)",
+        "PASS: threads denied (no clone)",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "res_forkbomb_pids",
+      "container": "g4spike-res_forkbomb_pids-27572-605303",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-relaxed-test.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 12.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 137,
+      "kill_reason": "wall_deadline",
+      "wall_seconds": 12.099,
+      "daemon_state": {
+        "ExitCode": 137,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:25.430658405Z",
+        "FinishedAt": "2026-10-28T17:13:37.452438065Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike TEST-ONLY relaxed profile: identical to seccomp-runner-strict.json but clone/clone3/fork/vfork/wait4/waitid are ALLOWED so the cgroup pids-limit can be demonstrated independently of seccomp (a fork bomb must be able to fork for --pids-limit to be the layer that stops it). Never a production candidate; used only by the res_forkbomb_pids probe and labelled as such in the results.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"clone\",\"clone3\",\"fork\",\"vfork\",\"wait4\",\"waitid\",\"kill\",\"tgkill\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 213,
+      "stdout_capped": false,
+      "stdout_head": "CHECK|pids_fork_progress|forks_ok=4\nCHECK|pids_fork_progress|forks_ok=8\nCHECK|pids_limit_hit|DENIED|forks_ok=8: BlockingIOError: [Errno 11] Resource temporarily unavailable\nPROBE|res_forkbomb_pids|done|forks_ok=8\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: cgroup pids-limit stopped the relaxed-profile fork bomb (test-only profile)",
+        "PASS: bounded runtime; host unaffected",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "res_mem_balloon",
+      "container": "g4spike-res_mem_balloon-27572-617455",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 20.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 137,
+      "kill_reason": null,
+      "wall_seconds": 0.267,
+      "daemon_state": {
+        "ExitCode": 137,
+        "OOMKilled": true,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:37.581634453Z",
+        "FinishedAt": "2026-10-28T17:13:37.771217021Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 122,
+      "stdout_capped": false,
+      "stdout_head": "CHECK|balloon_progress|allocated_MiB=64\nCHECK|balloon_progress|allocated_MiB=128\nCHECK|balloon_progress|allocated_MiB=192\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: memory cap stopped the balloon (137/OOMKilled/MemoryError)",
+        "PASS: bounded runtime",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "res_infinite_loop",
+      "container": "g4spike-res_infinite_loop-27572-617771",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 8.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 137,
+      "kill_reason": "wall_deadline",
+      "wall_seconds": 8.131,
+      "daemon_state": {
+        "ExitCode": 137,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:37.892416684Z",
+        "FinishedAt": "2026-10-28T17:13:45.927105771Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 0,
+      "stdout_capped": false,
+      "stdout_head": "",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: wall deadline killed the loop",
+        "PASS: killed with 137",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "res_disk_fill",
+      "container": "g4spike-res_disk_fill-27572-625957",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 0,
+      "kill_reason": null,
+      "wall_seconds": 0.155,
+      "daemon_state": {
+        "ExitCode": 0,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:46.084906156Z",
+        "FinishedAt": "2026-10-28T17:13:46.154686846Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 665,
+      "stdout_capped": false,
+      "stdout_head": "CHECK|disk_progress|written_MiB=1\nCHECK|disk_progress|written_MiB=2\nCHECK|disk_progress|written_MiB=3\nCHECK|disk_progress|written_MiB=4\nCHECK|disk_progress|written_MiB=5\nCHECK|disk_progress|written_MiB=6\nCHECK|disk_progress|written_MiB=7\nCHECK|disk_progress|written_MiB=8\nCHECK|disk_progress|written_MiB=9\nCHECK|disk_progress|written_MiB=10\nCHECK|disk_progress|written_MiB=11\nCHECK|disk_progress|written_MiB=12\nCHECK|disk_progress|written_MiB=13\nCHECK|disk_progress|written_MiB=14\nCHECK|disk_progress|written_MiB=15\nCHECK|disk_progress|written_MiB=16\nCHECK|disk_fill|ENOSPC|written_MiB=16: [Errno 28] No space left on device\nPROBE|res_disk_fill|done|written_MiB=16\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: tmpfs size cap produced ENOSPC (errno 28)",
+        "PASS: recorded fill volume",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "res_output_flood",
+      "container": "g4spike-res_output_flood-27572-626165",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.5",
+        "pids": 16,
+        "wall_s": 3.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 137,
+      "kill_reason": "output_hard_cap",
+      "wall_seconds": 0.441,
+      "daemon_state": {
+        "ExitCode": 137,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:46.285742907Z",
+        "FinishedAt": "2026-10-28T17:13:46.664387544Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 500000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 8388608,
+      "stdout_capped": true,
+      "stdout_head": "FLOODxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: flood stopped by hard cap or wall",
+        "PASS: captured bytes bounded near the hard cap",
+        "PASS: recorded output truncated to the evidence cap",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "cpu_count_ref",
+      "container": "g4spike-cpu_count_ref-27572-626675",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "1.0",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 0,
+      "kill_reason": null,
+      "wall_seconds": 3.161,
+      "daemon_state": {
+        "ExitCode": 0,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:46.813389768Z",
+        "FinishedAt": "2026-10-28T17:13:49.863316621Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 1000000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 57,
+      "stdout_capped": false,
+      "stdout_head": "CHECK|cpu_iterations|count=16415737\nPROBE|cpu_count|done\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: exit 0",
+        "PASS: iteration count recorded",
+        "PASS: container force-removed after the job"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    },
+    {
+      "probe": "cpu_count_capped",
+      "container": "g4spike-cpu_count_capped-27572-629905",
+      "image": "python@sha256:aae362254cea6b75fe812f0b428f10b3b361a090fe5655fb1d03937f6d38cda9",
+      "profile": "seccomp-runner-strict.json",
+      "limits": {
+        "memory": "256m",
+        "cpus": "0.25",
+        "pids": 16,
+        "wall_s": 10.0,
+        "out_cap_bytes": 1048576,
+        "hard_cap_bytes": 8388608,
+        "tmpfs": "16m"
+      },
+      "client_exit": 0,
+      "kill_reason": null,
+      "wall_seconds": 3.27,
+      "daemon_state": {
+        "ExitCode": 0,
+        "OOMKilled": false,
+        "Error": "",
+        "StartedAt": "2026-10-28T17:13:50.045062517Z",
+        "FinishedAt": "2026-10-28T17:13:53.169620128Z"
+      },
+      "applied_flags": {
+        "NetworkMode": "none",
+        "ReadonlyRootfs": true,
+        "CapDrop": [
+          "ALL"
+        ],
+        "SecurityOpt": [
+          "no-new-privileges",
+          "seccomp={\"comment\":\"G4 spike runner profile (production-candidate). Default-deny, derived from src/worker/parser/seccomp.json (the admitted parser precedent) with additions a general CPython pure-function job measurably needs (file ops on tmpfs: mkdirat/unlinkat/renameat/renameat2/fchmod/fchmodat/umask; faccessat2; membarrier; restart_syscall; dup family; msync; chdir/fchdir; getgroups). execve is kept (the OCI runtime applies the filter before exec'ing the entrypoint, so denying it prevents container start); execveat stays denied. clone/clone3/fork/vfork/wait4 and all socket/connect/sendto syscalls are DENIED: no subprocesses, no threads, no network at syscall level (on top of --network none). This is spike evidence, not an admitted production profile.\",\"defaultAction\":\"SCMP_ACT_ERRNO\",\"defaultErrnoRet\":1,\"archMap\":[{\"architecture\":\"SCMP_ARCH_AARCH64\",\"subArchitectures\":[]}],\"syscalls\":[{\"names\":[\"read\",\"write\",\"readv\",\"writev\",\"close\",\"close_range\",\"lseek\",\"pread64\",\"pwrite64\",\"fstat\",\"fstatfs\",\"statfs\",\"newfstatat\",\"faccessat\",\"faccessat2\",\"statx\",\"openat\",\"readlinkat\",\"getdents64\",\"fcntl\",\"ioctl\",\"dup\",\"dup2\",\"dup3\",\"mmap\",\"munmap\",\"mprotect\",\"mremap\",\"madvise\",\"msync\",\"brk\",\"futex\",\"futex_waitv\",\"rseq\",\"membarrier\",\"restart_syscall\",\"set_tid_address\",\"set_robust_list\",\"rt_sigaction\",\"rt_sigprocmask\",\"rt_sigreturn\",\"sigaltstack\",\"getrandom\",\"getpid\",\"getppid\",\"gettid\",\"getuid\",\"geteuid\",\"getgid\",\"getegid\",\"getgroups\",\"umask\",\"getcwd\",\"chdir\",\"fchdir\",\"clock_gettime\",\"clock_getres\",\"clock_nanosleep\",\"nanosleep\",\"gettimeofday\",\"getrusage\",\"uname\",\"sysinfo\",\"sched_getaffinity\",\"sched_yield\",\"prlimit64\",\"getrlimit\",\"mkdirat\",\"unlinkat\",\"renameat\",\"renameat2\",\"fchmod\",\"fchmodat\",\"execve\",\"exit\",\"exit_group\"],\"action\":\"SCMP_ACT_ALLOW\"}]}"
+        ],
+        "User": "65532:65532",
+        "Memory": 268435456,
+        "MemorySwap": 268435456,
+        "NanoCpus": 250000000,
+        "PidsLimit": 16,
+        "Tmpfs": {
+          "/tmp": "rw,noexec,nosuid,size=16m"
+        },
+        "Binds": null,
+        "PortBindings": {},
+        "Mounts": [],
+        "LogConfig": null
+      },
+      "stdout_bytes_raw": 56,
+      "stdout_capped": false,
+      "stdout_head": "CHECK|cpu_iterations|count=3753818\nPROBE|cpu_count|done\n",
+      "stderr_head": "",
+      "container_removed": true,
+      "assertions": [
+        "PASS: exit 0",
+        "PASS: iteration count recorded",
+        "PASS: container force-removed after the job",
+        "PASS: cpu quota enforced: 0.25-cpu iterations/reference = 0.229 (<0.6)"
+      ],
+      "assertion_verdict": "CONTAINED/OK"
+    }
+  ],
+  "honesty": "Local single-machine feasibility evidence on macOS/Colima (Linux aarch64 VM, shared kernel with other containers). NOT a kernel-escape certification, NOT production isolation proof, NOT an admission: entries 6.6/6.7 must build fresh admission/audit/fingerprint evidence on this dossier's inputs before any activation (fail-closed; quarantine on doubt)."
+}
