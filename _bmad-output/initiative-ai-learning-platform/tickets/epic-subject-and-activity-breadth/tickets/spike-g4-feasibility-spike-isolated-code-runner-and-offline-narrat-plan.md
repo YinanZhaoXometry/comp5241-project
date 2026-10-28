@@ -3,7 +3,7 @@ title: 'G4 feasibility spike: isolated code runner and offline narration (6.2)'
 type: 'chore' # spike evidence + disposable harness; no product code path changes
 ticket: 2
 created: '2026-10-29'
-status: built
+status: done
 baseline_revision: '766a12485a99f760840982264b66730f00c6f036'
 route: 'oneshot'
 route_source: 'auto'
