@@ -3,7 +3,7 @@ title: 'Targeted recovery ledger and fresh retest chain (3.2)'
 type: 'feature'
 ticket: 2
 created: '2026-10-28'
-status: 'built'
+status: 'done'
 baseline_revision: '20aeeedef188946d3a69ecddc24a562b3e649889'
 route: 'full'
 route_source: 'auto'
