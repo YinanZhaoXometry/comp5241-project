@@ -143,6 +143,7 @@ test("instructor authors, approves and enrolls; the learner studies only the app
   }
 
   // The live instructor page denies a learner's session the studio surfaces.
+  await database().query('DELETE FROM auth."rateLimit"');
   const learnerContext = await playwright.request.newContext({ baseURL: origin });
   await learnerContext.post("/api/v1/auth/sign-in/email", { headers: { Origin: origin }, data: { email: learner.email, password: learner.password } });
   expect((await learnerContext.get("/api/v1/instructor/courses")).status()).toBe(404);
