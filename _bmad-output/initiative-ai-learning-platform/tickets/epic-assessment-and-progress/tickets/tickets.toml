@@ -16,7 +16,6 @@ covers = ["R2", "R4"]
 after = ["1.1", "1.5", "2.7"]
 hitl = true
 risk = "high"
-unknown = "Starting awaits the owner's explicit build authorization for epic 3 (none given as of 2026-10-28; this planning authorizes nothing). The 2026-10-21 whole-epic gate part is settled — epic 1 closed 2026-10-25 (1.6/1.7/1.12 done, 1.14 dropped-deferred) and epic 2 closed 2026-10-28 (2.1–2.10 done, 2.11 dropped-deferred) — and this entry's cross-epic after (1.1, 1.5, 2.7) is done. Live-eligibility unknowns on later entries (F-A pattern, 3.2/3.5) are separate and stand."
 references = ["UX — _bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md, Test attempt view pattern and State Patterns (Pass-mark boundary)", "PRD — _bmad-output/initiative-ai-learning-platform/prd-ai-learning-platform/prd-ai-learning-platform.md, FR-13 consequences"]
 
 [[entry]]
