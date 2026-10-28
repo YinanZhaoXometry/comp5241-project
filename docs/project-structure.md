@@ -55,7 +55,15 @@ project-new/
 │   │   │                                                                 point amounts, instructor pass-mark
 │   │   │                                                                 override provenance when a snapshot
 │   │   │                                                                 carries one, and a Provisional label
-│   │   │                                                                 path that can award nothing
+│   │   │                                                                 path that can award nothing — plus
+│   │   │                                                                 story 4: the completion-awards line
+│   │   │                                                                 (version-scoped, listed, never
+│   │   │                                                                 overwritten) under the award-derived
+│   │   │                                                                 roadmap line, and the study-version
+│   │   │                                                                 switcher — changed-required-work
+│   │   │                                                                 disclosure first, exact
+│   │   │                                                                 acknowledgment to move, prior
+│   │   │                                                                 awards never erased
 │   │   ├── shell/          product + instructor page shells (sidebar/topnav, honesty label)
 │   │   ├── screens/        static styled screen content (library, course, practice, …)
 │   │   └── library·course·practice·progress·recovery·roadmap·review·why·       static product pages
@@ -90,7 +98,14 @@ project-new/
 │   │   │                       in personal study — no instructor writer
 │   │   │                       exists), and the provisional-grade decision
 │   │   │                       type that structurally carries no pass and
-│   │   │                       can never award completion
+│   │   │                       can never award completion — plus story 4's
+│   │   │                       award/manifest/switch contracts: the
+│   │   │                       version-scoped CompletionAwardView list +
+│   │   │                       current-release award on the state, the
+│   │   │                       parent-manifest schema (unique child
+│   │   │                       releases, required/optional), and the strict
+│   │   │                       switch command whose acknowledged change set
+│   │   │                       must equal the server-computed diff exactly
 │   │   ├── ai-provider.ts  provider-neutral text-completion port (dormant)
 │   │   └── courses.ts      epic-2 S1–S6 generated-course + supplement +
 │   │                         player + why contracts (content v4 = v3
@@ -170,9 +185,8 @@ project-new/
 │   │   │                       per group, positions renumbered, root pass
 │   │   │                       mark/rubric pinned through the chain), a group
 │   │   │                       clears only at the root mark by the same
-│   │   │                       cross-product, and the derived roadmap node
-│   │   │                       completes on a passed OR fully-recovered failed
-│   │   │                       attempt on the current version — original
+│   │   │                       cross-product, and the roadmap node derives
+│   │   │                       from earned awards (story 4) — original
 │   │   │                       score never rewritten, credit shown separately
 │   │   │                       — plus story 3's scoring surface, with NO
 │   │   │                       stored-shape change (the snapshot jsonb
@@ -186,7 +200,27 @@ project-new/
 │   │   │                       (build-time contract; personal study stays
 │   │   │                       default-80), scale-aware point display, and
 │   │   │                       the provisional-grade fence — only a final
-│   │   │                       graded pass or full recovery completes
+│   │   │                       graded pass or full recovery completes —
+│   │   │                       plus story 4's monotonic completion-award
+│   │   │                       layer (023 app.completion_award +
+│   │   │                       app.studied_release): required items done +
+│   │   │                       passed-or-fully-recovered awards a UNIQUE
+│   │   │                       version-scoped mini-course award inserted
+│   │   │                       once at each contributing verb's transaction
+│   │   │                       (submitAttempt, submitRetest and epic-2's
+│   │   │                       markItemDone through the exported
+│   │   │                       recordCompletionIfEarned hook — never
+│   │   │                       updated, revoked or re-derived), parent
+│   │   │                       manifests award only when every required
+│   │   │                       child release is awarded (optional never
+│   │   │                       block; synthetic multi-child fixtures through
+│   │   │                       the module's own writer), the roadmap node
+│   │   │                       derives FROM award rows, and the explicit
+│   │   │                       version switch (switchCourseVersion +
+│   │   │                       disclosure GET) moves the studied-release
+│   │   │                       pointer only after the changed required work
+│   │   │                       is disclosed and exactly acknowledged —
+│   │   │                       prior awards never erased
 │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
 │   │                           derivative ports, dependencies preview (S9),
 │   │                           retention registry/scheduler + archive contract (S10)

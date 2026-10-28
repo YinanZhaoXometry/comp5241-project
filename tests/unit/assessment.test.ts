@@ -4,26 +4,30 @@ import {
   attemptStatuses,
   retestSnapshotSchema,
   partialCreditSnapshotSchema,
+  parentManifestSchema,
   passMarkOverrideOf,
   pointsScaleOf,
   startRetestSchema,
   submitAttemptSchema,
   submitRetestSchema,
+  switchCourseVersionSchema,
   PARTIAL_CREDIT_TEST_ID,
   DEFAULT_PASS_MARK_OVERRIDE,
   type AttemptSnapshot,
   type RetestSnapshot,
 } from '../../src/contracts/assessment';
 import { buildSnapshot, buildRetestSnapshot, buildPartialCreditSnapshot, TEST_ITEM_POINTS, TEST_TOTAL_POINTS, PARTIAL_ITEM_POINTS, PARTIAL_TOTAL_POINTS } from '../../src/modules/assessment-progress/bank';
-import { deriveRoadmapNode, displayPercentOf, displayPointsOf, earnedOfItem, gradeAwardsCompletion, groupCleared, groupResultsOf, recoverySatisfied, scoreAttempt, verdictLine } from '../../src/modules/assessment-progress/scoring';
+import { completionEarned, deriveRoadmapNode, displayPercentOf, displayPointsOf, earnedOfItem, gradeAwardsCompletion, groupCleared, groupResultsOf, parentEarned, recoverySatisfied, scoreAttempt, verdictLine } from '../../src/modules/assessment-progress/scoring';
 
 // Unit coverage of the epic-3 story-1 tracer's pure surface plus the story-2
-// targeted-recovery arithmetic: the AD-8 scoring (unrounded cross-product pass
+// targeted-recovery arithmetic, the story-3 scoring surface and the story-4
+// completion-award predicates: the AD-8 scoring (unrounded cross-product pass
 // decision, honest boundary display, zero-total/negative rejection), the
 // manually authored synthetic banks (D7 fixture validity independent of any
 // generator — root AND fresh retest pool), the per-objective-group ledger
 // arithmetic (initial results, independent clearing, requirement
-// satisfaction) and the DERIVED roadmap node including recovery credit.
+// satisfaction), the award-derived roadmap node, the pure completion and
+// parent predicates (AD-5/AD-8/D1) and the strict switch command surface.
 
 const objectives = (count: number) =>
   Array.from({ length: count }, (_, index) => ({ index, text: `Synthetic objective ${index + 1}` }));
@@ -129,28 +133,93 @@ describe('manual synthetic test bank (D7 fixture)', () => {
   });
 });
 
-describe('derived roadmap node', () => {
-  it('completes only on all required items done plus a passed attempt on the current version', () => {
-    expect(deriveRoadmapNode({ requiredItems: { total: 2, done: 2 }, passedAttemptOnCurrentVersion: true, recoveredOnCurrentVersion: false, anyAttempt: true })).toBe('completed');
-    // A pass on an OLDER version does not complete the current one.
-    expect(deriveRoadmapNode({ requiredItems: { total: 2, done: 2 }, passedAttemptOnCurrentVersion: false, recoveredOnCurrentVersion: false, anyAttempt: true })).toBe('in-progress');
-    // Required items missing blocks completion even with a pass.
-    expect(deriveRoadmapNode({ requiredItems: { total: 2, done: 1 }, passedAttemptOnCurrentVersion: true, recoveredOnCurrentVersion: false, anyAttempt: true })).toBe('in-progress');
+describe('award-derived roadmap node (story 4)', () => {
+  it('completes only when an earned award pins the studied release', () => {
+    expect(deriveRoadmapNode({ awardOnCurrentVersion: true, requiredItems: { total: 2, done: 2 }, anyAttempt: true })).toBe('completed');
+    // The award row IS the completion record; item counts no longer gate the
+    // node (they gated the award at verb time).
+    expect(deriveRoadmapNode({ awardOnCurrentVersion: true, requiredItems: { total: 2, done: 0 }, anyAttempt: false })).toBe('completed');
   });
-  it('accepts a fully-recovered failed attempt as completion, never a partial recovery', () => {
-    expect(deriveRoadmapNode({ requiredItems: { total: 2, done: 2 }, passedAttemptOnCurrentVersion: false, recoveredOnCurrentVersion: true, anyAttempt: true })).toBe('completed');
-    // A chain pinned to a superseded version (recovered=false here) never
-    // completes the current node even with required items done.
-    expect(deriveRoadmapNode({ requiredItems: { total: 2, done: 2 }, passedAttemptOnCurrentVersion: false, recoveredOnCurrentVersion: false, anyAttempt: true })).toBe('in-progress');
-    expect(deriveRoadmapNode({ requiredItems: { total: 2, done: 1 }, passedAttemptOnCurrentVersion: false, recoveredOnCurrentVersion: true, anyAttempt: true })).toBe('in-progress');
+  it('keeps a passed-but-unawarded release honestly In progress', () => {
+    // A passed/recovered attempt with no award row yet (pre-award data, or an
+    // evaluation that has not landed) never reads Completed.
+    expect(deriveRoadmapNode({ awardOnCurrentVersion: false, requiredItems: { total: 2, done: 2 }, anyAttempt: true })).toBe('in-progress');
+    expect(deriveRoadmapNode({ awardOnCurrentVersion: false, requiredItems: { total: 0, done: 0 }, anyAttempt: true })).toBe('in-progress');
   });
   it('marks engagement in progress and nothing as not started', () => {
-    expect(deriveRoadmapNode({ requiredItems: { total: 2, done: 0 }, passedAttemptOnCurrentVersion: false, recoveredOnCurrentVersion: false, anyAttempt: true })).toBe('in-progress');
-    expect(deriveRoadmapNode({ requiredItems: { total: 2, done: 1 }, passedAttemptOnCurrentVersion: false, recoveredOnCurrentVersion: false, anyAttempt: false })).toBe('in-progress');
-    expect(deriveRoadmapNode({ requiredItems: { total: 2, done: 0 }, passedAttemptOnCurrentVersion: false, recoveredOnCurrentVersion: false, anyAttempt: false })).toBe('not-started');
-    // No course view yet (regeneration in flight): attempts keep it in progress.
-    expect(deriveRoadmapNode({ requiredItems: { total: 0, done: 0 }, passedAttemptOnCurrentVersion: false, recoveredOnCurrentVersion: false, anyAttempt: true })).toBe('in-progress');
-    expect(deriveRoadmapNode({ requiredItems: { total: 0, done: 0 }, passedAttemptOnCurrentVersion: false, recoveredOnCurrentVersion: false, anyAttempt: false })).toBe('not-started');
+    expect(deriveRoadmapNode({ awardOnCurrentVersion: false, requiredItems: { total: 2, done: 0 }, anyAttempt: true })).toBe('in-progress');
+    expect(deriveRoadmapNode({ awardOnCurrentVersion: false, requiredItems: { total: 2, done: 1 }, anyAttempt: false })).toBe('in-progress');
+    expect(deriveRoadmapNode({ awardOnCurrentVersion: false, requiredItems: { total: 2, done: 0 }, anyAttempt: false })).toBe('not-started');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Story 4 — the pure completion and parent predicates (AD-5/AD-8/D1) and the
+// strict command surfaces.
+// ---------------------------------------------------------------------------
+
+describe('story 4: completionEarned (content-plus-tests, nothing else)', () => {
+  it('earns only on every required item done plus a satisfied required test', () => {
+    expect(completionEarned({ requiredItems: { total: 2, done: 2 }, testSatisfied: true })).toBe(true);
+    // Missing item blocks even a satisfied test.
+    expect(completionEarned({ requiredItems: { total: 2, done: 1 }, testSatisfied: true })).toBe(false);
+    // Failed/unrecovered test blocks even with all items done.
+    expect(completionEarned({ requiredItems: { total: 2, done: 2 }, testSatisfied: false })).toBe(false);
+    expect(completionEarned({ requiredItems: { total: 0, done: 0 }, testSatisfied: true })).toBe(false);
+  });
+  it('accepts only a fence-passed or fully-recovered test as satisfaction', () => {
+    // The service computes testSatisfied through gradeAwardsCompletion and
+    // recoverySatisfied; a provisional-typed decision maps to a non-pass and
+    // an absent/partial ledger never satisfies — the wiring below is the
+    // contract the integration exercises end to end.
+    const provisionalPass = gradeAwardsCompletion({ gradeKind: 'provisional', pendingSince: new Date().toISOString() });
+    expect(completionEarned({ requiredItems: { total: 1, done: 1 }, testSatisfied: provisionalPass })).toBe(false);
+    expect(completionEarned({ requiredItems: { total: 1, done: 1 }, testSatisfied: recoverySatisfied([]) })).toBe(false);
+    expect(completionEarned({ requiredItems: { total: 1, done: 1 }, testSatisfied: recoverySatisfied([{ status: 'open' }, { status: 'cleared' }]) })).toBe(false);
+    expect(completionEarned({ requiredItems: { total: 1, done: 1 }, testSatisfied: gradeAwardsCompletion({ gradeKind: 'final', passed: true }) })).toBe(true);
+    expect(completionEarned({ requiredItems: { total: 1, done: 1 }, testSatisfied: recoverySatisfied([{ status: 'cleared' }, { status: 'cleared' }]) })).toBe(true);
+  });
+});
+
+describe('story 4: parentEarned (required children gate, optional never block)', () => {
+  const child = (courseId: string, required: boolean) => ({ courseId, required });
+  it('earns exactly when every required child release is awarded', () => {
+    expect(parentEarned([child('a', true), child('b', true)], ['a', 'b'])).toBe(true);
+    expect(parentEarned([child('a', true), child('b', true)], ['a'])).toBe(false);
+    expect(parentEarned([child('a', true), child('b', true)], [])).toBe(false);
+  });
+  it('never lets an unawarded optional child block', () => {
+    expect(parentEarned([child('a', true), child('c', false)], ['a'])).toBe(true);
+    expect(parentEarned([child('a', true), child('c', false)], ['a', 'c'])).toBe(true);
+    expect(parentEarned([child('a', true), child('c', false)], ['c'])).toBe(false);
+  });
+  it('awards nothing for a manifest with no required child', () => {
+    expect(parentEarned([child('c', false)], ['c'])).toBe(false);
+    expect(parentEarned([], [])).toBe(false);
+  });
+  it('keeps the manifest schema strict: unique child releases, bounded, no forged fields', () => {
+    const base = { schemaVersion: 1 as const };
+    expect(parentManifestSchema.safeParse({ ...base, children: [{ courseId: crypto.randomUUID(), required: true }] }).success).toBe(true);
+    expect(parentManifestSchema.safeParse({ ...base, children: [{ courseId: crypto.randomUUID(), required: true }, { courseId: crypto.randomUUID(), required: false }] }).success).toBe(true);
+    expect(parentManifestSchema.safeParse({ ...base, children: [] }).success).toBe(false);
+    const duplicated = crypto.randomUUID();
+    expect(parentManifestSchema.safeParse({ ...base, children: [{ courseId: duplicated, required: true }, { courseId: duplicated, required: false }] }).success).toBe(false);
+    expect(parentManifestSchema.safeParse({ ...base, children: [{ courseId: 'not-a-uuid', required: true }] }).success).toBe(false);
+    expect(parentManifestSchema.safeParse({ ...base, children: [{ courseId: crypto.randomUUID(), required: true, weight: 2 }] }).success).toBe(false);
+  });
+});
+
+describe('story 4: switch command surface (informed, exact acknowledgment)', () => {
+  const base = { schemaVersion: 1 as const, commandKey: crypto.randomUUID(), expectedRevision: 0 };
+  const courseId = crypto.randomUUID();
+  const acknowledged = { addedRequiredItemIds: ['lesson:2:reading'], removedRequiredItemIds: [], requiredTestChanged: true };
+  it('accepts the exact command shape and nothing beside it', () => {
+    expect(switchCourseVersionSchema.safeParse({ ...base, courseId, acknowledged }).success).toBe(true);
+    expect(switchCourseVersionSchema.safeParse({ ...base, courseId, acknowledged: { ...acknowledged, extra: true } }).success).toBe(false);
+    expect(switchCourseVersionSchema.safeParse({ ...base, courseId: 'nope', acknowledged }).success).toBe(false);
+    expect(switchCourseVersionSchema.safeParse({ ...base, acknowledged }).success).toBe(false);
+    expect(switchCourseVersionSchema.safeParse({ ...base, courseId, acknowledged: { ...acknowledged, addedRequiredItemIds: ['x'] } }).success).toBe(false);
+    expect(switchCourseVersionSchema.safeParse({ schemaVersion: 2, commandKey: crypto.randomUUID(), expectedRevision: 0, courseId, acknowledged }).success).toBe(false);
   });
 });
 
@@ -481,8 +550,12 @@ describe('story 3: the provisional-grade contract can never award completion', (
     // to a non-pass through the fence and the derivations ignore it.
     expect(gradeAwardsCompletion({ gradeKind: 'provisional', pendingSince: new Date().toISOString() })).toBe(false);
     const provisionalPass = gradeAwardsCompletion({ gradeKind: 'provisional', pendingSince: new Date().toISOString() });
-    expect(deriveRoadmapNode({ requiredItems: { total: 2, done: 2 }, passedAttemptOnCurrentVersion: provisionalPass, recoveredOnCurrentVersion: false, anyAttempt: true })).toBe('in-progress');
-    expect(deriveRoadmapNode({ requiredItems: { total: 2, done: 2 }, passedAttemptOnCurrentVersion: gradeAwardsCompletion({ gradeKind: 'final', passed: true }), recoveredOnCurrentVersion: false, anyAttempt: true })).toBe('completed');
+    // Story 4: the provisional fence rides BOTH the pure completion
+    // predicate and the award-derived node — a provisional-typed result can
+    // complete nothing on either path.
+    expect(completionEarned({ requiredItems: { total: 2, done: 2 }, testSatisfied: provisionalPass })).toBe(false);
+    expect(deriveRoadmapNode({ awardOnCurrentVersion: completionEarned({ requiredItems: { total: 2, done: 2 }, testSatisfied: provisionalPass }), requiredItems: { total: 2, done: 2 }, anyAttempt: true })).toBe('in-progress');
+    expect(deriveRoadmapNode({ awardOnCurrentVersion: completionEarned({ requiredItems: { total: 2, done: 2 }, testSatisfied: gradeAwardsCompletion({ gradeKind: 'final', passed: true }) }), requiredItems: { total: 2, done: 2 }, anyAttempt: true })).toBe('completed');
   });
 
   it('keeps the provisional kind out of every stored status (contract-only, epic 5 confirms it)', () => {

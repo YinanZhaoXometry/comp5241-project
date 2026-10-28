@@ -3,6 +3,7 @@ import {
   type AttemptAnswer,
   type AttemptSnapshot,
   type GradeDecision,
+  type ParentManifestChild,
   type PartialCreditSnapshot,
   type RecoveryTargetView,
   type RetestGroupResult,
@@ -168,29 +169,56 @@ export function groupViewOf(group: GroupResult, passMarkPercent: number, pointsS
   };
 }
 
-// The DERIVED roadmap node (no award rows anywhere): completed requires every
-// required item of the current course version done AND a passed OR
-// fully-recovered failed attempt on that same version (story 2: recovery
-// credit completes the node only when every target of that attempt's ledger
-// is cleared — a partial recovery keeps it honestly unsatisfied); in progress
-// means real engagement without completion; not started means neither. Story
-// 3: the pass input is computed through gradeAwardsCompletion — the
-// provisional-grade fence — so a provisional-typed result can only ever
-// arrive here as a non-pass and contribute nothing. Pure over its inputs so
-// the derivation is unit-covered and the service only gathers facts.
+// The DERIVED roadmap node (story 4: derived FROM AWARD ROWS). Completed
+// exists only when an earned version-scoped award pins the studied release —
+// the award itself records that every required item was done and the
+// required test was passed (final grade through the provisional fence) or
+// fully recovered at the moment it landed, and an earned award is monotonic,
+// so nothing later un-completes it (supersession, policy edits, review
+// outcomes, a later failed retake). A passed or fully-recovered attempt with
+// NO award yet keeps the node honestly In progress (pre-award data or an
+// evaluation that has not landed); in progress otherwise means real
+// engagement (any attempt, or a required item of the studied release done);
+// not started means neither. Pure over its inputs so the derivation is
+// unit-covered and the service only gathers facts.
 export type RoadmapInputs = {
+  awardOnCurrentVersion: boolean;
   requiredItems: { total: number; done: number };
-  passedAttemptOnCurrentVersion: boolean;
-  recoveredOnCurrentVersion: boolean;
   anyAttempt: boolean;
 };
 export function deriveRoadmapNode(inputs: RoadmapInputs): RoadmapNode {
-  if (
-    inputs.requiredItems.total > 0 &&
-    inputs.requiredItems.done >= inputs.requiredItems.total &&
-    (inputs.passedAttemptOnCurrentVersion || inputs.recoveredOnCurrentVersion)
-  )
-    return "completed";
+  if (inputs.awardOnCurrentVersion) return "completed";
   if (inputs.anyAttempt || inputs.requiredItems.done > 0) return "in-progress";
   return "not-started";
+}
+
+// ---------------------------------------------------------------------------
+// Story 4 — the pure completion and parent predicates (AD-5/AD-8/D1).
+// ---------------------------------------------------------------------------
+
+// Mini-course completion is EARNED, never read-time derived: every REQUIRED
+// tracker item of the release done (epic-2 evidence, consumed read-only)
+// AND the release's required-test requirement satisfied — an ordinary final
+// pass (the caller computes it through gradeAwardsCompletion, so a
+// provisional-typed grade can never arrive here as a pass) or full recovery
+// (every ledger target of a failed attempt on this release cleared).
+// Nothing else awards: no dwell, no engagement, no self-report. An empty
+// required set can never earn (there is no required work to complete).
+export type CompletionEarnedInputs = {
+  requiredItems: { total: number; done: number };
+  testSatisfied: boolean;
+};
+export function completionEarned(inputs: CompletionEarnedInputs): boolean {
+  return inputs.requiredItems.total > 0 && inputs.requiredItems.done >= inputs.requiredItems.total && inputs.testSatisfied;
+}
+
+// Parent completion (AD-5/AD-8): the manifest's REQUIRED child releases must
+// all carry awards; OPTIONAL children never block. A manifest with no
+// required child has no completion condition and awards nothing — a
+// vacuous "every required child awarded" must not auto-award.
+export function parentEarned(children: ParentManifestChild[], awardedCourseIds: string[]): boolean {
+  const required = children.filter(child => child.required);
+  if (!required.length) return false;
+  const awarded = new Set(awardedCourseIds);
+  return required.every(child => awarded.has(child.courseId));
 }

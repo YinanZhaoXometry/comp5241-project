@@ -203,6 +203,11 @@ test("A takes the required test: honest 79.96% boundary keeps the node In progre
   await panel.getByRole("button", { name: "Submit test (5/5 answered)", exact: true }).click();
   await expect(panel.getByRole("strong").filter({ hasText: "100.0% — Pass (mark is 80%)" })).toBeVisible({ timeout: 15000 });
   await expect(panel.getByText("Roadmap: Completed.", { exact: true })).toBeVisible();
+  // Story 4: the passing retake earned exactly one version-scoped award — the
+  // awards line lists it (with its timestamp), version-scoped and never
+  // overwritten.
+  await expect(panel.getByText(/Completion awards/)).toBeVisible();
+  await expect(panel.getByText(/Mini-course version 1 — completed /)).toBeVisible();
   // History: both attempts listed, never overwritten.
   await expect(panel.getByText(/Attempt history/)).toBeVisible();
   await expect(panel.getByText(/open — not yet submitted/)).toHaveCount(0);
@@ -509,3 +514,130 @@ test("A answers a disclosed partial-credit item: the declared credit is earned e
   expect(errors).toEqual([]);
   await page.screenshot({ path: info.outputPath("partial-credit-graded.png"), fullPage: true });
 });
+
+// Epic-3 story-4 journey: the award/switch honesty. A completes version 1
+// (required reading done + all-correct attempt) and the node reads Completed
+// FROM the earned version-scoped award; a regeneration creates version 2 with
+// CHANGED required work (a new lesson-2 reading and a changed required test)
+// and the node honestly falls back to In progress while the version-1 award
+// stays listed — never erased, never silent. The switch flow discloses the
+// changed required work BEFORE any move, a wrong acknowledgment is denied
+// server-side (no move), and the confirmed switch back to version 1 restores
+// Completed from the existing award. Keyboard-operable and overflow-free at
+// 360px; zero outbound requests; no pre-grade answer leak.
+test("A earns a version-scoped award, regenerates, and switches back only after the changed-work disclosure", async ({ page }, info) => {
+  test.setTimeout(300000);
+  const errors: string[] = [];
+  const outbound: string[] = [];
+  const assessmentBodies: Promise<string>[] = [];
+  page.on("pageerror", error => errors.push(error.name));
+  page.on("request", request => { if (!request.url().startsWith(origin)) outbound.push(new URL(request.url()).hostname); });
+  page.on("response", response => { if (response.url().includes("/assessment") && response.request().method() === "GET") assessmentBodies.push(response.text().catch(() => "")); });
+  await page.setViewportSize({ width: 360, height: 900 });
+  await login(page, "attempt-award-switch-browser");
+  await grantConsent(page);
+  const rootId = await uploadAndConfirm(page);
+  const panel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Assessment & progress", exact: true }) });
+  const coursePanel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your mini-course", exact: true }) });
+  await coursePanel.getByRole("button", { name: "Generate mini-course (AI)", exact: true }).click();
+  await expect(coursePanel.getByRole("heading", { name: "1. One generated lesson", exact: true })).toBeVisible({ timeout: 60000 });
+  await expect(panel).toBeVisible({ timeout: 15000 });
+  // Complete version 1: required reading done, then an all-correct attempt.
+  await coursePanel.getByRole("button", { name: "Mark lesson 1 reading done", exact: true }).click();
+  await expect(coursePanel.getByText(/^Done\./).first()).toBeVisible();
+  await panel.getByRole("button", { name: "Start the required test", exact: true }).click();
+  await expect(panel.getByText("Attempt open — 0 of 5 answered.", { exact: false })).toBeVisible();
+  const snapshot = await snapshotOf(rootId);
+  for (const item of snapshot.items) await page.getByRole("radio", { name: item.choices.find(choice => choice.id === item.answerId)!.text, exact: true }).check();
+  await panel.getByRole("button", { name: "Submit test (5/5 answered)", exact: true }).click();
+  await expect(panel.getByRole("strong").filter({ hasText: "100.0% — Pass (mark is 80%)" })).toBeVisible({ timeout: 15000 });
+  await expect(panel.getByText("Roadmap: Completed.", { exact: true })).toBeVisible();
+  await expect(panel.getByText(/Mini-course version 1 — completed /)).toBeVisible();
+
+  // Regenerate version 2 with changed required work through the API (the
+  // learner's own confirmed-plan path): a second lesson adds a NEW required
+  // reading and the changed outcomes change the required test.
+  const study = await (await page.request.get(`/api/v1/studies/${rootId}`)).json() as { revision: number; extractionId: string; selection: { id: string } };
+  const secondPlan = {
+    topic: "Synthetic assessment topic, second edition",
+    goal: "Understand a topic",
+    clarification: "",
+    outcomes: ["Recall the first source", "Explain the second source", "Recover from a failed test"],
+    miniCourse: { title: "Assessment tracer", lessons: ["One generated lesson", "Judging coverage reports"], practice: "Submit one recall item", estimatedMinutes: 20 },
+    missingExplanations: "Coverage not assessed. No supplementary sources fetched.",
+  };
+  const saved = await page.request.post(`/api/v1/studies/${rootId}/plan`, {
+    headers: { Origin: origin },
+    data: { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: study.revision, selectionId: study.selection.id, extractionId: study.extractionId, plan: secondPlan },
+  });
+  expect(saved.status()).toBe(200);
+  const draft = await saved.json() as { revision: number; planRevisionId: string };
+  const confirmed = await page.request.post(`/api/v1/studies/${rootId}/confirmation`, { headers: { Origin: origin }, data: { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: draft.revision, planRevisionId: draft.planRevisionId } });
+  expect(confirmed.status()).toBe(200);
+  const confirmedReceipt = await confirmed.json() as { revision: number };
+  const generated = await page.request.post(`/api/v1/studies/${rootId}/course`, { headers: { Origin: origin }, data: { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: confirmedReceipt.revision } });
+  expect(generated.status()).toBe(202);
+  // The panel's quiet re-read picks version 2 up once it settles; the node
+  // honestly falls back to In progress (v2 has its own unawarded condition
+  // set) while the v1 award stays listed — never erased by the regeneration.
+  await expect(panel.getByText("Roadmap: In progress.", { exact: true })).toBeVisible({ timeout: 60000 });
+  await expect(panel.getByText(/Mini-course version 1 — completed /)).toBeVisible();
+  await expect(panel.getByRole("heading", { name: "Study version", exact: true })).toBeVisible();
+
+  // The disclosure BEFORE any move: choosing version 1 and showing what
+  // changes names the removed lesson-2 reading and the changed required test.
+  await panel.getByLabel("Switch to version", { exact: true }).selectOption("1");
+  const showChanges = panel.getByRole("button", { name: "Show what changes", exact: true });
+  await showChanges.focus();
+  await expect(showChanges).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(panel.getByText(/Changed required work — version 2 → version 1:/)).toBeVisible({ timeout: 15000 });
+  await expect(panel.getByText("Removed — Read lesson 2: Judging coverage reports", { exact: false })).toBeVisible();
+  await expect(panel.getByText(/The required test changes on version 1/)).toBeVisible();
+
+  // A wrong acknowledgment is denied server-side and moves nothing: the
+  // studied version stays 2 and the node stays honestly In progress.
+  const v1CourseId = await versionOneCourseId(rootId);
+  const currentStudy = await (await page.request.get(`/api/v1/studies/${rootId}`)).json() as { revision: number };
+  const wrongSwitch = await page.request.post(`/api/v1/studies/${rootId}/assessment/switch`, {
+    headers: { Origin: origin },
+    data: { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: currentStudy.revision, courseId: v1CourseId, acknowledged: { addedRequiredItemIds: [], removedRequiredItemIds: [], requiredTestChanged: false } },
+  });
+  expect(wrongSwitch.status()).toBe(409);
+  await expect(panel.getByText("Roadmap: In progress.", { exact: true })).toBeVisible();
+
+  // The confirmed switch moves the studied release back to version 1: the
+  // node reads Completed FROM the existing award — nothing was re-earned and
+  // nothing was erased. Keyboard submit on the confirm action.
+  const confirm = panel.getByRole("button", { name: "Confirm switch to version 1", exact: true });
+  await confirm.focus();
+  await expect(confirm).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(panel.getByText("Roadmap: Completed.", { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(panel.getByText("Now studying version 1.", { exact: false })).toBeVisible();
+  await expect(panel.getByText(/Mini-course version 1 — completed /)).toBeVisible();
+  // Exactly one earned award server-side, still pinning version 1.
+  const awardRows = await database().query<{ kind: string; course_version: number }>("SELECT kind,course_version FROM app.completion_award WHERE root_id=$1", [rootId]);
+  expect(awardRows.rows).toEqual([{ kind: "mini-course", course_version: 1 }]);
+  // No GET payload across the journey ever carried the answer key.
+  for (const body of await Promise.all(assessmentBodies)) {
+    expect(body).not.toContain('"answerId"');
+  }
+  // Keyboard-complete and overflow-free at 360px and desktop.
+  for (const width of [360, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(panel.getByRole("heading", { name: "Assessment & progress", exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  expect(outbound).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: info.outputPath("switch-completed.png"), fullPage: true });
+});
+
+// The version-1 course id of a study (server-side truth for the wrong-ack
+// denial probe above).
+async function versionOneCourseId(rootId: string): Promise<string> {
+  const row = await database().query<{ id: string }>("SELECT id FROM app.generated_course WHERE root_id=$1 AND version=1 AND status='ready'", [rootId]);
+  if (!row.rows[0]) throw new Error("no version-1 course row");
+  return row.rows[0].id;
+}

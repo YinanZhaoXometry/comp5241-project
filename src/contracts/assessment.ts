@@ -29,6 +29,18 @@ import { commandSchema, uuid } from "./setup";
 // rubric's credits map is disclosure, not a key: it names no answerId (the
 // correct answer is structurally absent from it), and an absent choice is
 // indistinguishable from a zero-credit choice.
+//
+// Story 4 (3.4) adds the MONOTONIC COMPLETION-AWARD layer (AD-5/AD-8/D1):
+// required content items done + every required test ordinarily passed (final
+// grade through the provisional fence) or fully recovered awards a UNIQUE
+// version-scoped mini-course completion — inserted once per (owner, course
+// release), never updated, revoked or re-derived; the roadmap node now
+// derives FROM award rows (a passed/recovered attempt with no award yet
+// still reads honestly In progress). A parent manifest pins required and
+// optional child RELEASES; a parent award exists only when every required
+// child release is awarded (optional children never block). Version
+// switching is an explicit informed command that discloses changed required
+// work BEFORE moving the studied release and never erases prior awards.
 
 export const REQUIRED_TEST_ID = "required-test-1";
 // Story 2: the fresh same-demand retest of the required test's failed
@@ -468,18 +480,108 @@ export type RecoveryState = {
   requirementSatisfied: boolean;
 };
 
+// ---------------------------------------------------------------------------
+// Story 4 — completion awards, parent manifests and the version switch.
+// ---------------------------------------------------------------------------
+
+export const awardKinds = ["mini-course", "parent-path"] as const;
+export type AwardKind = (typeof awardKinds)[number];
+
+// A parent manifest pins its child RELEASES (AD-5): each child is a course
+// release id with its required/optional standing. The manifest is planted
+// through the assessment module's own writer — personal study has one
+// mini-course per root, so multi-child shapes are synthetic fixtures (the
+// 3.3 planted-fixture precedent), not new learner-facing structure. Child
+// releases must be unique; a manifest with no required child has no
+// completion condition and awards nothing.
+export const parentManifestSchema = z
+  .strictObject({
+    schemaVersion: z.literal(1),
+    children: z
+      .array(z.strictObject({ courseId: uuid, required: z.boolean() }))
+      .min(1)
+      .max(16),
+  })
+  .refine(manifest => new Set(manifest.children.map(child => child.courseId)).size === manifest.children.length, {
+    message: "A parent manifest pins each child release at most once.",
+  });
+export type ParentManifest = z.infer<typeof parentManifestSchema>;
+export type ParentManifestChild = ParentManifest["children"][number];
+
+// The served award view — version-scoped and monotonic: an award pins the
+// course release it was earned on (mini-course rows) or the parent manifest
+// it satisfied (parent-path rows), records WHEN completion was earned, and is
+// listed forever once it exists. Earned awards on prior versions stay
+// readable and listed; nothing overwrites them.
+export type CompletionAwardView = {
+  awardId: string;
+  kind: AwardKind;
+  // Mini-course rows: the awarded course release pin. Parent rows: null.
+  courseId: string | null;
+  courseVersion: number | null;
+  planRevisionId: string | null;
+  // Parent rows: the pinned child manifest. Mini-course rows: null.
+  manifest: ParentManifest | null;
+  awardedAt: string;
+};
+
+// Explicit version switch (D1: learners remain on their studied version
+// until explicitly choosing another). The command names the target course
+// release and carries the learner's ACKNOWLEDGMENT of the exact disclosed
+// change set — added/removed required item ids and whether the required
+// test's objectives changed — which the verb re-computes server-side and
+// must match exactly, so a switch can never confirm a disclosure it did not
+// see. A mismatch is CONFLICT (stale/unconfirmed), never repaired.
+export const switchCourseVersionSchema = commandSchema.extend({
+  courseId: uuid,
+  acknowledged: z.strictObject({
+    addedRequiredItemIds: z.array(z.string().trim().min(3).max(40)).max(64),
+    removedRequiredItemIds: z.array(z.string().trim().min(3).max(40)).max(64),
+    requiredTestChanged: z.boolean(),
+  }),
+});
+export type SwitchCourseVersion = z.infer<typeof switchCourseVersionSchema>;
+
+// The served disclosure shown BEFORE any switch: the changed required work
+// between the currently studied release and the target release.
+export type SwitchDisclosure = {
+  rootId: string;
+  revision: number;
+  from: { courseId: string | null; version: number | null; requiredItemCount: number };
+  to: { courseId: string; version: number; requiredItemCount: number };
+  addedRequiredItems: Array<{ id: string; title: string }>;
+  removedRequiredItems: Array<{ id: string; title: string }>;
+  requiredTestChanged: boolean;
+};
+
+// The switch receipt: content-free (no course content, no award data).
+export type SwitchedCourseVersion = {
+  rootId: string;
+  operationId: string;
+  revision: number;
+  state: "switched";
+  courseId: string;
+  version: number;
+};
+
 // Owner-scoped assessment state. `none` is the honest empty state (no
 // studyable course yet — unconfirmed or not generated; prior attempts, if a
 // regeneration is in flight, stay listed on their pinned versions);
 // `offered` shows the threshold, available points and scoring criteria
 // BEFORE any start; `active` is the open attempt; `graded` is the latest
-// attempt's result with the full history. The roadmap node is DERIVED from
-// epic-2 tracker state read through getCourse plus this module's attempts:
-// completed requires every required item done AND a passed OR fully-recovered
-// failed attempt on the current course version — no award rows exist.
-// `recovery` is the targeted-recovery chain of the newest graded-failed
-// attempt that has a ledger (null before any failed grade) — served NEXT TO
-// the attempt result, never merged into it.
+// attempt's result with the full history. Story 4: the roadmap node derives
+// FROM AWARD ROWS — completed exists only when an earned mini-course award
+// pins the STUDIED release (a passed/recovered attempt with no award yet
+// keeps the node honestly In progress; earned awards never un-complete).
+// `awards` lists every earned award of the root, version-scoped, never
+// overwritten; `currentAward` is the award pinning the studied release (null
+// while none exists). `versions` lists every ready release of the root so
+// the switch flow can offer an explicit informed move; the studied release
+// is the explicitly switched one when a pointer exists, else the default
+// (current confirmed revision, falling back to latest ready). `recovery` is
+// the targeted-recovery chain of the newest graded-failed attempt that has a
+// ledger (null before any failed grade) — served NEXT TO the attempt
+// result, never merged into it.
 export type AssessmentState = {
   state: "none" | "offered" | "active" | "graded";
   rootId: string;
@@ -492,6 +594,9 @@ export type AssessmentState = {
   attempts: AttemptSummary[];
   node: RoadmapNode;
   recovery: RecoveryState | null;
+  awards: CompletionAwardView[];
+  currentAward: CompletionAwardView | null;
+  versions: number[];
 };
 
 // Command results. The submit receipt recorded in command_receipt is

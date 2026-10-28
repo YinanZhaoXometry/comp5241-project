@@ -1,15 +1,18 @@
+import type { PoolClient } from "pg";
 import { uuid, type Identity, type Receipt } from "../../contracts/setup";
 import {
   startTestSchema,
   submitAttemptSchema,
   startRetestSchema,
   submitRetestSchema,
+  switchCourseVersionSchema,
   passMarkOverrideOf,
   pointsScaleOf,
   type ActiveAttemptView,
   type ActiveRetestView,
   type AssessmentState,
   type AttemptSummary,
+  type CompletionAwardView,
   type GradeDecision,
   type GradedItemView,
   type GradedRetestView,
@@ -22,38 +25,47 @@ import {
   type StartedRetest,
   type SubmittedAttempt,
   type SubmittedRetest,
+  type SwitchDisclosure,
+  type SwitchedCourseVersion,
   type TestDescriptorView,
 } from "../../contracts/assessment";
+import { courseTrackerItems, storedCourseContent, type CourseState } from "../../contracts/courses";
 import { transaction } from "../../adapters/postgres/database";
 import { authorize } from "../identity-access/access";
 import * as lifecycle from "../lifecycle-platform/repository";
 import { batchRow } from "../materials-setup/batches";
 import { getCourse } from "../course-generation/service";
+import * as courseRepository from "../course-generation/repository";
 import { parse, requestHash } from "../../platform/commands";
 import { fail } from "../../platform/errors";
 import { buildSnapshot, buildRetestSnapshot } from "./bank";
-import { deriveRoadmapNode, displayPercentOf, earnedOfItem, gradeAwardsCompletion, groupCleared, groupResultsOf, groupViewOf, recoverySatisfied, scoreAttempt, verdictLine } from "./scoring";
+import { completionEarned, deriveRoadmapNode, displayPercentOf, earnedOfItem, gradeAwardsCompletion, groupCleared, groupResultsOf, groupViewOf, parentEarned, recoverySatisfied, scoreAttempt, verdictLine } from "./scoring";
 import * as repository from "./repository";
-import type { AttemptRow, RecoveryTargetRow, RetestRow } from "./repository";
+import type { AttemptRow, AwardRow, RecoveryTargetRow, RetestRow } from "./repository";
 
-// Epic-3 story-1 tracer verbs plus the story-2 targeted-recovery chain. Every
-// verb runs identify -> authorize -> scopedRoot -> lifecycle.replay/receipt
-// (content-free) -> repository inside ONE transaction (AD-2). Epic-1/2 state
-// is consumed READ-ONLY through getCourse — always in its own transaction
-// BEFORE this module's transaction opens (nesting the two would self-deadlock
-// on the lifecycle-root row lock). Recovery reads only this module's own
-// rows: the retest chain pins the ROOT attempt's course version and snapshot
-// (a superseding course version never changes an open chain — AD-5). No AI
+// Epic-3 story-1 tracer verbs plus the story-2 targeted-recovery chain and
+// the story-4 monotonic completion-award layer. Every verb runs identify ->
+// authorize -> scopedRoot -> lifecycle.replay/receipt (content-free) ->
+// repository inside ONE transaction (AD-2). Epic-1/2 state is consumed
+// READ-ONLY through getCourse — always in its own transaction BEFORE this
+// module's transaction opens (nesting the two would self-deadlock on the
+// lifecycle-root row lock). Recovery reads only this module's own rows: the
+// retest chain pins the ROOT attempt's course version and snapshot (a
+// superseding course version never changes an open chain — AD-5). No AI
 // dispatch, queue or worker involvement exists anywhere here: the test and
 // its retests are synthetic derivation from the course the learner owns.
 //
-// Story 3: grading earns by DECLARED credit (earnedOfItem — full points, a
-// disclosed rubric's exact scaled-integer credit, or zero); the disclosure
-// descriptor carries the declared point scale, the carried pass-mark
-// override contract and every per-item disclosed partial-credit rubric
-// BEFORE any answer is submitted; every graded view is a FINAL grade
-// decision (gradeKind) — the provisional contract exists only as the typed
-// state epic 5 confirms and can never award completion.
+// Story 4: completion is an EVENT, not a read-time derivation — evaluation
+// runs inside the three contributing verbs' transactions (submitAttempt's
+// pass, submitRetest's final clear, and epic-2's markItemDone through the
+// exported recordCompletionIfEarned hook — the AD-1 cross-module-command
+// pattern) and awards a UNIQUE version-scoped mini-course completion
+// (INSERT-once, never updated, revoked or re-derived); a parent manifest
+// evaluation awards parent completion only when every required child release
+// is awarded (optional children never block). The roadmap node and served
+// completion state derive FROM award rows; the explicit version switch
+// (switchCourseVersion) first discloses changed required work and never
+// erases prior awards.
 
 function descriptorOf(snapshot: AttemptRow["snapshot"]): TestDescriptorView {
   return {
@@ -251,20 +263,236 @@ function gradeDecisionOf(row: AttemptRow): GradeDecision | null {
   return { gradeKind: "final", passed: row.passed === true };
 }
 
-// Owner-scoped assessment state. The roadmap node is DERIVED here from the
-// epic-2 tracker view (through getCourse) plus this module's attempt rows —
-// no award rows exist. Prior attempts stay listed on their pinned course
-// versions even while a regeneration is in flight (getCourse then serves a
-// non-ready state and the node honestly reports engagement, not completion).
-// Story 2: the recovery chain of the newest graded-failed attempt that HAS a
-// ledger (recovery opens only at grade time — a pre-ledger failed attempt
-// from before 022 opens nothing; its honest path is a fresh ordinary
-// attempt) is served beside the attempt result, and completion accepts a
-// fully-recovered failed attempt on the CURRENT course version only — a
-// chain pinned to a superseded version never completes the current node.
+// ---------------------------------------------------------------------------
+// Story 4 — the monotonic completion-award layer: evaluation, the exported
+// hook and the explicit version switch.
+// ---------------------------------------------------------------------------
+
+// The served award view. awardsForRoot returns only EARNED rows, so the
+// timestamp is always the award instant itself.
+function awardViewOf(row: AwardRow): CompletionAwardView {
+  return {
+    awardId: row.id,
+    kind: row.kind,
+    courseId: row.course_id,
+    courseVersion: row.course_version,
+    planRevisionId: row.plan_revision_id,
+    manifest: row.manifest,
+    awardedAt: (row.awarded_at ?? row.created_at).toISOString(),
+  };
+}
+
+// Resolve the STUDIED release's course view: the explicitly switched release
+// when a pointer exists (D1 — learners remain on their studied version until
+// explicitly choosing another), else getCourse's default resolution (the
+// current confirmed revision's row, falling back to the latest ready one).
+// The pointer read runs in its own short transaction because getCourse opens
+// its own and nesting the two would self-deadlock on the root lock.
+async function studiedCourse(identity: Identity, rootId: string): Promise<CourseState & { objectIds: string[] }> {
+  const pointer = await transaction(async client => {
+    await authorize(client, identity);
+    await lifecycle.scopedRoot(client, identity.userId, rootId);
+    return repository.studiedRelease(client, identity.userId, rootId);
+  });
+  return getCourse(identity, rootId, pointer?.course_id ?? undefined);
+}
+
+// Evaluate ONE course release's completion condition inside the caller's
+// transaction (AD-2: the award lands atomically with the contributing verb's
+// own writes). Pure derivation over rows the modules already own: the
+// release's required tracker items and this owner's done states (epic-2
+// evidence, consumed READ-ONLY through its scoped repository reads) plus
+// this module's attempts and ledgers on THAT release. Nothing else awards —
+// no dwell, no engagement, no self-report; a provisional-typed grade can
+// never arrive here as a pass (the gradeAwardsCompletion fence). When the
+// release's award exists (freshly inserted or already earned — duplicate
+// triggers are idempotent), every parent manifest that pins this release as
+// a REQUIRED child is re-evaluated the same way.
+async function evaluateAwardOnCourse(client: PoolClient, ownerId: string, rootId: string, courseId: string): Promise<boolean> {
+  const course = await courseRepository.readyCourseById(client, ownerId, rootId, courseId);
+  if (!course?.content) return false;
+  const content = storedCourseContent(course.content);
+  if (!content) return false;
+  const required = courseTrackerItems(content).filter(item => item.required);
+  const done = new Set((await courseRepository.itemStates(client, ownerId, courseId)).map(state => state.item_id));
+  const attempts = (await repository.attemptsForRoot(client, ownerId, rootId)).filter(row => row.course_id === courseId);
+  const targets = await repository.targetsForRoot(client, ownerId, rootId);
+  const ledgerOf = (attemptId: string) => targets.filter(target => target.root_attempt_id === attemptId);
+  // The provisional-grade fence rides both satisfaction paths: only a FINAL
+  // graded pass (or a FINAL failed grade with every ledgered target cleared)
+  // can complete a release (D3/AD-8).
+  const testSatisfied =
+    attempts.some(row => {
+      const decision = gradeDecisionOf(row);
+      return decision !== null && gradeAwardsCompletion(decision);
+    }) ||
+    attempts.some(row => {
+      const decision = gradeDecisionOf(row);
+      return decision !== null && decision.gradeKind === "final" && !decision.passed && recoverySatisfied(ledgerOf(row.id));
+    });
+  if (
+    completionEarned({
+      requiredItems: { total: required.length, done: required.filter(item => done.has(item.id)).length },
+      testSatisfied,
+    })
+  )
+    await repository.insertAward(client, {
+      id: crypto.randomUUID(),
+      ownerId,
+      rootId,
+      courseId,
+      courseVersion: course.version ?? 1,
+      planRevisionId: course.plan_revision_id,
+    });
+  const awarded = !!(await repository.awardForCourse(client, ownerId, courseId));
+  if (awarded) {
+    // Parent manifests pinning this release as a REQUIRED child: the award
+    // condition of every such manifest re-runs (optional children never
+    // gate it), idempotently — the status-guarded transition never regresses.
+    const manifests = (await repository.parentManifestsFor(client, ownerId)).filter(row =>
+      row.manifest?.children.some(child => child.courseId === courseId && child.required),
+    );
+    for (const manifest of manifests) {
+      if (!manifest.manifest) continue;
+      const awardedChildren = await repository.awardedCourseIds(client, ownerId, manifest.manifest.children.map(child => child.courseId));
+      if (parentEarned(manifest.manifest.children, awardedChildren)) await repository.awardParent(client, manifest.id);
+    }
+  }
+  return awarded;
+}
+
+// The AD-1 exported completion hook: submitAttempt, submitRetest and epic-2's
+// markItemDone call it INSIDE their own transactions (the caller's fence
+// already covers identify/authorize/scopedRoot); standalone callers get the
+// same full fence in its own transaction. Idempotent by construction — an
+// award, once earned, is returned as-is and never re-derived (duplicate
+// triggers insert nothing new). Returns whether the release carries an award
+// after the call.
+export async function recordCompletionIfEarned(identity: Identity, rootId: string, courseId: string, client?: PoolClient): Promise<boolean> {
+  const parsedRootId = parse(uuid, rootId);
+  const parsedCourseId = parse(uuid, courseId);
+  if (client) return evaluateAwardOnCourse(client, identity.userId, parsedRootId, parsedCourseId);
+  return transaction(async joined => {
+    await authorize(joined, identity);
+    await lifecycle.scopedRoot(joined, identity.userId, parsedRootId);
+    return evaluateAwardOnCourse(joined, identity.userId, parsedRootId, parsedCourseId);
+  });
+}
+
+// The changed-required-work diff between two course views (pure): added and
+// removed REQUIRED tracker items by stable id, plus whether the required
+// test's objectives changed (the required test is deterministic derivation
+// from a release's objectives, so differing objectives mean a changed
+// required test). A non-ready "from" (regeneration in flight) discloses the
+// whole target required set as added work.
+function switchDiffOf(from: CourseState & { objectIds: string[] }, to: CourseState & { objectIds: string[] }) {
+  if (to.state !== "ready") fail("CONFLICT"); // the switch target must be a studyable release
+  const fromReady = from.state === "ready" ? from.course : null;
+  const fromItems = fromReady ? fromReady.items.filter(item => item.required) : [];
+  const toItems = to.course.items.filter(item => item.required);
+  const fromIds = new Set(fromItems.map(item => item.id));
+  const toIds = new Set(toItems.map(item => item.id));
+  return {
+    fromReady,
+    toReady: to.course,
+    addedRequiredItems: toItems.filter(item => !fromIds.has(item.id)).map(item => ({ id: item.id, title: item.title })),
+    removedRequiredItems: fromItems.filter(item => !toIds.has(item.id)).map(item => ({ id: item.id, title: item.title })),
+    requiredTestChanged: JSON.stringify(fromReady?.objectives ?? []) !== JSON.stringify(to.course.objectives),
+  };
+}
+
+// The served disclosure shown BEFORE any switch (read-only): the changed
+// required work between the currently studied release and the target release.
+export async function getSwitchDisclosure(identity: Identity, rawId: string, requested?: string): Promise<SwitchDisclosure & { objectIds: string[] }> {
+  const rootId = parse(uuid, rawId);
+  if (requested === undefined || (!uuid.safeParse(requested).success && !/^[1-9]\d*$/u.test(requested))) fail("INVALID_INPUT");
+  const from = await studiedCourse(identity, rootId);
+  const to = await getCourse(identity, rootId, requested);
+  const diff = switchDiffOf(from, to);
+  return {
+    rootId,
+    revision: to.revision,
+    from: {
+      courseId: diff.fromReady?.courseId ?? null,
+      version: diff.fromReady?.version ?? null,
+      requiredItemCount: diff.fromReady ? diff.fromReady.items.filter(item => item.required).length : 0,
+    },
+    to: { courseId: diff.toReady.courseId, version: diff.toReady.version, requiredItemCount: diff.toReady.items.filter(item => item.required).length },
+    addedRequiredItems: diff.addedRequiredItems,
+    removedRequiredItems: diff.removedRequiredItems,
+    requiredTestChanged: diff.requiredTestChanged,
+    objectIds: [...from.objectIds, ...to.objectIds].filter((id, index, all) => all.indexOf(id) === index),
+  };
+}
+
+// The explicit informed version switch (D1): the command names a READY
+// release of this owner and root and carries the learner's acknowledgment of
+// the EXACT disclosed change set, which is re-computed server-side inside
+// the fenced transaction — anything short of an exact match is a stale or
+// unconfirmed switch (CONFLICT), never repaired. Switching only moves the
+// studied-release pointer: no award is erased, no attempt is rewritten, and
+// a superseding regeneration never moves it silently (the pointer IS the
+// explicit choice). The receipt is content-free.
+export async function switchCourseVersion(identity: Identity, rawId: string, raw: unknown): Promise<SwitchedCourseVersion> {
+  const rootId = parse(uuid, rawId);
+  const command = parse(switchCourseVersionSchema, raw);
+  const from = await studiedCourse(identity, rootId);
+  const to = await getCourse(identity, rootId, command.courseId);
+  if (to.state !== "ready") fail("CONFLICT"); // nothing studyable there — re-read the course
+  return transaction(async client => {
+    await authorize(client, identity);
+    await lifecycle.scopedRoot(client, identity.userId, rootId);
+    const batch = await batchRow(client, rootId);
+    if (batch.revision !== command.expectedRevision) fail("CONFLICT");
+    const hash = requestHash({ rootId, command });
+    const repeated = await lifecycle.replay(client, identity.userId, command, "switch-course", hash);
+    if (repeated) return repeated as unknown as SwitchedCourseVersion;
+    // Lineage fence on BOTH releases' objects inside THIS transaction (the
+    // two reads happened outside it).
+    await lifecycle.assertObjects(client, identity.userId, [...from.objectIds, ...to.objectIds].filter((id, index, all) => all.indexOf(id) === index));
+    const diff = switchDiffOf(from, to);
+    // The acknowledged change set must equal the CURRENT server-computed
+    // diff exactly — the learner confirms the disclosure they were shown,
+    // never a stale or partial one.
+    const acknowledgedIds = (ids: string[]) => [...ids].sort().join("\n");
+    if (
+      acknowledgedIds(command.acknowledged.addedRequiredItemIds) !== acknowledgedIds(diff.addedRequiredItems.map(item => item.id)) ||
+      acknowledgedIds(command.acknowledged.removedRequiredItemIds) !== acknowledgedIds(diff.removedRequiredItems.map(item => item.id)) ||
+      command.acknowledged.requiredTestChanged !== diff.requiredTestChanged
+    )
+      fail("CONFLICT");
+    await repository.upsertStudiedRelease(client, { id: crypto.randomUUID(), ownerId: identity.userId, rootId, courseId: diff.toReady.courseId });
+    const result: SwitchedCourseVersion = {
+      rootId,
+      operationId: diff.toReady.courseId,
+      revision: batch.revision,
+      state: "switched",
+      courseId: diff.toReady.courseId,
+      version: diff.toReady.version,
+    };
+    await lifecycle.receipt(client, identity, command, "switch-course", hash, result);
+    return result;
+  });
+}
+
+// Owner-scoped assessment state. Story 4: the roadmap node derives FROM
+// AWARD ROWS — completed exists only when an earned version-scoped award
+// pins the STUDIED release (explicitly switched, else the current default
+// resolution); a passed or fully-recovered attempt with no award yet keeps
+// the node honestly In progress, and an earned award keeps it Completed
+// forever (monotonic — later failures, edits or review outcomes never
+// un-complete it). Every earned award of the root is listed (version-scoped,
+// never overwritten); `currentAward` pins the studied release or null.
+// Prior attempts stay listed on their pinned course versions even while a
+// regeneration is in flight. Story 2: the recovery chain of the newest
+// graded-failed attempt that HAS a ledger (recovery opens only at grade
+// time — a pre-ledger failed attempt from before 022 opens nothing; its
+// honest path is a fresh ordinary attempt) is served beside the attempt
+// result, and completion awards accept a fully-recovered failed attempt on
+// the awarded release only.
 export async function getAssessment(identity: Identity, rawId: string): Promise<AssessmentState & { objectIds: string[] }> {
   const rootId = parse(uuid, rawId);
-  const course = await getCourse(identity, rootId);
+  const course = await studiedCourse(identity, rootId);
   return transaction(async client => {
     await authorize(client, identity);
     await lifecycle.scopedRoot(client, identity.userId, rootId);
@@ -272,36 +500,15 @@ export async function getAssessment(identity: Identity, rawId: string): Promise<
     const attempts = await repository.attemptsForRoot(client, identity.userId, rootId);
     const targets = await repository.targetsForRoot(client, identity.userId, rootId);
     const retests = await repository.retestsForRoot(client, identity.userId, rootId);
+    const awards = await repository.awardsForRoot(client, identity.userId, rootId);
+    const versions = await courseRepository.readyCourseVersions(client, identity.userId, rootId);
     const ledgerOf = (attemptId: string) => targets.filter(target => target.root_attempt_id === attemptId);
     const ready = course.state === "ready" ? course.course : null;
     const required = ready ? ready.items.filter(item => item.required) : [];
+    const currentAwardRow = ready ? awards.find(row => row.kind === "mini-course" && row.course_id === ready.courseId) ?? null : null;
     const node = deriveRoadmapNode({
+      awardOnCurrentVersion: !!currentAwardRow,
       requiredItems: { total: required.length, done: required.filter(item => item.done).length },
-      // The pass input routes through the provisional-grade fence: only a
-      // FINAL graded pass qualifies (a provisional-typed decision maps to a
-      // non-pass here and contributes nothing — D3/AD-8).
-      passedAttemptOnCurrentVersion:
-        !!ready &&
-        attempts.some(row => {
-          const decision = gradeDecisionOf(row);
-          return decision !== null && gradeAwardsCompletion(decision) && row.course_id === ready.courseId;
-        }),
-      recoveredOnCurrentVersion:
-        !!ready &&
-        attempts.some(row => {
-          // The SAME provisional-grade fence as the pass input: only a FINAL
-          // graded FAILED attempt opens a recoverable ledger — a
-          // provisional-typed row could never complete via recovery either.
-          const decision = gradeDecisionOf(row);
-          return (
-            decision !== null &&
-            decision.gradeKind === "final" &&
-            !decision.passed &&
-            row.course_id === ready.courseId &&
-            ledgerOf(row.id).length > 0 &&
-            ledgerOf(row.id).every(target => target.status === "cleared")
-          );
-        }),
       anyAttempt: attempts.length > 0,
     });
     // The served chain: the newest failed attempt with a ledger (attempts are
@@ -330,6 +537,9 @@ export async function getAssessment(identity: Identity, rawId: string): Promise<
       attempts: attempts.map(summaryOf),
       node,
       recovery,
+      awards: awards.map(awardViewOf),
+      currentAward: currentAwardRow ? awardViewOf(currentAwardRow) : null,
+      versions,
     };
     const open = attempts.find(row => row.status === "active");
     if (open)
@@ -358,16 +568,18 @@ export async function getAssessment(identity: Identity, rawId: string): Promise<
   });
 }
 
-// Start (or re-offer) the one required test. Resolves the latest ready course
-// version through getCourse and pins courseId, version and planRevisionId
-// into the attempt's snapshot at start (D3/AD-8): grading later reads only
-// the snapshot, so supersession mid-attempt never changes a verdict. One open
-// attempt per (owner, root) — a repeat start returns the pinned open attempt
-// (the takeCheck precedent); a retake follows a graded row.
+// Start (or re-offer) the one required test. Resolves the STUDIED course
+// release through getCourse (the explicitly switched release when a pointer
+// exists — story 4 — else the latest ready version) and pins courseId,
+// version and planRevisionId into the attempt's snapshot at start (D3/AD-8):
+// grading later reads only the snapshot, so supersession mid-attempt never
+// changes a verdict. One open attempt per (owner, root) — a repeat start
+// returns the pinned open attempt (the takeCheck precedent); a retake
+// follows a graded row.
 export async function startTest(identity: Identity, rawId: string, raw: unknown): Promise<StartedAttempt> {
   const rootId = parse(uuid, rawId);
   const command = parse(startTestSchema, raw);
-  const course = await getCourse(identity, rootId);
+  const course = await studiedCourse(identity, rootId);
   if (course.state !== "ready") fail("CONFLICT"); // nothing testable yet — confirm and generate first
   const pin = course.course;
   return transaction(async client => {
@@ -491,6 +703,10 @@ export async function submitAttempt(identity: Identity, rawId: string, rawAttemp
     }
     const graded = await repository.attemptById(client, identity.userId, attemptId);
     if (!graded) fail("RETRYABLE_FAILURE");
+    // Story 4: the pass (or failed-grade ledger) is a contributing verb —
+    // the version-scoped award evaluation runs in THIS transaction, atomically
+    // with the grade (idempotent: a duplicate trigger inserts nothing new).
+    await evaluateAwardOnCourse(client, identity.userId, rootId, attempt.course_id);
     const receiptResult: Receipt = { rootId, operationId: attemptId, planRevisionId: attempt.plan_revision_id, revision: batch.revision, state: "graded" };
     await lifecycle.receipt(client, identity, command, "submit-test", hash, receiptResult);
     return gradedView(graded, batch.revision);
@@ -627,6 +843,10 @@ export async function submitRetest(identity: Identity, rawId: string, rawRetestI
     for (const group of stored) if (group.cleared) await repository.clearTarget(client, retest.root_attempt_id, group.objectiveIndex, retestId);
     const graded = await repository.retestById(client, identity.userId, retestId);
     if (!graded) fail("RETRYABLE_FAILURE");
+    // Story 4: a final clear is a contributing verb — the version-scoped
+    // award evaluation runs in THIS transaction on the ROOT attempt's release
+    // (the chain pins it), atomically with the clears.
+    await evaluateAwardOnCourse(client, identity.userId, rootId, retest.course_id);
     const receiptResult: Receipt = { rootId, operationId: retestId, planRevisionId: retest.plan_revision_id, revision: batch.revision, state: "graded" };
     await lifecycle.receipt(client, identity, command, "submit-retest", hash, receiptResult);
     return { ...gradedRetestOf(graded), rootId, revision: batch.revision, state: "graded" as const };

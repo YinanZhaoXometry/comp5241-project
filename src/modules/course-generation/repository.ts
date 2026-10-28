@@ -118,6 +118,16 @@ export async function latestReadyVersion(client: PoolClient, rootId: string): Pr
   );
   return result.rows[0]?.version ?? null;
 }
+// Every ready per-root version number of one owner (ascending) — the
+// assessment switch surface's version list (epic-3 story 4). Read-only,
+// owner- and root-scoped, content-free.
+export async function readyCourseVersions(client: PoolClient, ownerId: string, rootId: string): Promise<number[]> {
+  const result = await client.query<{ version: number }>(
+    "SELECT version FROM app.generated_course WHERE root_id=$1 AND owner_id=$2 AND status='ready' AND version IS NOT NULL ORDER BY version",
+    [rootId, ownerId],
+  );
+  return result.rows.map(row => row.version);
+}
 // Content-free generated signal for the library/plan surfaces: does this root
 // own any READY course version? Boolean only — no course data crosses.
 export async function hasReadyCourse(client: PoolClient, rootId: string): Promise<boolean> {

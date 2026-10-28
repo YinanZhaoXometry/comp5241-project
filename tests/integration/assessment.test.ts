@@ -8,8 +8,8 @@ import { savePlan, confirmPlan } from '../../src/modules/materials-setup/service
 import { removeRoot } from '../../src/modules/lifecycle-platform/service';
 import { requestCourseGeneration, getCourse, markItemDone } from '../../src/modules/course-generation/service';
 import { runCourseGeneration } from '../../src/modules/course-generation/worker';
-import { getAssessment, startTest, submitAttempt, startRetest, submitRetest } from '../../src/modules/assessment-progress/service';
-import { insertAttempt } from '../../src/modules/assessment-progress/repository';
+import { getAssessment, startTest, submitAttempt, startRetest, submitRetest, getSwitchDisclosure, switchCourseVersion, recordCompletionIfEarned } from '../../src/modules/assessment-progress/service';
+import { insertAttempt, insertParentManifest } from '../../src/modules/assessment-progress/repository';
 import { buildSnapshot, buildPartialCreditSnapshot } from '../../src/modules/assessment-progress/bank';
 import { database, closeDatabase } from '../../src/adapters/postgres/database';
 import { closeQueue } from '../../src/adapters/queue';
@@ -240,6 +240,22 @@ describe('epic-3 story-1: scored-attempt tracer', () => {
     expect(completed.attempts).toHaveLength(2); // history listed, never overwritten
     expect(completed.attempts.map(attempt => attempt.passed)).toEqual([true, false]);
 
+    // Story 4: the completing submit awarded EXACTLY ONE version-scoped row
+    // (the replayed submit above returned the identical receipt and inserted
+    // nothing new) — the node reads Completed FROM the award and the served
+    // state lists it with its timestamp.
+    const awardRows = await database().query<{ id: string; kind: string; course_id: string; course_version: number; awarded_at: Date }>(
+      'SELECT id,kind,course_id,course_version,awarded_at FROM app.completion_award WHERE root_id=$1',
+      [study.rootId],
+    );
+    expect(awardRows.rows).toHaveLength(1);
+    expect(awardRows.rows[0]).toMatchObject({ kind: 'mini-course', course_id: courseId, course_version: 1 });
+    expect(completed.awards).toHaveLength(1);
+    expect(completed.currentAward).toMatchObject({ kind: 'mini-course', courseId, courseVersion: 1, manifest: null });
+    expect(completed.currentAward!.awardId).toBe(awardRows.rows[0].id);
+    expect(completed.currentAward!.awardedAt).toBe(awardRows.rows[0].awarded_at.toISOString());
+    expect(completed.versions).toEqual([1]);
+
     // The recorded submit receipts are content-free: no answers, no attempt
     // text, no score fields ride command_receipt.result.
     const receipts = await database().query<{ result: unknown }>("SELECT result FROM app.command_receipt WHERE root_id=$1 AND action='submit-test'", [study.rootId]);
@@ -251,8 +267,6 @@ describe('epic-3 story-1: scored-attempt tracer', () => {
       expect(serialized).not.toContain('earnedPoints');
       expect(serialized).not.toContain('passed');
     }
-    // No award rows anywhere: the node is derived, not stored.
-    expect((await database().query("SELECT to_regclass('app.completion_award') AS table")).rows[0].table).toBeNull();
   });
 
   it('pins the snapshot at start: a superseding course version never changes an open attempt', async () => {
@@ -480,11 +494,14 @@ describe('epic-3 story-2: targeted recovery ledger and fresh retest chain', () =
 
     // Every target cleared: requirement satisfied and the node COMPLETES on
     // recovery credit with no passing ordinary attempt — and the original
-    // score row is byte-identical throughout.
+    // score row is byte-identical throughout. Story 4: the final clearing
+    // retest landed the version-scoped award (recovery IS completion per
+    // AD-8) inside its own grade transaction.
     const recovered = await getAssessment(a, study.rootId);
     expect(recovered.recovery!.requirementSatisfied).toBe(true);
     expect(recovered.recovery!.targets.every(target => target.status === 'cleared')).toBe(true);
     expect(recovered.node).toBe('completed');
+    expect(recovered.currentAward).toMatchObject({ kind: 'mini-course', courseId, courseVersion: 1 });
     expect(recovered.attempts).toHaveLength(1);
     expect(recovered.attempts[0].passed).toBe(false); // history never rewritten
     expect(recovered.attempt && 'gradedAt' in recovered.attempt ? recovered.attempt.verdict : null).toBe('60.0% — Not passed (mark is 80%)');
@@ -771,8 +788,272 @@ describe('epic-3 story-3: partial credit, carried override, pinned policy', () =
       await markItemDone(a, study.rootId, { ...command(study.revision), courseId: ready.courseId, itemId: item.id });
     const completed = await getAssessment(a, study.rootId);
     expect(completed.node).toBe('completed');
+    // Story 4: the pass-first ordering — the award could not land at the
+    // passing submit (items were not done yet); it landed at the LAST
+    // markItemDone, the completing contributing verb.
+    expect(completed.currentAward).toMatchObject({ kind: 'mini-course', courseVersion: ready.version });
     expect(completed.attempts.map(attempt => [attempt.pointsScale, attempt.passed])).toEqual([[1, true], [1, false]]);
     const rowAfter = await database().query('SELECT * FROM app.test_attempt WHERE id=$1', [attemptId]);
     expect(JSON.stringify(rowAfter.rows[0])).toBe(bytesBefore);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Story 4 — the monotonic completion-award layer over the REAL verbs: exact-
+// once across duplicate triggers and both item/test orderings, byte-stability
+// through later state changes (a failed retake, supersession), synthetic
+// parent manifests (required children gate, optional never block), and the
+// explicit informed version switch (disclosure before move, exact
+// acknowledgment, no award erased).
+// ---------------------------------------------------------------------------
+
+describe('epic-3 story-4: monotonic completion awards', () => {
+  it('awards exactly once per release across duplicate triggers and stays byte-identical through a later failed retake and supersession', async () => {
+    const a = await actor('award-monotonic');
+    await grant(a);
+    const study = await confirmedStudy(a);
+    const course = await generateCourse(a, study.rootId, study.revision);
+    const courseId = course.course.courseId;
+    const firstItemId = course.course.items.find(item => item.required)!.id;
+
+    // Items first, then the pass: the award lands at the passing submit.
+    for (const item of course.course.items.filter(item => item.required))
+      await markItemDone(a, study.rootId, { ...command(study.revision), courseId, itemId: item.id });
+    const noPassYet = await getAssessment(a, study.rootId);
+    expect(noPassYet.node).toBe('in-progress'); // items done, no satisfied test
+    expect(noPassYet.currentAward).toBeNull();
+    const started = await startTest(a, study.rootId, { ...command(study.revision) });
+    const snapshot = await snapshotOf(started.operationId);
+    await submitAttempt(a, study.rootId, started.operationId, { ...command(study.revision), attemptId: started.operationId, answers: answersFrom(snapshot) });
+    const awarded = await getAssessment(a, study.rootId);
+    expect(awarded.node).toBe('completed');
+    expect(awarded.currentAward).toMatchObject({ kind: 'mini-course', courseId, courseVersion: 1 });
+    const awardRow = await database().query('SELECT * FROM app.completion_award WHERE root_id=$1', [study.rootId]);
+    expect(awardRow.rows).toHaveLength(1);
+    const awardBytes = JSON.stringify(awardRow.rows[0]);
+
+    // Duplicate triggers insert nothing new: a repeated markItemDone under a
+    // FRESH command key (row no-op, evaluation idempotent), the exported hook
+    // standalone, and plain reads.
+    await markItemDone(a, study.rootId, { ...command(study.revision), courseId, itemId: firstItemId });
+    await recordCompletionIfEarned(a, study.rootId, courseId);
+    await getAssessment(a, study.rootId);
+    const afterDuplicates = await database().query('SELECT * FROM app.completion_award WHERE root_id=$1', [study.rootId]);
+    expect(afterDuplicates.rows).toHaveLength(1);
+    expect(JSON.stringify(afterDuplicates.rows[0])).toBe(awardBytes);
+
+    // A later FAILED retake on the same release never revokes or re-derives
+    // the earned award — the node stays Completed (monotonic), the row is
+    // byte-identical, and the new failure still ledgers its own chain.
+    const retake = await startTest(a, study.rootId, { ...command(study.revision) });
+    const retakeSnapshot = await snapshotOf(retake.operationId);
+    const failed = await submitAttempt(a, study.rootId, retake.operationId, { ...command(study.revision), attemptId: retake.operationId, answers: answersFrom(retakeSnapshot, [1, 3, 5]) });
+    expect(failed.passed).toBe(false);
+    const afterFailRetake = await getAssessment(a, study.rootId);
+    expect(afterFailRetake.node).toBe('completed'); // the award decides, not the latest attempt
+    expect(afterFailRetake.attempts.map(attempt => attempt.passed)).toEqual([false, true]);
+    const awardAfterFail = await database().query('SELECT * FROM app.completion_award WHERE root_id=$1', [study.rootId]);
+    expect(JSON.stringify(awardAfterFail.rows[0])).toBe(awardBytes);
+
+    // Supersession: version 2 becomes current; the v1 award stays intact and
+    // listed while the served node honestly reports v2 In progress (its own
+    // unawarded condition set).
+    const saved = await savePlan(a, study.rootId, { ...command(study.revision), plan: { ...plan, topic: 'Unit testing, award edition' }, extractionId: study.extractionId, selectionId: study.selectionId });
+    const confirmed = await confirmPlan(a, study.rootId, { ...command(saved.revision), planRevisionId: saved.planRevisionId! });
+    await generateCourse(a, study.rootId, confirmed.revision);
+    const superseded = await getAssessment(a, study.rootId);
+    expect(superseded.version).toBe(2);
+    expect(superseded.node).toBe('in-progress');
+    expect(superseded.currentAward).toBeNull();
+    expect(superseded.awards).toHaveLength(1); // the v1 award stays listed
+    expect(superseded.awards[0]).toMatchObject({ kind: 'mini-course', courseVersion: 1 });
+    expect(superseded.versions).toEqual([1, 2]);
+    const awardFinal = await database().query('SELECT * FROM app.completion_award WHERE root_id=$1', [study.rootId]);
+    expect(JSON.stringify(awardFinal.rows[0])).toBe(awardBytes);
+  });
+
+  it('evaluates synthetic parent manifests: every required child awarded, optional children never block, one unawarded required child blocks', async () => {
+    const a = await actor('award-parent');
+    await grant(a);
+    // Study A: complete it (items done + pass) so its release award exists.
+    const studyA = await confirmedStudy(a, { ...plan, topic: 'Parent child A' });
+    const courseA = await generateCourse(a, studyA.rootId, studyA.revision);
+    for (const item of courseA.course.items.filter(item => item.required))
+      await markItemDone(a, studyA.rootId, { ...command(studyA.revision), courseId: courseA.course.courseId, itemId: item.id });
+    const attemptA = await startTest(a, studyA.rootId, { ...command(studyA.revision) });
+    const snapshotA = await snapshotOf(attemptA.operationId);
+    await submitAttempt(a, studyA.rootId, attemptA.operationId, { ...command(studyA.revision), attemptId: attemptA.operationId, answers: answersFrom(snapshotA) });
+
+    // Study B: generated but NOT completed yet (the required item is undone).
+    const studyB = await confirmedStudy(a, { ...plan, topic: 'Parent child B' });
+    const courseB = await generateCourse(a, studyB.rootId, studyB.revision);
+
+    // Study C: generated, never completed — the optional child.
+    const studyC = await confirmedStudy(a, { ...plan, topic: 'Parent optional child C' });
+    const courseC = await generateCourse(a, studyC.rootId, studyC.revision);
+
+    // Plant the parent manifests through the module's own writer (the 3.3
+    // planted-fixture precedent): AB requires both A and B; AC requires A
+    // with C optional; BD requires B and a never-completed study D.
+    const manifestAb = crypto.randomUUID();
+    const manifestAc = crypto.randomUUID();
+    const manifestBd = crypto.randomUUID();
+    const client = await database().connect();
+    try {
+      const plant = (manifestId: string, children: Array<{ courseId: string; required: boolean }>) =>
+        insertParentManifest(client, { id: crypto.randomUUID(), manifestId, ownerId: a.userId, rootId: studyA.rootId, manifest: { schemaVersion: 1, children } });
+      await plant(manifestAb, [{ courseId: courseA.course.courseId, required: true }, { courseId: courseB.course.courseId, required: true }]);
+      await plant(manifestAc, [{ courseId: courseA.course.courseId, required: true }, { courseId: courseC.course.courseId, required: false }]);
+      const studyD = await confirmedStudy(a, { ...plan, topic: 'Parent blocked child D' });
+      const courseD = await generateCourse(a, studyD.rootId, studyD.revision);
+      await plant(manifestBd, [{ courseId: courseB.course.courseId, required: true }, { courseId: courseD.course.courseId, required: true }]);
+      // A duplicate plant of the same manifest identity is a structural no-op.
+      expect(await plant(manifestAb, [{ courseId: courseA.course.courseId, required: true }, { courseId: courseB.course.courseId, required: true }])).toBe(false);
+    } finally {
+      await client.release();
+    }
+
+    // Parent evaluation runs at each contributing verb of a REQUIRED child:
+    // a duplicate mark on A (already awarded) evaluates AC — A required, C
+    // optional and unawarded — so the AC parent awards; AB stays pending (B
+    // unawarded) and BD stays pending.
+    await markItemDone(a, studyA.rootId, { ...command(studyA.revision), courseId: courseA.course.courseId, itemId: courseA.course.items.find(item => item.required)!.id });
+    const parentRowsMid = await database().query<{ manifest_id: string; awarded_at: Date | null }>(
+      'SELECT manifest_id,awarded_at FROM app.completion_award WHERE kind=$1 AND manifest_id=ANY($2::uuid[]) ORDER BY manifest_id',
+      ['parent-path', [manifestAb, manifestAc, manifestBd]],
+    );
+    const byManifest = new Map(parentRowsMid.rows.map(row => [row.manifest_id, row.awarded_at]));
+    expect(byManifest.get(manifestAb)).toBeNull();
+    expect(byManifest.get(manifestBd)).toBeNull();
+    expect(byManifest.get(manifestAc)).not.toBeNull(); // optional C never blocked
+
+    // Completing B (its own contributing verbs) awards B and, in the SAME
+    // transaction, the AB parent — exactly once; a repeat trigger changes
+    // nothing.
+    for (const item of courseB.course.items.filter(item => item.required))
+      await markItemDone(a, studyB.rootId, { ...command(studyB.revision), courseId: courseB.course.courseId, itemId: item.id });
+    const attemptB = await startTest(a, studyB.rootId, { ...command(studyB.revision) });
+    const snapshotB = await snapshotOf(attemptB.operationId);
+    await submitAttempt(a, studyB.rootId, attemptB.operationId, { ...command(studyB.revision), attemptId: attemptB.operationId, answers: answersFrom(snapshotB) });
+    const parentRows = await database().query<{ manifest_id: string; awarded_at: Date | null }>(
+      'SELECT manifest_id,awarded_at FROM app.completion_award WHERE kind=$1 AND manifest_id=ANY($2::uuid[]) ORDER BY manifest_id',
+      ['parent-path', [manifestAb, manifestAc, manifestBd]],
+    );
+    const after = new Map(parentRows.rows.map(row => [row.manifest_id, row.awarded_at]));
+    expect(after.get(manifestAb)).not.toBeNull(); // B's completing verb awarded it
+    expect(after.get(manifestBd)).toBeNull(); // D still unawarded — required child blocks
+    expect(after.get(manifestAc)).not.toBeNull();
+    // A duplicate trigger on B leaves the parent award byte-identical.
+    const parentFull = await database().query('SELECT * FROM app.completion_award WHERE kind=$1 AND manifest_id=$2', ['parent-path', manifestAb]);
+    const parentBytes = JSON.stringify(parentFull.rows[0]);
+    await markItemDone(a, studyB.rootId, { ...command(studyB.revision), courseId: courseB.course.courseId, itemId: courseB.course.items.find(item => item.required)!.id });
+    const parentAgain = await database().query('SELECT * FROM app.completion_award WHERE kind=$1 AND manifest_id=$2', ['parent-path', manifestAb]);
+    expect(JSON.stringify(parentAgain.rows[0])).toBe(parentBytes);
+    expect(parentAgain.rows).toHaveLength(1);
+  });
+
+  it('switches versions only through the informed flow: disclosure first, exact acknowledgment, prior awards never erased', async () => {
+    const a = await actor('award-switch');
+    await grant(a);
+    const study = await confirmedStudy(a);
+    const v1 = await generateCourse(a, study.rootId, study.revision);
+    const courseIdV1 = v1.course.courseId;
+    for (const item of v1.course.items.filter(item => item.required))
+      await markItemDone(a, study.rootId, { ...command(study.revision), courseId: courseIdV1, itemId: item.id });
+    const started = await startTest(a, study.rootId, { ...command(study.revision) });
+    const snapshot = await snapshotOf(started.operationId);
+    await submitAttempt(a, study.rootId, started.operationId, { ...command(study.revision), attemptId: started.operationId, answers: answersFrom(snapshot) });
+    const completedOnV1 = await getAssessment(a, study.rootId);
+    expect(completedOnV1.node).toBe('completed');
+    expect(completedOnV1.version).toBe(1);
+
+    // Regenerate with changed required work: a second lesson (a NEW required
+    // item) and changed outcomes (a changed required test).
+    const secondPlan: Plan = {
+      ...plan,
+      topic: 'Unit testing, switch edition',
+      outcomes: ['Explain arrange-act-assert', 'Explain test doubles', 'Judge coverage reports', 'Recover from a failed test'],
+      miniCourse: { title: 'Unit testing basics', lessons: ['What a unit test is', 'Judging coverage reports'], practice: 'Write one test for a pure function', estimatedMinutes: 30 },
+    };
+    const saved = await savePlan(a, study.rootId, { ...command(study.revision), plan: secondPlan, extractionId: study.extractionId, selectionId: study.selectionId });
+    const confirmed = await confirmPlan(a, study.rootId, { ...command(saved.revision), planRevisionId: saved.planRevisionId! });
+    const v2 = await generateCourse(a, study.rootId, confirmed.revision);
+    // The changed required work exists on v2: two required readings (the
+    // lesson-2 item is NEW relative to v1) and four objectives.
+    expect(v2.course.items.filter(item => item.required).map(item => item.id)).toEqual(['lesson:1:reading', 'lesson:2:reading']);
+    expect(v2.course.objectives).toHaveLength(4);
+    const onV2 = await getAssessment(a, study.rootId);
+    expect(onV2.version).toBe(2);
+    expect(onV2.node).toBe('in-progress'); // v2 has its own unawarded condition set
+    expect(onV2.awards).toHaveLength(1); // the v1 award stays listed
+    expect(onV2.versions).toEqual([1, 2]);
+
+    // The disclosure BEFORE any move: from v2 to v1 names the changed
+    // required work exactly — the v2-only lesson-2 reading is REMOVED work
+    // and the required test changed with the objectives.
+    const disclosure = await getSwitchDisclosure(a, study.rootId, String(1));
+    expect(disclosure.from).toMatchObject({ version: 2 });
+    expect(disclosure.to).toMatchObject({ version: 1, courseId: courseIdV1 });
+    expect(disclosure.removedRequiredItems.map(item => item.id)).toEqual(['lesson:2:reading']);
+    expect(disclosure.addedRequiredItems).toEqual([]);
+    expect(disclosure.requiredTestChanged).toBe(true);
+
+    // Unconfirmed and stale switches deny per taxonomy: a wrong acknowledgment
+    // set, a stale expectedRevision, a foreign course, a cross-owner verb and
+    // malformed bodies.
+    const correctAcknowledgment = {
+      addedRequiredItemIds: disclosure.addedRequiredItems.map(item => item.id),
+      removedRequiredItemIds: disclosure.removedRequiredItems.map(item => item.id),
+      requiredTestChanged: disclosure.requiredTestChanged,
+    };
+    await expect(switchCourseVersion(a, study.rootId, { ...command(confirmed.revision), courseId: courseIdV1, acknowledged: { ...correctAcknowledgment, requiredTestChanged: false } })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(switchCourseVersion(a, study.rootId, { ...command(confirmed.revision + 5), courseId: courseIdV1, acknowledged: correctAcknowledgment })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(switchCourseVersion(a, study.rootId, { ...command(confirmed.revision), courseId: crypto.randomUUID(), acknowledged: correctAcknowledgment })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    await expect(switchCourseVersion(a, study.rootId, { schemaVersion: 2, commandKey: crypto.randomUUID(), expectedRevision: confirmed.revision, courseId: courseIdV1, acknowledged: correctAcknowledgment })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    const b = await actor('award-switch-b');
+    await expect(switchCourseVersion(b, study.rootId, { ...command(confirmed.revision), courseId: courseIdV1, acknowledged: correctAcknowledgment })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    await expect(getSwitchDisclosure(a, study.rootId)).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(getSwitchDisclosure(b, study.rootId, '1')).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    expect((await getAssessment(a, study.rootId)).version).toBe(2); // nothing moved yet
+
+    // The confirmed switch moves the studied release back to v1: the node
+    // reads Completed FROM the v1 award, nothing was erased, and a replay of
+    // the same command returns the identical receipt.
+    const switchCommand = { ...command(confirmed.revision), courseId: courseIdV1, acknowledged: correctAcknowledgment };
+    const switched = await switchCourseVersion(a, study.rootId, switchCommand);
+    expect(switched).toMatchObject({ state: 'switched', courseId: courseIdV1, version: 1 });
+    expect(await switchCourseVersion(a, study.rootId, switchCommand)).toEqual(switched);
+    const backOnV1 = await getAssessment(a, study.rootId);
+    expect(backOnV1.version).toBe(1);
+    expect(backOnV1.node).toBe('completed');
+    expect(backOnV1.currentAward).toMatchObject({ courseId: courseIdV1, courseVersion: 1 });
+    expect(backOnV1.awards).toHaveLength(1);
+    expect((await database().query('SELECT count(*)::int AS count FROM app.completion_award WHERE root_id=$1', [study.rootId])).rows[0].count).toBe(1);
+
+    // A new attempt on the studied v1 pins v1 again (the pointer steers the
+    // assessment surface), and switching forward to v2 re-discloses honestly.
+    const disclosureForward = await getSwitchDisclosure(a, study.rootId, String(2));
+    expect(disclosureForward.from).toMatchObject({ version: 1 });
+    expect(disclosureForward.to).toMatchObject({ version: 2 });
+    expect(disclosureForward.addedRequiredItems.map(item => item.id)).toEqual(['lesson:2:reading']);
+    expect(disclosureForward.removedRequiredItems).toEqual([]);
+    expect(disclosureForward.requiredTestChanged).toBe(true);
+    const forwardCommand = {
+      ...command(confirmed.revision),
+      courseId: disclosureForward.to.courseId,
+      acknowledged: {
+        addedRequiredItemIds: disclosureForward.addedRequiredItems.map(item => item.id),
+        removedRequiredItemIds: disclosureForward.removedRequiredItems.map(item => item.id),
+        requiredTestChanged: disclosureForward.requiredTestChanged,
+      },
+    };
+    await switchCourseVersion(a, study.rootId, forwardCommand);
+    const backOnV2 = await getAssessment(a, study.rootId);
+    expect(backOnV2.version).toBe(2);
+    expect(backOnV2.node).toBe('in-progress');
+    expect(backOnV2.awards).toHaveLength(1); // the v1 award survives every move
+    const pinnedToStudied = await startTest(a, study.rootId, { ...command(confirmed.revision) });
+    const pinnedAttempt = await database().query<{ course_version: number }>('SELECT course_version FROM app.test_attempt WHERE id=$1', [pinnedToStudied.operationId]);
+    expect(pinnedAttempt.rows[0].course_version).toBe(2); // the pointer steers new attempts to the studied release
   });
 });

@@ -12,7 +12,7 @@ import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finish
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
 import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState, getProvenance } from "../../../../modules/course-generation/service";
-import { getAssessment, startTest, submitAttempt, startRetest, submitRetest } from "../../../../modules/assessment-progress/service";
+import { getAssessment, startTest, submitAttempt, startRetest, submitRetest, getSwitchDisclosure, switchCourseVersion } from "../../../../modules/assessment-progress/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -150,6 +150,20 @@ async function handle(request: Request, context: Context) {
       const rootId = path[1];
       if (path.length === 4 && request.method === "POST") return Response.json(await startRetest(identity, rootId, await jsonBody(request)), { headers: privateHeaders });
       if (request.method === "POST") return Response.json(await submitRetest(identity, rootId, path[4], await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-3 story-4 explicit version switch (D1): GET serves the changed-
+    // required-work disclosure between the studied release and the target
+    // (?course=<uuid|version>, read-only); POST is the informed command —
+    // the acknowledged change set must match the server-computed diff
+    // exactly, and switching never erases prior awards.
+    if (path[0] === "studies" && path[2] === "assessment" && path[3] === "switch" && path.length === 4) {
+      const rootId = path[1];
+      if (request.method === "GET") {
+        const requested = new URL(request.url).searchParams.get("course") ?? undefined;
+        const disclosure = await getSwitchDisclosure(identity, rootId, requested);
+        return protectedResponse(identity, rootId, disclosure, request.signal, false, disclosure.objectIds);
+      }
+      if (request.method === "POST") return Response.json(await switchCourseVersion(identity, rootId, await jsonBody(request)), { headers: privateHeaders });
     }
     if (path[0] === "studies" && path.length === 3 && path[2] === "dependencies" && request.method === "POST") {
       return Response.json(await dependenciesPreview(identity, path[1], await jsonBody(request)), { headers: privateHeaders });

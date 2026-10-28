@@ -1,13 +1,13 @@
 import type { PoolClient } from "pg";
-import type { AnyAttemptSnapshot, AttemptAnswer, RetestSnapshot } from "../../contracts/assessment";
+import type { AnyAttemptSnapshot, AttemptAnswer, ParentManifest, RetestSnapshot } from "../../contracts/assessment";
 
 // Module-owned rows for the epic-3 assessment tracer and its targeted
 // recovery (story 2). Write ownership: ONLY this module writes
 // app.test_attempt (migration 021), app.retest_attempt and app.recovery_target
 // (migration 022). Epic-1/2 state is read through their exported surfaces
 // (getCourse) and fenced through the shared lifecycle helpers — never written
-// here; there are deliberately no queue, processor-configuration or award
-// writes anywhere in this module.
+// here; there are deliberately no queue or processor-configuration writes
+// anywhere in this module.
 //
 // Story 3 changed NO stored shape: the snapshot jsonb carries the new fields
 // (pointsScale, passMarkOverride, per-item partialCredit) additively inside
@@ -16,6 +16,14 @@ import type { AnyAttemptSnapshot, AttemptAnswer, RetestSnapshot } from "../../co
 // CHECKs are untouched. An attempt row's snapshot is the served full-credit
 // root build OR the partial-credit fixture build (AnyAttemptSnapshot); both
 // share the core shape the grading path reads.
+//
+// Story 4 (migration 023) adds the MONOTONIC award layer under the same
+// ownership: app.completion_award (mini-course award rows INSERTED ONCE per
+// (owner, course release) — never updated or deleted by policy — plus
+// parent-path manifest carriers whose single status-guarded transition sets
+// awarded_at) and app.studied_release (the explicit version-switch pointer,
+// the switch verb's only mutable state). Epic-2 tracker evidence is consumed
+// READ-ONLY through course-generation's scoped repository reads.
 
 export type AttemptRow = {
   id: string;
@@ -294,4 +302,144 @@ export async function gradeRetest(
     [retestId, JSON.stringify(graded.answers), JSON.stringify(graded.groupResults)],
   );
   return result.rows[0]?.id ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Story 4 — completion awards, parent manifests and the studied-release
+// pointer (migration 023). Awards are MONOTONIC: mini-course rows are
+// inserted once and never updated or deleted by any code path; parent rows
+// carry their manifest from plant time and take the single status-guarded
+// awarded_at transition. No repository function here ever clears, rewrites
+// or re-derives an earned award.
+// ---------------------------------------------------------------------------
+
+export type AwardRow = {
+  id: string;
+  owner_id: string;
+  root_id: string;
+  kind: "mini-course" | "parent-path";
+  course_id: string | null;
+  course_version: number | null;
+  plan_revision_id: string | null;
+  manifest_id: string | null;
+  manifest: ParentManifest | null;
+  awarded_at: Date | null;
+  created_at: Date;
+};
+
+const awardColumns =
+  "id,owner_id,root_id,kind,course_id,course_version,plan_revision_id,manifest_id,manifest,awarded_at,created_at";
+
+// Insert one mini-course award. The UNIQUE (owner_id, course_id, kind)
+// constraint makes "awarded exactly once per (owner, course release)"
+// structural: a raced or repeated trigger is a no-op (false) and the row
+// from the first trigger stands — byte-identical forever after.
+export async function insertAward(
+  client: PoolClient,
+  row: { id: string; ownerId: string; rootId: string; courseId: string; courseVersion: number; planRevisionId: string },
+): Promise<boolean> {
+  const inserted = await client.query(
+    `INSERT INTO app.completion_award(id,owner_id,root_id,kind,course_id,course_version,plan_revision_id,awarded_at)
+     VALUES($1,$2,$3,'mini-course',$4,$5,$6,clock_timestamp())
+     ON CONFLICT (owner_id, course_id, kind) DO NOTHING`,
+    [row.id, row.ownerId, row.rootId, row.courseId, row.courseVersion, row.planRevisionId],
+  );
+  return inserted.rowCount === 1;
+}
+
+// The mini-course award pinning one course release, if any.
+export async function awardForCourse(client: PoolClient, ownerId: string, courseId: string): Promise<AwardRow | null> {
+  const result = await client.query<AwardRow>(
+    `SELECT ${awardColumns} FROM app.completion_award WHERE owner_id=$1 AND course_id=$2 AND kind='mini-course'`,
+    [ownerId, courseId],
+  );
+  return result.rows[0] ?? null;
+}
+
+// Which of the given course releases carry a mini-course award (owner-
+// scoped) — the parent predicate's awarded-children input.
+export async function awardedCourseIds(client: PoolClient, ownerId: string, courseIds: string[]): Promise<string[]> {
+  if (!courseIds.length) return [];
+  const result = await client.query<{ course_id: string }>(
+    `SELECT course_id FROM app.completion_award WHERE owner_id=$1 AND kind='mini-course' AND course_id=ANY($2::uuid[])`,
+    [ownerId, courseIds],
+  );
+  return result.rows.map(row => row.course_id);
+}
+
+// Every EARNED award of an owner and root (mini-course and awarded parent
+// rows), oldest award first for stable serving — listed, never overwritten.
+export async function awardsForRoot(client: PoolClient, ownerId: string, rootId: string): Promise<AwardRow[]> {
+  const result = await client.query<AwardRow>(
+    `SELECT ${awardColumns} FROM app.completion_award WHERE owner_id=$1 AND root_id=$2 AND awarded_at IS NOT NULL ORDER BY awarded_at, id`,
+    [ownerId, rootId],
+  );
+  return result.rows;
+}
+
+// Plant one parent manifest (the "parent award INTENT row"): the pinned
+// child releases ride the row from creation and NEVER change — a manifest
+// edit is a new manifest identity, never a rewrite. The partial UNIQUE
+// (owner_id, manifest_id) makes a repeat plant a no-op (false). Awarded_at
+// stays null until every required child release is awarded.
+export async function insertParentManifest(
+  client: PoolClient,
+  row: { id: string; manifestId: string; ownerId: string; rootId: string; manifest: ParentManifest },
+): Promise<boolean> {
+  const inserted = await client.query(
+    `INSERT INTO app.completion_award(id,owner_id,root_id,kind,manifest_id,manifest)
+     VALUES($1,$2,$3,'parent-path',$4,$5)
+     ON CONFLICT (owner_id, manifest_id) WHERE kind='parent-path' DO NOTHING`,
+    [row.id, row.ownerId, row.rootId, row.manifestId, row.manifest],
+  );
+  return inserted.rowCount === 1;
+}
+
+// Every parent manifest row of an owner (any root — a parent path may group
+// mini-courses across a personal owner's studies). Pending and awarded rows
+// alike: evaluation is idempotent either way.
+export async function parentManifestsFor(client: PoolClient, ownerId: string): Promise<AwardRow[]> {
+  const result = await client.query<AwardRow>(
+    `SELECT ${awardColumns} FROM app.completion_award WHERE owner_id=$1 AND kind='parent-path' ORDER BY created_at, id`,
+    [ownerId],
+  );
+  return result.rows;
+}
+
+// The single status-guarded parent transition: sets awarded_at once, on the
+// manifest row planted for exactly this award condition. A raced or repeated
+// evaluation sees no row (null) and the ledger never regresses; nothing ever
+// clears an earned parent award.
+export async function awardParent(client: PoolClient, awardId: string): Promise<string | null> {
+  const result = await client.query<{ id: string }>(
+    `UPDATE app.completion_award SET awarded_at=clock_timestamp()
+     WHERE id=$1 AND kind='parent-path' AND awarded_at IS NULL RETURNING id`,
+    [awardId],
+  );
+  return result.rows[0]?.id ?? null;
+}
+
+// The explicit studied-release pointer of an owner and root, if a switch
+// ever moved it (absent = default latest-ready resolution).
+export async function studiedRelease(client: PoolClient, ownerId: string, rootId: string): Promise<{ course_id: string } | null> {
+  const result = await client.query<{ course_id: string }>(
+    "SELECT course_id FROM app.studied_release WHERE owner_id=$1 AND root_id=$2",
+    [ownerId, rootId],
+  );
+  return result.rows[0] ?? null;
+}
+
+// The switch verb's only mutable write: move the pointer to an explicitly
+// chosen ready release. An idempotent re-switch to the same release updates
+// only switched_at; a purged release cascades the pointer away.
+export async function upsertStudiedRelease(
+  client: PoolClient,
+  row: { id: string; ownerId: string; rootId: string; courseId: string },
+): Promise<void> {
+  await client.query(
+    `INSERT INTO app.studied_release(id,owner_id,root_id,course_id)
+     VALUES($1,$2,$3,$4)
+     ON CONFLICT (owner_id, root_id) DO UPDATE SET course_id=EXCLUDED.course_id, switched_at=clock_timestamp()`,
+    [row.id, row.ownerId, row.rootId, row.courseId],
+  );
 }

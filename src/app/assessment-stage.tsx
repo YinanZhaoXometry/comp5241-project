@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, command, json } from "./client";
-import type { AssessmentState, GradedItemView, StartedAttempt, StartedRetest, SubmittedAttempt, SubmittedRetest } from "../contracts/assessment";
+import type { AssessmentState, GradedItemView, StartedAttempt, StartedRetest, SubmittedAttempt, SubmittedRetest, SwitchDisclosure, SwitchedCourseVersion } from "../contracts/assessment";
 import { displayPointsOf } from "../modules/assessment-progress/scoring";
 import type { Study } from "../modules/materials-setup/service";
 
 type Props = { study: Study; busy: boolean; onBusy: (value: boolean) => void; onFailure: (error: unknown) => void };
 type AssessmentResponse = AssessmentState & { objectIds: string[] };
+type SwitchDisclosureResponse = SwitchDisclosure & { objectIds: string[] };
 
 const nodeCopy: Record<AssessmentState["node"], string> = {
   "not-started": "Not started",
@@ -16,26 +17,27 @@ const nodeCopy: Record<AssessmentState["node"], string> = {
 };
 
 // Epic-3 story-1 tracer stage + the story-2 targeted-recovery chain + the
-// story-3 scoring surface: the visible scored path over a ready course —
-// disclosure (threshold, available points, scoring criteria BEFORE any
-// start) → options → one submission → honest threshold-boundary result with
-// full attempt history → the derived roadmap line (In progress → Completed).
-// The unrounded comparison decides Pass/Not passed and the display never
-// contradicts it (79.96% does not pass an 80% mark); correct answers appear
-// only after that attempt is graded; previous attempts stay listed, never
-// overwritten. Story 3: when an attempt's snapshot carries a disclosed
-// partial-credit rubric, the disclosure shows it up front and each credited
-// choice names its exact declared credit (never the correct answer); point
-// amounts render through the snapshot's declared scale; an instructor
-// pass-mark override (if a snapshot ever carries one — personal study stays
-// at the 80% default) is shown with its provenance; and a provisional-typed
-// grade would render labeled Provisional, able to award nothing. A FAILED
-// grade opens the recovery path below: the failed view groups items per
-// objective ("Needs practice", cause unnamed) as focused review, the
-// recovery panel lists the ledgered targets with their initial results and
-// statuses, and a fresh same-demand retest of a declared subset of the open
-// groups mirrors the attempt flow. The original verdict and the per-group
-// recovery credit are shown side by side — never merged, never averaged.
+// story-3 scoring surface + the story-4 monotonic completion-award layer:
+// the visible scored path over a ready course — disclosure (threshold,
+// available points, scoring criteria BEFORE any start) → options → one
+// submission → honest threshold-boundary result with full attempt history →
+// the roadmap line (In progress → Completed). The unrounded comparison
+// decides Pass/Not passed and the display never contradicts it (79.96% does
+// not pass an 80% mark); correct answers appear only after that attempt is
+// graded; previous attempts stay listed, never overwritten. Story 3: when an
+// attempt's snapshot carries a disclosed partial-credit rubric, the
+// disclosure shows it up front and each credited choice names its exact
+// declared credit (never the correct answer); point amounts render through
+// the snapshot's declared scale. A FAILED grade opens the recovery path: the
+// failed view groups items per objective ("Needs practice", cause unnamed)
+// as focused review, and a fresh same-demand retest of a declared subset of
+// the open groups mirrors the attempt flow — original verdict and recovery
+// credit side by side, never merged. Story 4: Completed now reads from an
+// EARNED, VERSION-SCOPED award (every required item done + the required test
+// passed or fully recovered — awarded exactly once, never revoked); earned
+// awards list under the roadmap line, and the study-version switcher moves
+// the studied release only through an informed flow that first discloses the
+// changed required work and never erases prior awards.
 export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
   const [state, setState] = useState<AssessmentResponse | null>(null);
   const [notice, setNotice] = useState("");
@@ -44,10 +46,16 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
   // Retest target declaration: open targets default to SELECTED; the learner
   // may narrow the subset. Stale entries are ignored once the open set moves.
   const [targetSelection, setTargetSelection] = useState<Record<number, boolean>>({});
+  // Story 4 — the informed switch flow: a chosen target version, the served
+  // changed-work disclosure, and the confirmation that moves the studied
+  // release only after the learner has seen the exact diff.
+  const [switchTarget, setSwitchTarget] = useState("");
+  const [disclosure, setDisclosure] = useState<SwitchDisclosureResponse | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const resultHeading = useRef<HTMLHeadingElement>(null);
   const recoveryHeading = useRef<HTMLHeadingElement>(null);
   const retestResultHeading = useRef<HTMLHeadingElement>(null);
+  const switchHeading = useRef<HTMLHeadingElement>(null);
   const failureRef = useRef(onFailure);
   useEffect(() => { failureRef.current = onFailure; }, [onFailure]);
   // The submit command envelope per attempt/retest: a lost response replays
@@ -76,10 +84,20 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
     let live = true;
     const read = () => { void api<AssessmentResponse>(`studies/${study.rootId}/assessment`).then(value => { if (live) setState(value); }).catch(error => { if (live) failureRef.current(error); }); };
     read();
-    if (!empty) return () => { live = false; };
-    const timer = setInterval(read, 2000);
+    // Eventually-consistent serving: the panel re-reads on a light always-on
+    // cadence (2s while no course state exists, 3s once settled). The
+    // assessment is a server-derived view of the studied release — an
+    // API-driven regeneration or switch must reach this panel without a
+    // manual reload, and no other stage owns that signal. The poll never
+    // focuses anything; it only refreshes state.
+    const timer = setInterval(read, empty ? 2000 : 3000);
     return () => { live = false; clearInterval(timer); };
-  }, [study.rootId, empty]);
+  }, [study.rootId, study.revision, empty]);
+  // study.revision re-reads: a re-confirmed plan (regeneration) advances the
+  // batch revision — the assessment must re-resolve the studied release then,
+  // even when the stage was not remounted (e.g. an API-driven regeneration
+  // that never unmounts this panel). Without it a stale graded view (an
+  // earlier Completed award) would survive until a manual reload.
   async function act(work: () => Promise<void>) {
     onBusy(true); setNotice("");
     try { await work(); } catch (error) { onFailure(error); } finally { onBusy(false); }
@@ -119,6 +137,31 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
     setNotice(`Retest graded — ${cleared} of ${result.groups.length} reassessed group${result.groups.length === 1 ? "" : "s"} cleared at the original pass mark.`);
     requestAnimationFrame(() => retestResultHeading.current?.focus());
   });
+  // Story 4 — the informed switch flow: the changed-work disclosure is a
+  // read-only GET shown BEFORE any move; the confirmed switch carries the
+  // exact acknowledged diff (a stale or partial acknowledgment is denied
+  // server-side), a stable per-target command envelope replays idempotently,
+  // and no award is ever erased.
+  const showSwitchDisclosure = () => act(async () => {
+    const shown = await api<SwitchDisclosureResponse>(`studies/${study.rootId}/assessment/switch?course=${encodeURIComponent(switchTarget)}`);
+    setDisclosure(shown);
+    setNotice("Changed required work shown below — confirm to switch, or cancel to stay.");
+    requestAnimationFrame(() => switchHeading.current?.focus());
+  });
+  const confirmSwitch = () => {
+    if (!disclosure) return;
+    act(async () => {
+      const acknowledged = {
+        addedRequiredItemIds: disclosure.addedRequiredItems.map(item => item.id),
+        removedRequiredItemIds: disclosure.removedRequiredItems.map(item => item.id),
+        requiredTestChanged: disclosure.requiredTestChanged,
+      };
+      await api<SwitchedCourseVersion>(`studies/${study.rootId}/assessment/switch`, json({ ...intent(`switch-${disclosure.to.courseId}`), courseId: disclosure.to.courseId, acknowledged }));
+      await refresh(); setDisclosure(null); setSwitchTarget("");
+      setNotice(`Now studying version ${disclosure.to.version}. Prior awards and attempts stay listed.`);
+      requestAnimationFrame(() => switchHeading.current?.focus());
+    });
+  };
   if (!state || state.state === "none") return null;
   const test = state.test;
   const active = state.state === "active" && state.attempt && !("gradedAt" in state.attempt) ? state.attempt : null;
@@ -156,7 +199,15 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
   const rubricOf = (position: number) => test?.items.find(entry => entry.position === position)?.partialCredit ?? null;
   return <section className="panel"><p className="eyebrow">REQUIRED TEST · SCORED ATTEMPT TRACER</p><h3 ref={heading} tabIndex={-1}>Assessment &amp; progress</h3>
     <output>{notice}</output>
-    <p><strong>Roadmap: {nodeCopy[state.node]}.</strong> <span className="fine">Derived, never awarded — Completed requires every required course item done and a passed attempt on the current course version. Review never revokes it.</span></p>
+    <p><strong>Roadmap: {nodeCopy[state.node]}.</strong> <span className="fine">Completed appears only from an earned, version-scoped award — every required course item done and the required test passed or fully recovered. Awards are recorded once and never revoked by later results, edits or review.</span></p>
+    {state.awards.length > 0 && <div className="tracker-row">
+      <p><strong>Completion awards</strong> <span className="fine">· version-scoped, listed, never overwritten</span></p>
+      <ul>{state.awards.map(award => <li key={award.awardId} className="fine">
+        {award.kind === "mini-course"
+          ? `Mini-course version ${award.courseVersion} — completed ${new Date(award.awardedAt).toLocaleString()}`
+          : `Parent path (${award.manifest?.children.filter(child => child.required).length ?? 0} required children) — completed ${new Date(award.awardedAt).toLocaleString()}`}
+      </li>)}</ul>
+    </div>}
     {test && <div className="tracker-row">
       <p><strong>{test.title}</strong> <span className="fine">· {test.itemCount} items · {test.itemPoints.map(points => displayPointsOf(points, test.pointsScale)).join(" + ")} = {displayPointsOf(test.totalPoints, test.pointsScale)} points</span></p>
       <p><strong>Pass mark: {test.passMarkPercent}%</strong> — shown before you start. The unrounded earned-points comparison decides; the display never rounds a Not passed into looking like a pass.</p>
@@ -264,6 +315,38 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
       <ul>{state.attempts.map(attempt => <li key={attempt.attemptId} className="fine">
         {new Date(attempt.startedAt).toLocaleString()} · course version {attempt.courseVersion} · {attempt.status === "active" ? "open — not yet submitted" : `${attempt.displayPercent} — ${attempt.passed ? "Pass" : "Not passed"} (${displayPointsOf(attempt.earnedPoints ?? 0, attempt.pointsScale)}/${displayPointsOf(attempt.totalPoints ?? 0, attempt.pointsScale)})`}
       </li>)}</ul>
+    </div>}
+    {state.versions.length > 1 && <div className="tracker-row">
+      <h4 ref={switchHeading} tabIndex={-1}>Study version</h4>
+      <p className="fine">You are studying version {state.version}. A newer or older release never moves you silently — switching is your explicit choice, and it never erases earned awards or listed attempts.</p>
+      <div className="actions">
+        <label htmlFor="switch-target">Switch to version</label>
+        <select id="switch-target" value={switchTarget} onChange={event => { setSwitchTarget(event.target.value); setDisclosure(null); }} disabled={busy}>
+          <option value="">Choose a version…</option>
+          {state.versions.filter(version => version !== state.version).map(version => <option key={version} value={version}>{version}</option>)}
+        </select>
+        <button disabled={busy || !switchTarget} onClick={() => { void showSwitchDisclosure(); }}>Show what changes</button>
+      </div>
+      {disclosure && <div>
+        <p><strong>Changed required work — version {disclosure.from.version ?? "none"} → version {disclosure.to.version}:</strong></p>
+        {disclosure.requiredTestChanged
+          ? <p className="fine">The required test changes on version {disclosure.to.version} (different objectives and questions).</p>
+          : <p className="fine">The required test is unchanged between these versions.</p>}
+        {disclosure.addedRequiredItems.length > 0 && <div>
+          <p className="fine">New required work you would have to complete:</p>
+          <ul>{disclosure.addedRequiredItems.map(item => <li key={item.id} className="fine">Added — {item.title}</li>)}</ul>
+        </div>}
+        {disclosure.removedRequiredItems.length > 0 && <div>
+          <p className="fine">Required work that no longer counts on the target version:</p>
+          <ul>{disclosure.removedRequiredItems.map(item => <li key={item.id} className="fine">Removed — {item.title}</li>)}</ul>
+        </div>}
+        {disclosure.addedRequiredItems.length === 0 && disclosure.removedRequiredItems.length === 0 && <p className="fine">No required reading items change between these versions.</p>}
+        <div className="actions">
+          <button disabled={busy} onClick={() => { void confirmSwitch(); }}>Confirm switch to version {disclosure.to.version}</button>
+          <button className="quiet" disabled={busy} onClick={() => { setDisclosure(null); setNotice("Switch canceled — you stay on the studied version."); }}>Cancel</button>
+        </div>
+        <p className="fine">Confirming moves your studied version; your award for version {disclosure.from.version ?? "—"} stays earned and listed.</p>
+      </div>}
     </div>}
   </section>;
 }
