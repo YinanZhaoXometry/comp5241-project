@@ -165,6 +165,47 @@ try {
   assert.equal(replayedSubmit.status(), 200);
   assert.deepEqual(await replayedSubmit.json(), gradedResult); // identical result, one receipt
   assert.equal((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.test_attempt WHERE id=$1 AND status='graded'", [attemptReceipt.operationId])).rows[0].count, 1);
+  // Epic-3 story-2 beat: a FAILED ordinary grade opens the recovery ledger
+  // (this one-objective course ledgers obj0 open at 7996/10000), a targeted
+  // retest clears it, and a full web+worker restart must leave the ledger,
+  // the cleared target, the retest and its result unchanged — with a
+  // replayed retest submit yielding the identical result and exactly one
+  // graded retest row.
+  const recoveryAttemptResponse = await client.post(`${coursePath}/assessment`, { headers: { Origin: origin }, data: command(assessmentRevision) });
+  assert.equal(recoveryAttemptResponse.status(), 200);
+  const recoveryAttempt = await recoveryAttemptResponse.json() as Receipt;
+  const recoverySnapshot = (await database().query<{ snapshot: { items: Array<{ position: number; answerId: string; choices: Array<{ id: string }> }> } }>("SELECT snapshot FROM app.test_attempt WHERE id=$1", [recoveryAttempt.operationId])).rows[0].snapshot;
+  const recoveryWrongFifth = recoverySnapshot.items[4].choices.find(choice => choice.id !== recoverySnapshot.items[4].answerId)!.id;
+  const recoverySubmitCommand = command(assessmentRevision);
+  const failedResponse = await client.post(`${coursePath}/assessment/${recoveryAttempt.operationId}/submit`, { headers: { Origin: origin }, data: { ...recoverySubmitCommand, attemptId: recoveryAttempt.operationId, answers: recoverySnapshot.items.map(item => ({ position: item.position, choiceId: item.position === 5 ? recoveryWrongFifth : item.answerId })) } });
+  assert.equal(failedResponse.status(), 200);
+  const failedResult = await failedResponse.json() as { passed: boolean; verdict: string };
+  assert.equal(failedResult.passed, false);
+  assert.equal(failedResult.verdict, "79.96% — Not passed (mark is 80%)");
+  const ledgerBefore = (await database().query<{ objective_index: number; initial_earned: number; initial_total: number; status: string }>("SELECT objective_index,initial_earned,initial_total,status FROM app.recovery_target WHERE root_attempt_id=$1", [recoveryAttempt.operationId])).rows;
+  assert.equal(ledgerBefore.length, 1);
+  assert.deepEqual(ledgerBefore[0], { objective_index: 0, initial_earned: 7996, initial_total: 10000, status: "open" });
+  const retestStartCommand = command(assessmentRevision);
+  const retestStartResponse = await client.post(`${coursePath}/assessment/retest`, { headers: { Origin: origin }, data: { ...retestStartCommand, attemptId: recoveryAttempt.operationId, targetIndexes: [0] } });
+  assert.equal(retestStartResponse.status(), 200);
+  const retestStart = await retestStartResponse.json() as { operationId: string; targetIndexes: number[] };
+  assert.deepEqual(retestStart.targetIndexes, [0]);
+  const retestRow = (await database().query<{ snapshot: { items: Array<{ position: number; answerId: string }> } }>("SELECT snapshot FROM app.retest_attempt WHERE id=$1", [retestStart.operationId])).rows[0];
+  const retestAnswers = retestRow.snapshot.items.map(item => ({ position: item.position, choiceId: item.answerId }));
+  const retestSubmitCommand = command(assessmentRevision);
+  const retestSubmitted = await client.post(`${coursePath}/assessment/retest/${retestStart.operationId}/submit`, { headers: { Origin: origin }, data: { ...retestSubmitCommand, retestId: retestStart.operationId, answers: retestAnswers } });
+  assert.equal(retestSubmitted.status(), 200);
+  const retestResult = await retestSubmitted.json() as { groups: Array<{ objectiveIndex: number; cleared: boolean }> };
+  assert.equal(retestResult.groups.length, 1);
+  assert.equal(retestResult.groups[0].cleared, true);
+  const recoveryBefore = await (await client.get(`${coursePath}/assessment`)).json();
+  await stop(); await start();
+  assert.deepEqual(await (await client.get(`${coursePath}/assessment`)).json(), recoveryBefore);
+  const replayedRetest = await client.post(`${coursePath}/assessment/retest/${retestStart.operationId}/submit`, { headers: { Origin: origin }, data: { ...retestSubmitCommand, retestId: retestStart.operationId, answers: retestAnswers } });
+  assert.equal(replayedRetest.status(), 200);
+  assert.deepEqual(await replayedRetest.json(), retestResult); // identical result, one receipt
+  assert.equal((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.retest_attempt WHERE id=$1 AND status='graded'", [retestStart.operationId])).rows[0].count, 1);
+  assert.equal((await database().query<{ status: string }>("SELECT status FROM app.recovery_target WHERE root_attempt_id=$1", [recoveryAttempt.operationId])).rows[0].status, "cleared");
   // Epic-2 S2 beat: queue the supplement pass while NO worker runs, then a
   // full web+worker restart must complete the persisted job exactly once with
   // a verified attributed supplement and one 'supplement' lifecycle object.
@@ -193,5 +234,5 @@ try {
   assert.equal((await client.post(`${coursePath}/removal`, { headers: { Origin: origin }, data: command(courseStudy.revision) })).status(), 200);
   assert.equal((await database().query("SELECT count(*)::int AS count FROM app.course_supplement WHERE course_id=$1", [courseId])).rows[0].count, 0);
   for (const secret of [text, courseText, owner.email, owner.password, other.email, other.password]) assert.ok(!output.join("").includes(secret), "Private data reached process output");
-  console.log("Restart smoke passed: exact plan/session persisted, B denied, queued PDF recovered with the same original and one extraction, duplicate receipt replayed, course generation queued without a worker completed exactly once across restart with an identical replayed receipt and one ready course, recall answer released only on submission, required-test attempt and graded result survived the restart unchanged with a replayed submit yielding the identical result and one graded row, supplement pass queued without a worker completed exactly once with a verified attributed supplement and purged with its root; process output content-free.");
+  console.log("Restart smoke passed: exact plan/session persisted, B denied, queued PDF recovered with the same original and one extraction, duplicate receipt replayed, course generation queued without a worker completed exactly once across restart with an identical replayed receipt and one ready course, recall answer released only on submission, required-test attempt and graded result survived the restart unchanged with a replayed submit yielding the identical result and one graded row, the failed-attempt recovery ledger opened at grade time and its cleared target, retest and graded retest result survived the restart unchanged with a replayed retest submit yielding the identical result and one graded retest row, supplement pass queued without a worker completed exactly once with a verified attributed supplement and purged with its root; process output content-free.");
 } finally { await stop(); await client.dispose(); await denied.dispose(); await closeDatabase(); }

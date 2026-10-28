@@ -12,7 +12,7 @@ import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finish
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
 import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState, getProvenance } from "../../../../modules/course-generation/service";
-import { getAssessment, startTest, submitAttempt } from "../../../../modules/assessment-progress/service";
+import { getAssessment, startTest, submitAttempt, startRetest, submitRetest } from "../../../../modules/assessment-progress/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -138,6 +138,18 @@ async function handle(request: Request, context: Context) {
       }
       if (path.length === 3 && request.method === "POST") return Response.json(await startTest(identity, rootId, await jsonBody(request) as Command), { headers: privateHeaders });
       if (request.method === "POST") return Response.json(await submitAttempt(identity, rootId, path[3], await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-3 story-2 targeted recovery: the retest verbs mirror the attempt
+    // verbs above. POST starts a fresh same-demand retest of one
+    // graded-failed attempt's declared open target groups (body names the
+    // root attempt + target subset); the submit verb grades the open retest
+    // exactly once, clearing each independently passing group in the same
+    // transaction. The recovery ledger rides the existing assessment GET —
+    // never an answer before that retest is graded.
+    if (path[0] === "studies" && path[2] === "assessment" && path[3] === "retest" && (path.length === 4 || (path.length === 6 && path[5] === "submit"))) {
+      const rootId = path[1];
+      if (path.length === 4 && request.method === "POST") return Response.json(await startRetest(identity, rootId, await jsonBody(request)), { headers: privateHeaders });
+      if (request.method === "POST") return Response.json(await submitRetest(identity, rootId, path[4], await jsonBody(request)), { headers: privateHeaders });
     }
     if (path[0] === "studies" && path.length === 3 && path[2] === "dependencies" && request.method === "POST") {
       return Response.json(await dependenciesPreview(identity, path[1], await jsonBody(request)), { headers: privateHeaders });

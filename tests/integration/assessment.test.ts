@@ -8,20 +8,27 @@ import { savePlan, confirmPlan } from '../../src/modules/materials-setup/service
 import { removeRoot } from '../../src/modules/lifecycle-platform/service';
 import { requestCourseGeneration, getCourse, markItemDone } from '../../src/modules/course-generation/service';
 import { runCourseGeneration } from '../../src/modules/course-generation/worker';
-import { getAssessment, startTest, submitAttempt } from '../../src/modules/assessment-progress/service';
+import { getAssessment, startTest, submitAttempt, startRetest, submitRetest } from '../../src/modules/assessment-progress/service';
 import { database, closeDatabase } from '../../src/adapters/postgres/database';
 import { closeQueue } from '../../src/adapters/queue';
 import type { Command, Identity, Plan } from '../../src/contracts/setup';
-import type { AttemptSnapshot } from '../../src/contracts/assessment';
+import type { AttemptSnapshot, RetestSnapshot } from '../../src/contracts/assessment';
 
-// LOCAL SYNTHETIC coverage of the epic-3 story-1 scored-attempt tracer: one
-// required test over a ready generated course — at-start snapshot pinning
-// (supersession stability), exactly-once submission (same commandKey replays
-// the identical result, a new commandKey on a graded attempt conflicts),
-// answer withholding until grading, the honest 79.96% threshold boundary
-// driving the DERIVED roadmap node (In progress -> Completed), and the
-// denial sweep. Real PostgreSQL; the processor is the local synthetic
-// fixture — zero network, and the assessment itself dispatches nothing.
+// LOCAL SYNTHETIC coverage of the epic-3 story-1 scored-attempt tracer and
+// the story-2 targeted-recovery chain: one required test over a ready
+// generated course — at-start snapshot pinning (supersession stability),
+// exactly-once submission (same commandKey replays the identical result, a
+// new commandKey on a graded attempt conflicts), answer withholding until
+// grading, the honest 79.96% threshold boundary driving the DERIVED roadmap
+// node (In progress -> Completed), the denial sweep — plus story 2's matrix:
+// a failed grade ledgers exactly its failed objective groups under its own
+// snapshot, retests mirror the root blueprint with fresh questions, a group
+// clears only at the root mark, partial recovery keeps the requirement
+// honestly open, the later clear satisfies it with the original score row
+// byte-identical, chains stay pinned through supersession and retakes
+// re-ledger under their own snapshot. Real PostgreSQL; the processor is the
+// local synthetic fixture — zero network, and the assessment itself
+// dispatches nothing.
 
 const command = (revision = 0): Command => ({ schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: revision });
 
@@ -103,6 +110,22 @@ async function snapshotOf(attemptId: string): Promise<AttemptSnapshot> {
   return row.rows[0].snapshot;
 }
 
+// The stored answer key of one retest, likewise server-side truth only.
+async function retestSnapshotOf(retestId: string): Promise<RetestSnapshot> {
+  const row = await database().query<{ snapshot: RetestSnapshot }>('SELECT snapshot FROM app.retest_attempt WHERE id=$1', [retestId]);
+  if (!row.rows[0]) throw new Error('no retest row');
+  return row.rows[0].snapshot;
+}
+
+// Answers built from a stored snapshot: wrong on the given positions, correct
+// everywhere else.
+function answersFrom(snapshot: AttemptSnapshot | RetestSnapshot, wrongPositions: number[] = []) {
+  return snapshot.items.map(item => ({
+    position: item.position,
+    choiceId: wrongPositions.includes(item.position) ? item.choices.find(choice => choice.id !== item.answerId)!.id : item.answerId,
+  }));
+}
+
 afterAll(async () => {
   await closeQueue();
   await closeDatabase();
@@ -138,7 +161,7 @@ describe('epic-3 story-1: scored-attempt tracer', () => {
     if (active.attempt && !('gradedAt' in active.attempt)) {
       expect(active.attempt.items).toHaveLength(5);
       expect(active.attempt.courseVersion).toBe(1);
-      for (const item of active.attempt.items) expect(Object.keys(item).sort()).toEqual(['choices', 'objective', 'points', 'position', 'prompt']);
+      for (const item of active.attempt.items) expect(Object.keys(item).sort()).toEqual(['choices', 'objective', 'objectiveIndex', 'points', 'position', 'prompt']);
     } else {
       throw new Error('expected an active attempt view');
     }
@@ -314,5 +337,268 @@ describe('epic-3 story-1: scored-attempt tracer', () => {
     await expect(submitAttempt(a, study.rootId, started.operationId, { ...command(current.revision), attemptId: started.operationId, answers: [] })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
     const remaining = await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.test_attempt WHERE root_id=$1', [study.rootId]);
     expect(remaining.rows[0].count).toBe(0);
+  });
+});
+
+describe('epic-3 story-2: targeted recovery ledger and fresh retest chain', () => {
+  // The plan's 5997 fixture over the default 3-outcome study: wrong on items
+  // 3 (obj2) and 5 (obj1) fails exactly groups obj1+obj2 while obj0 (items
+  // 1,4) passes — obj0 is preserved and never re-tested.
+  it('ledgers exactly the failed groups at grade time, clears them one retest at a time, and completes the node with the original row byte-identical', async () => {
+    const a = await actor('recovery-happy');
+    await grant(a);
+    const study = await confirmedStudy(a);
+    const course = await generateCourse(a, study.rootId, study.revision);
+    const courseId = course.course.courseId;
+
+    const started = await startTest(a, study.rootId, { ...command(study.revision) });
+    const rootSnapshot = await snapshotOf(started.operationId);
+    expect(rootSnapshot.items.map(item => item.objectiveIndex)).toEqual([0, 1, 2, 0, 1]);
+    const graded = await submitAttempt(a, study.rootId, started.operationId, { ...command(study.revision), attemptId: started.operationId, answers: answersFrom(rootSnapshot, [3, 5]) });
+    expect(graded.earnedPoints).toBe(5997);
+    expect(graded.verdict).toBe('60.0% — Not passed (mark is 80%)');
+
+    // The failed grade ledgered EXACTLY the failed groups, open, with initial
+    // results under that attempt's own snapshot — same transaction.
+    const ledgerRows = await database().query<{ objective_index: number; initial_earned: number; initial_total: number; status: string }>(
+      'SELECT objective_index,initial_earned,initial_total,status FROM app.recovery_target WHERE root_attempt_id=$1 ORDER BY objective_index',
+      [started.operationId],
+    );
+    expect(ledgerRows.rows).toEqual([
+      { objective_index: 1, initial_earned: 1999, initial_total: 4003, status: 'open' },
+      { objective_index: 2, initial_earned: 0, initial_total: 1999, status: 'open' },
+    ]);
+
+    // Served state: recovery beside the attempt result, requirement open,
+    // original verdict shown, never merged.
+    const afterFail = await getAssessment(a, study.rootId);
+    expect(afterFail.state).toBe('graded');
+    expect(afterFail.node).toBe('in-progress');
+    expect(afterFail.attempt && 'gradedAt' in afterFail.attempt ? afterFail.attempt.verdict : null).toBe('60.0% — Not passed (mark is 80%)');
+    expect(afterFail.recovery).toMatchObject({ rootAttemptId: started.operationId, requirementSatisfied: false });
+    expect(afterFail.recovery!.targets).toEqual([
+      expect.objectContaining({ objectiveIndex: 1, initialEarned: 1999, initialTotal: 4003, status: 'open', initialDisplayPercent: '49.9%' }),
+      expect.objectContaining({ objectiveIndex: 2, initialEarned: 0, initialTotal: 1999, status: 'open' }),
+    ]);
+    expect(afterFail.recovery!.retest).toBeNull();
+    expect(afterFail.recovery!.retests).toEqual([]);
+    // Withholding: the graded attempt view is the sole reveal path for the
+    // attempt's answers (correctChoiceId appears there legitimately); the
+    // recovery state itself carries no answer of any kind — nothing is
+    // revealed through the ledger before a retest grades.
+    const failedSerialized = JSON.stringify(afterFail.recovery);
+    expect(failedSerialized).not.toContain('answerId');
+    expect(failedSerialized).not.toContain('correctChoiceId');
+
+    // Foreign target declarations are INVALID_INPUT, never repaired: a
+    // PASSED group (obj0), a cleared/unknown index, duplicates.
+    const retestBase = { ...command(study.revision), attemptId: started.operationId };
+    await expect(startRetest(a, study.rootId, { ...retestBase, targetIndexes: [0] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(startRetest(a, study.rootId, { ...retestBase, targetIndexes: [5] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(startRetest(a, study.rootId, { ...command(study.revision), attemptId: started.operationId, targetIndexes: [1, 1] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(startRetest(a, study.rootId, { ...command(study.revision), attemptId: crypto.randomUUID(), targetIndexes: [1] })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+
+    // Retest 1 targets {obj1, obj2}: fresh items mirroring the root blueprint
+    // per-group one-for-one (obj1 1999+2004, obj2 1999), the root pass mark.
+    const firstStartCommand = { ...command(study.revision), attemptId: started.operationId, targetIndexes: [1, 2] };
+    const firstStart = await startRetest(a, study.rootId, firstStartCommand);
+    expect(firstStart).toMatchObject({ state: 'active', targetIndexes: [1, 2] });
+    expect(firstStart.planRevisionId).toBe(started.planRevisionId);
+    const firstSnapshot = await retestSnapshotOf(firstStart.operationId);
+    expect(firstSnapshot.items.map(item => [item.objectiveIndex, item.points, item.position])).toEqual([[1, 1999, 1], [2, 1999, 2], [1, 2004, 3]]);
+    expect(firstSnapshot.totalPoints).toBe(6002);
+    expect(firstSnapshot.passMarkPercent).toBe(rootSnapshot.passMarkPercent);
+    for (const item of firstSnapshot.items) {
+      const counterpart = rootSnapshot.items.find(root => root.objectiveIndex === item.objectiveIndex && root.points === item.points)!;
+      expect(item.prompt).not.toBe(counterpart.prompt); // fresh questions
+      expect(item.objective).toBe(counterpart.objective);
+    }
+    // Active retest withholds answers too.
+    const activeRetest = await getAssessment(a, study.rootId);
+    expect(JSON.stringify(activeRetest.recovery!.retest)).not.toContain('"answerId"');
+    // Duplicate retest command (same commandKey) replays the identical
+    // receipt — one tracked retest row; a different commandKey while one is
+    // open returns the SAME open retest with ITS OWN declaration.
+    const replayedStart = await startRetest(a, study.rootId, firstStartCommand);
+    expect(replayedStart).toEqual(firstStart);
+    const secondKeyStart = await startRetest(a, study.rootId, { ...command(study.revision), attemptId: started.operationId, targetIndexes: [2] });
+    expect(secondKeyStart.operationId).toBe(firstStart.operationId);
+    expect(secondKeyStart.targetIndexes).toEqual([1, 2]);
+    // Foreign declarations are rejected in EVERY state — including while an
+    // open retest exists (the served winner never excuses a bad declaration):
+    // a passed group, an index no item carries, and duplicates all conflict.
+    await expect(startRetest(a, study.rootId, { ...command(study.revision), attemptId: started.operationId, targetIndexes: [0] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(startRetest(a, study.rootId, { ...command(study.revision), attemptId: started.operationId, targetIndexes: [5] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(startRetest(a, study.rootId, { ...command(study.revision), attemptId: started.operationId, targetIndexes: [1, 1] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    const retestRowsMid = await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.retest_attempt WHERE root_id=$1', [study.rootId]);
+    expect(retestRowsMid.rows[0].count).toBe(1);
+
+    // Partial clear: correct on both obj1 items, wrong on the obj2 item.
+    const firstSubmit = { ...command(study.revision), retestId: firstStart.operationId, answers: answersFrom(firstSnapshot, [2]) };
+    const firstGraded = await submitRetest(a, study.rootId, firstStart.operationId, firstSubmit);
+    expect(firstGraded.groups).toEqual([
+      expect.objectContaining({ objectiveIndex: 1, earned: 4003, total: 4003, cleared: true }),
+      expect.objectContaining({ objectiveIndex: 2, earned: 0, total: 1999, cleared: false }),
+    ]);
+    // Exactly-once: same commandKey replays the identical result; a NEW
+    // commandKey on the graded retest conflicts.
+    expect(await submitRetest(a, study.rootId, firstStart.operationId, firstSubmit)).toEqual(firstGraded);
+    await expect(submitRetest(a, study.rootId, firstStart.operationId, { ...command(study.revision), retestId: firstStart.operationId, answers: answersFrom(firstSnapshot, [2]) })).rejects.toMatchObject({ code: 'CONFLICT' });
+
+    // One group cleared, the other open: the requirement stays honestly
+    // unsatisfied; the original row is byte-identical; credit is separate.
+    const partial = await getAssessment(a, study.rootId);
+    expect(partial.node).toBe('in-progress');
+    expect(partial.recovery!.requirementSatisfied).toBe(false);
+    expect(partial.recovery!.targets.map(target => [target.objectiveIndex, target.status])).toEqual([[1, 'cleared'], [2, 'open']]);
+    expect(partial.recovery!.targets[0].clearedBy).toBe(firstStart.operationId);
+    expect(partial.recovery!.retests).toHaveLength(1);
+    expect(partial.attempt && 'gradedAt' in partial.attempt ? [partial.attempt.earnedPoints, partial.attempt.verdict] : null).toEqual([5997, '60.0% — Not passed (mark is 80%)']);
+    expect(await snapshotOf(started.operationId)).toEqual(rootSnapshot);
+    const originalRow = await database().query('SELECT * FROM app.test_attempt WHERE id=$1', [started.operationId]);
+    const originalBytes = JSON.stringify(originalRow.rows[0]);
+
+    // A cleared group is no longer declarable.
+    await expect(startRetest(a, study.rootId, { ...command(study.revision), attemptId: started.operationId, targetIndexes: [1, 2] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+
+    // Required items done, then the later retest clears the remainder.
+    for (const item of course.course.items.filter(item => item.required))
+      await markItemDone(a, study.rootId, { ...command(study.revision), courseId, itemId: item.id });
+    const secondStart = await startRetest(a, study.rootId, { ...command(study.revision), attemptId: started.operationId, targetIndexes: [2] });
+    expect(secondStart.targetIndexes).toEqual([2]);
+    const secondSnapshot = await retestSnapshotOf(secondStart.operationId);
+    expect(secondSnapshot.items.map(item => [item.objectiveIndex, item.points])).toEqual([[2, 1999]]);
+    const secondGraded = await submitRetest(a, study.rootId, secondStart.operationId, { ...command(study.revision), retestId: secondStart.operationId, answers: answersFrom(secondSnapshot) });
+    expect(secondGraded.groups[0]).toMatchObject({ objectiveIndex: 2, earned: 1999, total: 1999, cleared: true });
+
+    // Every target cleared: requirement satisfied and the node COMPLETES on
+    // recovery credit with no passing ordinary attempt — and the original
+    // score row is byte-identical throughout.
+    const recovered = await getAssessment(a, study.rootId);
+    expect(recovered.recovery!.requirementSatisfied).toBe(true);
+    expect(recovered.recovery!.targets.every(target => target.status === 'cleared')).toBe(true);
+    expect(recovered.node).toBe('completed');
+    expect(recovered.attempts).toHaveLength(1);
+    expect(recovered.attempts[0].passed).toBe(false); // history never rewritten
+    expect(recovered.attempt && 'gradedAt' in recovered.attempt ? recovered.attempt.verdict : null).toBe('60.0% — Not passed (mark is 80%)');
+    const originalAfter = await database().query('SELECT * FROM app.test_attempt WHERE id=$1', [started.operationId]);
+    expect(JSON.stringify(originalAfter.rows[0])).toBe(originalBytes);
+
+    // The retest receipts are content-free: no answers, no group results.
+    const retestReceipts = await database().query<{ result: unknown }>("SELECT result FROM app.command_receipt WHERE root_id=$1 AND action IN ('start-retest','submit-retest')", [study.rootId]);
+    expect(retestReceipts.rows.length).toBeGreaterThanOrEqual(4);
+    for (const { result } of retestReceipts.rows) {
+      const serialized = JSON.stringify(result);
+      expect(serialized).not.toContain('answer');
+      expect(serialized).not.toContain('choiceId');
+      expect(serialized).not.toContain('cleared');
+      expect(serialized).not.toContain('earned');
+    }
+  });
+
+  it('pins the chain to the root attempt: supersession mid-chain never moves it and a retake re-ledgers under its own snapshot', async () => {
+    const a = await actor('recovery-pinned');
+    await grant(a);
+    const study = await confirmedStudy(a);
+    await generateCourse(a, study.rootId, study.revision);
+    const failed = await startTest(a, study.rootId, { ...command(study.revision) });
+    const failedSnapshot = await snapshotOf(failed.operationId);
+    await submitAttempt(a, study.rootId, failed.operationId, { ...command(study.revision), attemptId: failed.operationId, answers: answersFrom(failedSnapshot, [3, 5]) });
+
+    // Clear obj1 of the first chain before anything supersedes it.
+    const first = await startRetest(a, study.rootId, { ...command(study.revision), attemptId: failed.operationId, targetIndexes: [1] });
+    const firstSnapshot = await retestSnapshotOf(first.operationId);
+    await submitRetest(a, study.rootId, first.operationId, { ...command(study.revision), retestId: first.operationId, answers: answersFrom(firstSnapshot) });
+
+    // Retake the ordinary test and fail differently (wrong on items 1 and 3:
+    // obj0 and obj2 fail this time): the NEW failed grade re-ledgers under
+    // ITS own snapshot and the served chain roots at the new attempt; the
+    // earlier chain stays durable and readable in its rows.
+    const retake = await startTest(a, study.rootId, { ...command(study.revision) });
+    const retakeSnapshot = await snapshotOf(retake.operationId);
+    await submitAttempt(a, study.rootId, retake.operationId, { ...command(study.revision), attemptId: retake.operationId, answers: answersFrom(retakeSnapshot, [1, 3]) });
+    const afterRetake = await getAssessment(a, study.rootId);
+    expect(afterRetake.recovery!.rootAttemptId).toBe(retake.operationId);
+    expect(afterRetake.recovery!.targets.map(target => [target.objectiveIndex, target.status])).toEqual([[0, 'open'], [2, 'open']]);
+    expect(afterRetake.recovery!.retests).toEqual([]); // the new chain starts fresh
+    const earlierRetest = await database().query<{ count: number; status: string }>('SELECT count(*)::int AS count, max(status::text) AS status FROM app.retest_attempt WHERE root_attempt_id=$1', [failed.operationId]);
+    expect(earlierRetest.rows[0].count).toBe(1); // earlier chain intact and readable
+    const earlierTargets = await database().query<{ objective_index: number; status: string }>('SELECT objective_index,status FROM app.recovery_target WHERE root_attempt_id=$1 ORDER BY objective_index', [failed.operationId]);
+    expect(earlierTargets.rows).toEqual([{ objective_index: 1, status: 'cleared' }, { objective_index: 2, status: 'open' }]);
+
+    // Supersession mid-chain: version 2 becomes current while the new
+    // chain's targets are still open. Recovery stays pinned to the root
+    // attempt's course version; the node derives from the current version
+    // only — clearing everything still must NOT complete version 2's node.
+    const saved = await savePlan(a, study.rootId, { ...command(study.revision), plan: { ...plan, topic: 'Unit testing, recovery edition' }, extractionId: study.extractionId, selectionId: study.selectionId });
+    const confirmed = await confirmPlan(a, study.rootId, { ...command(saved.revision), planRevisionId: saved.planRevisionId! });
+    await generateCourse(a, study.rootId, confirmed.revision);
+    const superseded = await getAssessment(a, study.rootId);
+    expect(superseded.version).toBe(2);
+    expect(superseded.node).toBe('in-progress');
+    expect(superseded.recovery!.rootAttemptId).toBe(retake.operationId); // pinned chain keeps serving
+
+    // Clear both open targets of the pinned chain: requirement satisfied,
+    // node STILL in progress (no pass and no recovery on the current
+    // version) — the honest superseded-version answer, no error.
+    const v1 = await startRetest(a, study.rootId, { ...command(confirmed.revision), attemptId: retake.operationId, targetIndexes: [0] });
+    const v1Snapshot = await retestSnapshotOf(v1.operationId);
+    await submitRetest(a, study.rootId, v1.operationId, { ...command(confirmed.revision), retestId: v1.operationId, answers: answersFrom(v1Snapshot) });
+    const v2 = await startRetest(a, study.rootId, { ...command(confirmed.revision), attemptId: retake.operationId, targetIndexes: [2] });
+    const v2Snapshot = await retestSnapshotOf(v2.operationId);
+    await submitRetest(a, study.rootId, v2.operationId, { ...command(confirmed.revision), retestId: v2.operationId, answers: answersFrom(v2Snapshot) });
+    const cleared = await getAssessment(a, study.rootId);
+    expect(cleared.recovery!.requirementSatisfied).toBe(true);
+    expect(cleared.node).toBe('in-progress'); // chain pinned to version 1
+    // A passing ordinary attempt on the CURRENT version still completes it.
+    const pass = await startTest(a, study.rootId, { ...command(confirmed.revision) });
+    const passSnapshot = await snapshotOf(pass.operationId);
+    await submitAttempt(a, study.rootId, pass.operationId, { ...command(confirmed.revision), attemptId: pass.operationId, answers: answersFrom(passSnapshot) });
+    const passed = await getAssessment(a, study.rootId);
+    expect(passed.node).toBe('in-progress'); // required items of v2 not done yet
+  });
+
+  it('denies cross-owner, unknown, stale and malformed recovery verbs with zero leak or effect, and the chain cascades with its root', async () => {
+    const a = await actor('recovery-denied-a');
+    await grant(a);
+    const study = await confirmedStudy(a);
+    await generateCourse(a, study.rootId, study.revision);
+    const failed = await startTest(a, study.rootId, { ...command(study.revision) });
+    const failedSnapshot = await snapshotOf(failed.operationId);
+    await submitAttempt(a, study.rootId, failed.operationId, { ...command(study.revision), attemptId: failed.operationId, answers: answersFrom(failedSnapshot, [5]) });
+
+    // A retest on an ACTIVE (not graded-failed) attempt conflicts; on a
+    // PASSED attempt it conflicts too.
+    const activeAttempt = await startTest(a, study.rootId, { ...command(study.revision) });
+    await expect(startRetest(a, study.rootId, { ...command(study.revision), attemptId: activeAttempt.operationId, targetIndexes: [1] })).rejects.toMatchObject({ code: 'CONFLICT' });
+    const passing = await submitAttempt(a, study.rootId, activeAttempt.operationId, { ...command(study.revision), attemptId: activeAttempt.operationId, answers: answersFrom(await snapshotOf(activeAttempt.operationId)) });
+    expect(passing.passed).toBe(true);
+    await expect(startRetest(a, study.rootId, { ...command(study.revision), attemptId: activeAttempt.operationId, targetIndexes: [1] })).rejects.toMatchObject({ code: 'CONFLICT' });
+    // A PASSED attempt opens no recovery: its ledger is absent.
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.recovery_target WHERE root_attempt_id=$1', [activeAttempt.operationId])).rows[0].count).toBe(0);
+
+    // Cross-owner: B never touches A's chain by any verb.
+    const b = await actor('recovery-denied-b');
+    for (const verb of [
+      () => startRetest(b, study.rootId, { ...command(study.revision), attemptId: failed.operationId, targetIndexes: [1] }),
+      () => submitRetest(b, study.rootId, crypto.randomUUID(), { ...command(study.revision), retestId: crypto.randomUUID(), answers: [] }),
+    ]) await expect(verb()).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+
+    // Malformed bodies, unknown ids and stale revisions follow the taxonomy.
+    await expect(startRetest(a, study.rootId, { schemaVersion: 2, commandKey: crypto.randomUUID(), expectedRevision: study.revision, attemptId: failed.operationId, targetIndexes: [1] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(startRetest(a, study.rootId, { ...command(study.revision), attemptId: failed.operationId, targetIndexes: [] })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(startRetest(a, study.rootId, { ...command(study.revision + 5), attemptId: failed.operationId, targetIndexes: [1] })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(submitRetest(a, study.rootId, crypto.randomUUID(), { ...command(study.revision), retestId: crypto.randomUUID(), answers: [] })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+
+    // Open a retest, then delete the root: the whole chain — ledger, retest,
+    // targets — cascades with the course lineage.
+    const open = await startRetest(a, study.rootId, { ...command(study.revision), attemptId: failed.operationId, targetIndexes: [1] });
+    const current = await getBatch(a, study.rootId);
+    await removeRoot(a, study.rootId, command(current.revision));
+    await expect(getAssessment(a, study.rootId)).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    await expect(submitRetest(a, study.rootId, open.operationId, { ...command(current.revision), retestId: open.operationId, answers: [] })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.retest_attempt WHERE root_id=$1', [study.rootId])).rows[0].count).toBe(0);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.recovery_target WHERE root_id=$1', [study.rootId])).rows[0].count).toBe(0);
+    expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.test_attempt WHERE root_id=$1', [study.rootId])).rows[0].count).toBe(0);
   });
 });

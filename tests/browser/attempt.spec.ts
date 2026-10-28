@@ -1,19 +1,25 @@
 import { test, expect, type Page } from "@playwright/test";
 import { provisionSynthetic } from "../../src/modules/identity-access/provision";
 import { database, closeDatabase } from "../../src/adapters/postgres/database";
-import type { AttemptSnapshot } from "../../src/contracts/assessment";
+import type { AttemptSnapshot, RetestSnapshot } from "../../src/contracts/assessment";
 import type { Receipt } from "../../src/contracts/setup";
 
-// Epic-3 story-1 browser journey: over a generated course, A reads the
-// pre-start disclosure (threshold, available points, scoring criteria),
-// starts the required test, submits a boundary-honest 79.96% attempt (wrong
-// only on the 2004-point fifth item) that reads Not passed with the node In
-// progress, then retakes all-correct to Pass with the node Completed — the
-// derived roadmap line moving exactly with the evidence. B (another learner)
-// is denied with no leak; every pre-grade GET payload withholds the answer
-// key; the flow stays keyboard-operable and overflow-free at 360px. Synthetic
-// account and content only; the assessment dispatches nothing — zero
-// outbound requests.
+// Epic-3 story-1 browser journey plus the story-2 targeted-recovery journey.
+// Journey 1: over a generated course, A reads the pre-start disclosure
+// (threshold, available points, scoring criteria), starts the required test,
+// submits a boundary-honest 79.96% attempt (wrong only on the 2004-point
+// fifth item) that reads Not passed with the node In progress, then retakes
+// all-correct to Pass with the node Completed — the derived roadmap line
+// moving exactly with the evidence. Journey 2 (recovery): A fails the same
+// boundary attempt, sees the failed view grouped per objective ("Needs
+// practice", cause unnamed) plus the recovery ledger, clears the one failed
+// group through a fresh same-demand retest, and the node COMPLETES on
+// recovery credit with the original verdict still shown beside it — never
+// merged, never averaged, zero passing rows. B (another learner) is denied on
+// the retest verbs too with no leak; every pre-grade GET payload withholds
+// the answer key; the flows stay keyboard-operable and overflow-free at
+// 360px. Synthetic account and content only; the assessment dispatches
+// nothing — zero outbound requests.
 const origin = "http://127.0.0.1:3000";
 const sources = [
   { name: "attempt-0.txt", text: "Synthetic assessment source one. A second sentence gives the lesson body some structure." },
@@ -95,6 +101,17 @@ async function snapshotOf(rootId: string): Promise<AttemptSnapshot> {
     [rootId],
   );
   if (!row.rows[0]) throw new Error("no attempt row");
+  return row.rows[0].snapshot;
+}
+
+// The stored snapshot of the study's open retest (server-side truth only —
+// the retest answer key never reaches the page before the retest grades).
+async function retestSnapshotOf(rootId: string): Promise<RetestSnapshot> {
+  const row = await database().query<{ snapshot: RetestSnapshot }>(
+    "SELECT snapshot FROM app.retest_attempt WHERE root_id=$1 ORDER BY created_at DESC LIMIT 1",
+    [rootId],
+  );
+  if (!row.rows[0]) throw new Error("no retest row");
   return row.rows[0].snapshot;
 }
 
@@ -210,4 +227,145 @@ test("A takes the required test: honest 79.96% boundary keeps the node In progre
   expect(outbound).toEqual([]);
   expect(errors).toEqual([]);
   await page.screenshot({ path: info.outputPath("assessment-completed.png"), fullPage: true });
+});
+
+// Epic-3 story-2 journey: A fails the boundary attempt on the two-objective
+// course (wrong only on the 2004-point fifth item fails exactly objective
+// group 0 while group 1 passes), reads the focused review grouped per
+// objective and the recovery ledger, clears the one open group through a
+// fresh same-demand retest — and the node completes on recovery credit with
+// the original 79.96% verdict still visible beside the per-group credit,
+// never merged. The retest verbs deny a second account with no leak.
+test("A fails once, clears the failed group through a targeted retest: node Completes on recovery credit beside the unchanged original verdict", async ({ page, playwright }, info) => {
+  test.setTimeout(300000);
+  const errors: string[] = [];
+  const outbound: string[] = [];
+  const assessmentBodies: Promise<string>[] = [];
+  page.on("pageerror", error => errors.push(error.name));
+  page.on("request", request => { if (!request.url().startsWith(origin)) outbound.push(new URL(request.url()).hostname); });
+  page.on("response", response => { if (response.url().includes("/assessment") && response.request().method() === "GET") assessmentBodies.push(response.text().catch(() => "")); });
+  await page.setViewportSize({ width: 360, height: 900 });
+  await login(page, "attempt-recovery-browser");
+  await grantConsent(page);
+  const rootId = await uploadAndConfirm(page);
+  const panel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Assessment & progress", exact: true }) });
+  const coursePanel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your mini-course", exact: true }) });
+  await coursePanel.getByRole("button", { name: "Generate mini-course (AI)", exact: true }).click();
+  await expect(coursePanel.getByRole("heading", { name: "1. One generated lesson", exact: true })).toBeVisible({ timeout: 60000 });
+  await expect(panel).toBeVisible({ timeout: 15000 });
+  // The required reading is done BEFORE the chain so Completed can fire on
+  // recovery credit alone — with zero passing ordinary attempts.
+  await coursePanel.getByRole("button", { name: "Mark lesson 1 reading done", exact: true }).click();
+  await expect(coursePanel.getByText(/^Done\./).first()).toBeVisible();
+  // Fail exactly objective group 0 (items 1, 3, 5 of the two-objective
+  // mapping): wrong only on the 2004-point fifth item — 79.96% overall,
+  // group 0 at 3998/6002, group 1 fully passed and preserved.
+  await panel.getByRole("button", { name: "Start the required test", exact: true }).click();
+  await expect(panel.getByText("Attempt open — 0 of 5 answered.", { exact: false })).toBeVisible();
+  const snapshot = await snapshotOf(rootId);
+  const textOf = (position: number, choiceId: string) => {
+    const item = snapshot.items.find(candidate => candidate.position === position)!;
+    return item.choices.find(choice => choice.id === choiceId)!.text;
+  };
+  for (const item of snapshot.items.slice(0, 4)) await page.getByRole("radio", { name: textOf(item.position, item.answerId), exact: true }).check();
+  const wrongFifth = snapshot.items[4].choices.find(choice => choice.id !== snapshot.items[4].answerId)!;
+  await page.getByRole("radio", { name: wrongFifth.text, exact: true }).check();
+  // Pre-grade withholding on the ORDINARY attempt: capture every payload
+  // served so far (offered + active states) BEFORE the submit — the graded
+  // refresh that follows the submit legitimately carries the reveal.
+  const preGradeBodies = await Promise.all(assessmentBodies.splice(0));
+  await panel.getByRole("button", { name: "Submit test (5/5 answered)", exact: true }).click();
+  await expect(panel.getByRole("strong").filter({ hasText: "79.96% — Not passed (mark is 80%)" })).toBeVisible({ timeout: 15000 });
+  // The failed view groups items per objective: the failed group reads
+  // "Needs practice" (cause unnamed), the passed group "Passed — preserved".
+  await expect(panel.getByRole("strong").filter({ hasText: "Needs practice" })).toBeVisible();
+  await expect(panel.getByRole("strong").filter({ hasText: "Passed — preserved" })).toBeVisible();
+  // The recovery ledger: exactly the failed group, open, with its initial
+  // result; the failed-test requirement honestly unsatisfied.
+  await expect(panel.getByRole("heading", { name: "Recovery", exact: true })).toBeVisible();
+  await expect(panel.getByText(/initial 3998\/6002/).first()).toBeVisible();
+  await expect(panel.getByText("Failed-test requirement: open — 1 target group uncleared.", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Roadmap: In progress.", { exact: true })).toBeVisible();
+  for (const body of preGradeBodies) {
+    expect(body).not.toContain('"answerId"');
+    expect(body).not.toContain('"correctChoiceId"');
+  }
+  // Keyboard start of the targeted retest (the one open group is preselected).
+  const retestStart = panel.getByRole("button", { name: "Start targeted retest (1 of 1 open group)", exact: true });
+  await retestStart.focus();
+  await expect(retestStart).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(panel.getByText(/Retest open — 3 fresh items/)).toBeVisible({ timeout: 15000 });
+  // Pre-grade withholding on the RETEST: the active retest view in the
+  // served state carries prompts and choices only (the attempt's own graded
+  // reveal is its separate, already-earned path).
+  const retestOpenState = await (await page.request.get(`/api/v1/studies/${rootId}/assessment`)).json() as { recovery: { retest: unknown } | null };
+  const retestSerialized = JSON.stringify(retestOpenState.recovery?.retest ?? null);
+  expect(retestSerialized).not.toContain("answerId");
+  expect(retestSerialized).not.toContain("correctChoiceId");
+  // Fresh questions: the retest prompts differ from the original attempt's.
+  const retestSnapshot = await retestSnapshotOf(rootId);
+  expect(retestSnapshot.items).toHaveLength(3);
+  expect(retestSnapshot.items.map(item => [item.objectiveIndex, item.points])).toEqual([[0, 1999], [0, 1999], [0, 2004]]);
+  for (const item of retestSnapshot.items) expect(item.prompt).not.toBe(snapshot.items[item.position - 1].prompt);
+  const retestTextOf = (position: number, choiceId: string) => {
+    const item = retestSnapshot.items.find(candidate => candidate.position === position)!;
+    return item.choices.find(choice => choice.id === choiceId)!.text;
+  };
+  // Keyboard-only on the first item, then answer the rest correctly.
+  await page.getByRole("radio", { name: retestTextOf(1, retestSnapshot.items[0].answerId), exact: true }).focus();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("radio", { name: retestTextOf(1, retestSnapshot.items[0].answerId), exact: true })).toBeChecked();
+  for (const item of retestSnapshot.items.slice(1)) await page.getByRole("radio", { name: retestTextOf(item.position, item.answerId), exact: true }).check();
+  const retestSubmit = panel.getByRole("button", { name: "Submit retest (3/3 answered)", exact: true });
+  await retestSubmit.focus();
+  await expect(retestSubmit).toBeFocused();
+  await page.keyboard.press("Enter");
+  // The group cleared: requirement satisfied, node Completed on recovery
+  // credit — while the original verdict stays visible beside it, never
+  // merged, and zero passing ordinary rows exist server-side.
+  await expect(panel.getByText("Failed-test requirement: satisfied.", { exact: true })).toBeVisible({ timeout: 15000 });
+  await expect(panel.getByRole("heading", { name: "Retest result", exact: true })).toBeVisible();
+  await expect(panel.getByText(/cleared/, { exact: false }).first()).toBeVisible();
+  await expect(panel.getByText("Roadmap: Completed.", { exact: true })).toBeVisible();
+  await expect(panel.getByRole("strong").filter({ hasText: "79.96% — Not passed (mark is 80%)" })).toBeVisible();
+  await expect(panel.getByText(/never merged/i).first()).toBeVisible();
+  const rows = await database().query<{ status: string; passed: boolean | null }>(
+    "SELECT status,passed FROM app.test_attempt WHERE root_id=$1 ORDER BY created_at",
+    [rootId],
+  );
+  expect(rows.rows).toEqual([{ status: "graded", passed: false }]);
+  const ledger = await database().query<{ objective_index: number; status: string }>(
+    "SELECT objective_index,status FROM app.recovery_target WHERE root_id=$1",
+    [rootId],
+  );
+  expect(ledger.rows).toEqual([{ objective_index: 0, status: "cleared" }]);
+  // History: the failed attempt and the graded retest listed, never overwritten.
+  await expect(panel.getByText(/Attempt history/)).toBeVisible();
+  await expect(panel.getByText(/Retest history/)).toBeVisible();
+  // Post-grade payloads legitimately carry correctChoiceId in graded views —
+  // the sole reveal path — but never the raw answerId field.
+  for (const body of await Promise.all(assessmentBodies)) {
+    expect(body).not.toContain('"answerId"');
+  }
+  // B (another learner) cannot touch A's recovery by any verb — no leak.
+  const stranger = await provisionSynthetic("attempt-recovery-browser-b", "learner");
+  const client = await playwright.request.newContext({ baseURL: origin });
+  try {
+    expect((await client.post("/api/v1/auth/sign-in/email", { headers: { Origin: origin }, data: { email: stranger.email, password: stranger.password } })).status()).toBe(200);
+    expect((await client.get(`/api/v1/studies/${rootId}/assessment`)).status()).toBe(404);
+    const deniedStart = await client.post(`/api/v1/studies/${rootId}/assessment/retest`, { headers: { Origin: origin }, data: { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0, attemptId: crypto.randomUUID(), targetIndexes: [0] } });
+    expect(deniedStart.status()).toBe(404);
+    expect(await deniedStart.text()).not.toContain("attempt-0.txt");
+    expect((await client.post(`/api/v1/studies/${rootId}/assessment/retest/${crypto.randomUUID()}/submit`, { headers: { Origin: origin }, data: { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0, retestId: crypto.randomUUID(), answers: [] } })).status()).toBe(404);
+  } finally { await client.dispose(); }
+  // Keyboard-complete and overflow-free at 360px and desktop.
+  for (const width of [360, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(panel.getByRole("heading", { name: "Assessment & progress", exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  expect(outbound).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: info.outputPath("recovery-completed.png"), fullPage: true });
 });

@@ -2,11 +2,23 @@ import { uuid, type Identity, type Receipt } from "../../contracts/setup";
 import {
   startTestSchema,
   submitAttemptSchema,
+  startRetestSchema,
+  submitRetestSchema,
   type ActiveAttemptView,
+  type ActiveRetestView,
   type AssessmentState,
   type AttemptSummary,
+  type GradedItemView,
+  type GradedRetestView,
+  type RecoveryState,
+  type RecoveryTargetView,
+  type RetestSummary,
+  type RetestGroupResult,
+  type SnapshotItem,
   type StartedAttempt,
+  type StartedRetest,
   type SubmittedAttempt,
+  type SubmittedRetest,
   type TestDescriptorView,
 } from "../../contracts/assessment";
 import { transaction } from "../../adapters/postgres/database";
@@ -16,19 +28,21 @@ import { batchRow } from "../materials-setup/batches";
 import { getCourse } from "../course-generation/service";
 import { parse, requestHash } from "../../platform/commands";
 import { fail } from "../../platform/errors";
-import { buildSnapshot } from "./bank";
-import { deriveRoadmapNode, scoreAttempt, verdictLine } from "./scoring";
+import { buildSnapshot, buildRetestSnapshot } from "./bank";
+import { deriveRoadmapNode, displayPercentOf, groupCleared, groupResultsOf, groupViewOf, recoverySatisfied, scoreAttempt, verdictLine } from "./scoring";
 import * as repository from "./repository";
-import type { AttemptRow } from "./repository";
+import type { AttemptRow, RecoveryTargetRow, RetestRow } from "./repository";
 
-// Epic-3 story-1 tracer verbs: the thinnest scored path from a confirmed plan
-// and ready course to a roadmap node. Every verb runs identify -> authorize ->
-// scopedRoot -> lifecycle.replay/receipt (content-free) -> repository inside
-// ONE transaction (AD-2). Epic-1/2 state is consumed READ-ONLY through
-// getCourse — always in its own transaction BEFORE this module's transaction
-// opens (nesting the two would self-deadlock on the lifecycle-root row lock).
-// No AI dispatch, queue or worker involvement exists anywhere here: the test
-// is synthetic derivation from the course the learner already owns.
+// Epic-3 story-1 tracer verbs plus the story-2 targeted-recovery chain. Every
+// verb runs identify -> authorize -> scopedRoot -> lifecycle.replay/receipt
+// (content-free) -> repository inside ONE transaction (AD-2). Epic-1/2 state
+// is consumed READ-ONLY through getCourse — always in its own transaction
+// BEFORE this module's transaction opens (nesting the two would self-deadlock
+// on the lifecycle-root row lock). Recovery reads only this module's own
+// rows: the retest chain pins the ROOT attempt's course version and snapshot
+// (a superseding course version never changes an open chain — AD-5). No AI
+// dispatch, queue or worker involvement exists anywhere here: the test and
+// its retests are synthetic derivation from the course the learner owns.
 
 function descriptorOf(snapshot: AttemptRow["snapshot"]): TestDescriptorView {
   return {
@@ -46,9 +60,10 @@ function descriptorOf(snapshot: AttemptRow["snapshot"]): TestDescriptorView {
 
 // The pre-grade item view: prompt, choices, points and the linked objective —
 // never the answer key.
-function itemViewsOf(row: AttemptRow): ActiveAttemptView["items"] {
+function itemViewsOf(row: { snapshot: { items: SnapshotItem[] } }): ActiveAttemptView["items"] {
   return row.snapshot.items.map(item => ({
     position: item.position,
+    objectiveIndex: item.objectiveIndex,
     objective: item.objective,
     prompt: item.prompt,
     choices: item.choices,
@@ -56,12 +71,34 @@ function itemViewsOf(row: AttemptRow): ActiveAttemptView["items"] {
   }));
 }
 
+// The sole reveal path for graded items — shared by the ordinary attempt view
+// and the retest view: per-item chosen answer, correct answer and earned
+// points exist only after that submission graded. Callers guard the graded
+// state first; a null answers array on a graded row is a fault, so it maps
+// to no chosen answers (the guard already failed the request before here).
+function gradedItemsOf(row: { snapshot: { items: SnapshotItem[] }; answers: Array<{ position: number; choiceId: string }> | null }): GradedItemView[] {
+  const chosen = new Map((row.answers ?? []).map(answer => [answer.position, answer.choiceId]));
+  return row.snapshot.items.map(item => {
+    const chosenChoiceId = chosen.get(item.position) ?? null;
+    return {
+      position: item.position,
+      objectiveIndex: item.objectiveIndex,
+      objective: item.objective,
+      prompt: item.prompt,
+      choices: item.choices,
+      points: item.points,
+      chosenChoiceId,
+      correctChoiceId: item.answerId,
+      earned: chosenChoiceId === item.answerId ? item.points : 0,
+    };
+  });
+}
+
 // The sole reveal path: per-item chosen answer, correct answer and earned
 // points exist only on a graded attempt's view.
 function gradedView(row: AttemptRow, revision: number): SubmittedAttempt {
   if (row.status !== "graded" || row.answers === null || row.earned_points === null || row.total_points === null || row.passed === null || row.graded_at === null)
     fail("RETRYABLE_FAILURE");
-  const chosen = new Map(row.answers.map(answer => [answer.position, answer.choiceId]));
   const score = scoreAttempt(row.earned_points, row.total_points, row.snapshot.passMarkPercent);
   return {
     rootId: row.root_id,
@@ -79,19 +116,81 @@ function gradedView(row: AttemptRow, revision: number): SubmittedAttempt {
     passed: row.passed,
     displayPercent: score.displayPercent,
     verdict: verdictLine(score),
-    items: row.snapshot.items.map(item => {
-      const chosenChoiceId = chosen.get(item.position) ?? null;
-      return {
-        position: item.position,
-        objective: item.objective,
-        prompt: item.prompt,
-        choices: item.choices,
-        points: item.points,
-        chosenChoiceId,
-        correctChoiceId: item.answerId,
-        earned: chosenChoiceId === item.answerId ? item.points : 0,
-      };
-    }),
+    items: gradedItemsOf(row),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Story 2 — targeted-recovery view builders. Recovery credit is served NEXT
+// TO the original result, never merged into it.
+// ---------------------------------------------------------------------------
+
+function targetViewOf(row: RecoveryTargetRow, passMarkPercent: number): RecoveryTargetView {
+  return {
+    objectiveIndex: row.objective_index,
+    objective: row.objective,
+    initialEarned: row.initial_earned,
+    initialTotal: row.initial_total,
+    // Failed groups by construction — the not-cleared verdict is what the
+    // display must never contradict.
+    initialDisplayPercent: displayPercentOf(row.initial_earned, row.initial_total, passMarkPercent, false),
+    status: row.status,
+    clearedBy: row.cleared_by,
+    clearedAt: row.cleared_at?.toISOString() ?? null,
+  };
+}
+
+function activeRetestOf(row: RetestRow): ActiveRetestView {
+  return {
+    retestId: row.id,
+    rootAttemptId: row.root_attempt_id,
+    courseId: row.course_id,
+    courseVersion: row.course_version,
+    planRevisionId: row.plan_revision_id,
+    targetIndexes: row.target_objective_indexes,
+    startedAt: row.created_at.toISOString(),
+    items: itemViewsOf(row),
+  };
+}
+
+// The retest snapshot is the sole grading basis; the stored per-group results
+// rebuild deterministically into the served view (group display/verdict
+// recomputed by the same cross-product — immutable rows, identical output).
+function gradedRetestOf(row: RetestRow): GradedRetestView {
+  if (row.status !== "graded" || row.answers === null || row.group_results === null || row.graded_at === null) fail("RETRYABLE_FAILURE");
+  const objectiveOf = (index: number) => row.snapshot.items.find(item => item.objectiveIndex === index)?.objective ?? "";
+  const groups: RetestGroupResult[] = row.group_results.map(group => groupViewOf({ ...group, objective: objectiveOf(group.objectiveIndex) }, row.snapshot.passMarkPercent));
+  return {
+    retestId: row.id,
+    rootAttemptId: row.root_attempt_id,
+    courseId: row.course_id,
+    courseVersion: row.course_version,
+    planRevisionId: row.plan_revision_id,
+    targetIndexes: row.target_objective_indexes,
+    startedAt: row.created_at.toISOString(),
+    gradedAt: row.graded_at.toISOString(),
+    groups,
+    items: gradedItemsOf(row),
+  };
+}
+
+function retestSummaryOf(row: RetestRow): RetestSummary {
+  return {
+    retestId: row.id,
+    rootAttemptId: row.root_attempt_id,
+    courseVersion: row.course_version,
+    targetIndexes: row.target_objective_indexes,
+    status: row.status,
+    startedAt: row.created_at.toISOString(),
+    gradedAt: row.graded_at?.toISOString() ?? null,
+    groups: row.group_results
+      ? row.group_results.map(group =>
+          groupViewOf(
+            { ...group, objective: row.snapshot.items.find(item => item.objectiveIndex === group.objectiveIndex)?.objective ?? "" },
+            row.snapshot.passMarkPercent,
+          ),
+        )
+      : null,
   };
 }
 
@@ -119,6 +218,12 @@ function summaryOf(row: AttemptRow): AttemptSummary {
 // no award rows exist. Prior attempts stay listed on their pinned course
 // versions even while a regeneration is in flight (getCourse then serves a
 // non-ready state and the node honestly reports engagement, not completion).
+// Story 2: the recovery chain of the newest graded-failed attempt that HAS a
+// ledger (recovery opens only at grade time — a pre-ledger failed attempt
+// from before 022 opens nothing; its honest path is a fresh ordinary
+// attempt) is served beside the attempt result, and completion accepts a
+// fully-recovered failed attempt on the CURRENT course version only — a
+// chain pinned to a superseded version never completes the current node.
 export async function getAssessment(identity: Identity, rawId: string): Promise<AssessmentState & { objectIds: string[] }> {
   const rootId = parse(uuid, rawId);
   const course = await getCourse(identity, rootId);
@@ -127,14 +232,44 @@ export async function getAssessment(identity: Identity, rawId: string): Promise<
     await lifecycle.scopedRoot(client, identity.userId, rootId);
     const batch = await batchRow(client, rootId);
     const attempts = await repository.attemptsForRoot(client, identity.userId, rootId);
+    const targets = await repository.targetsForRoot(client, identity.userId, rootId);
+    const retests = await repository.retestsForRoot(client, identity.userId, rootId);
+    const ledgerOf = (attemptId: string) => targets.filter(target => target.root_attempt_id === attemptId);
     const ready = course.state === "ready" ? course.course : null;
     const required = ready ? ready.items.filter(item => item.required) : [];
     const node = deriveRoadmapNode({
       requiredItems: { total: required.length, done: required.filter(item => item.done).length },
       passedAttemptOnCurrentVersion:
         !!ready && attempts.some(row => row.status === "graded" && row.passed === true && row.course_id === ready.courseId),
+      recoveredOnCurrentVersion:
+        !!ready &&
+        attempts.some(
+          row =>
+            row.status === "graded" &&
+            row.passed === false &&
+            row.course_id === ready.courseId &&
+            ledgerOf(row.id).length > 0 &&
+            ledgerOf(row.id).every(target => target.status === "cleared"),
+        ),
       anyAttempt: attempts.length > 0,
     });
+    // The served chain: the newest failed attempt with a ledger (attempts are
+    // newest-first). Earlier chains stay durable in their rows — history is
+    // never rewritten or hidden (D3).
+    const recoveryRoot = attempts.find(row => row.status === "graded" && row.passed === false && ledgerOf(row.id).length > 0) ?? null;
+    const chainTargets = recoveryRoot ? ledgerOf(recoveryRoot.id) : [];
+    const chainRetests = recoveryRoot ? retests.filter(retest => retest.root_attempt_id === recoveryRoot.id) : [];
+    const openChainRetest = chainRetests.find(retest => retest.status === "active") ?? null;
+    const latestGradedChainRetest = chainRetests.find(retest => retest.status === "graded") ?? null;
+    const recovery: RecoveryState | null = recoveryRoot
+      ? {
+          rootAttemptId: recoveryRoot.id,
+          targets: chainTargets.map(target => targetViewOf(target, recoveryRoot.snapshot.passMarkPercent)),
+          retest: openChainRetest ? activeRetestOf(openChainRetest) : latestGradedChainRetest ? gradedRetestOf(latestGradedChainRetest) : null,
+          retests: chainRetests.map(retestSummaryOf),
+          requirementSatisfied: recoverySatisfied(chainTargets),
+        }
+      : null;
     const base = {
       rootId,
       revision: batch.revision,
@@ -143,6 +278,7 @@ export async function getAssessment(identity: Identity, rawId: string): Promise<
       planRevisionId: ready?.planRevisionId ?? null,
       attempts: attempts.map(summaryOf),
       node,
+      recovery,
     };
     const open = attempts.find(row => row.status === "active");
     if (open)
@@ -231,8 +367,12 @@ export async function startTest(identity: Identity, rawId: string, raw: unknown)
 // graded view, rebuilt deterministically from the stored snapshot); a NEW
 // commandKey on a graded attempt is CONFLICT. Grading uses only the snapshot:
 // unrounded scaled-integer cross-product against the snapshotted pass mark,
-// full-credit rubric, no negative marking. The recorded receipt is
-// CONTENT-FREE — no answers, no attempt text.
+// full-credit rubric, no negative marking. Story 2: a FAILED grade writes
+// the per-objective-group recovery ledger in THIS SAME transaction — every
+// failed group of THIS attempt's own snapshot lands OPEN with its initial
+// earned/total; passing groups are never ledgered (preserved, never
+// re-tested). The recorded receipt is CONTENT-FREE — no answers, no attempt
+// text, no scores.
 export async function submitAttempt(identity: Identity, rawId: string, rawAttemptId: string, raw: unknown): Promise<SubmittedAttempt> {
   const rootId = parse(uuid, rawId);
   const attemptId = parse(uuid, rawAttemptId);
@@ -270,10 +410,169 @@ export async function submitAttempt(identity: Identity, rawId: string, rawAttemp
     const score = scoreAttempt(earned, attempt.snapshot.totalPoints, attempt.snapshot.passMarkPercent);
     const claimed = await repository.gradeAttempt(client, attemptId, { answers: command.answers, earned: score.earned, total: score.total, passed: score.passed });
     if (!claimed) fail("CONFLICT"); // a duplicate delivery graded it first; the same-command replay owns retries
+    if (!score.passed) {
+      // Ledger every failed group OPEN under this attempt's own snapshot —
+      // same transaction as the failed grade (AD-8). An overall fail always
+      // has at least one failed group (if every group cleared its threshold,
+      // the weighted sum would pass), so an empty set here is a structural
+      // fault, not an honest state.
+      const failedGroups = groupResultsOf(attempt.snapshot, command.answers).filter(group => !groupCleared(group, attempt.snapshot.passMarkPercent));
+      if (!failedGroups.length) fail("RETRYABLE_FAILURE");
+      await repository.insertTargets(
+        client,
+        failedGroups.map(group => ({
+          rootAttemptId: attempt.id,
+          ownerId: identity.userId,
+          rootId,
+          courseId: attempt.course_id,
+          courseVersion: attempt.course_version,
+          objectiveIndex: group.objectiveIndex,
+          objective: group.objective,
+          initialEarned: group.earned,
+          initialTotal: group.total,
+        })),
+      );
+    }
     const graded = await repository.attemptById(client, identity.userId, attemptId);
     if (!graded) fail("RETRYABLE_FAILURE");
     const receiptResult: Receipt = { rootId, operationId: attemptId, planRevisionId: attempt.plan_revision_id, revision: batch.revision, state: "graded" };
     await lifecycle.receipt(client, identity, command, "submit-test", hash, receiptResult);
     return gradedView(graded, batch.revision);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Story 2 — the targeted-recovery chain verbs.
+// ---------------------------------------------------------------------------
+
+// Start (or re-offer) a fresh targeted retest of one graded-FAILED ordinary
+// attempt's open target groups. The command names the root attempt and
+// declares a non-empty subset of its OPEN targets (a foreign index is
+// INVALID_INPUT); the retest snapshot is built from the ROOT attempt's own
+// pinned snapshot — same per-group item structure and points, fresh manually
+// checked questions, the ROOT attempt's pinned pass mark/rubric/answer rule
+// — and the retest pins the root attempt's course/version/plan revision, so
+// a superseding course version mid-chain changes nothing. One open retest per
+// root attempt: a repeat start returns the pinned open retest (with ITS OWN
+// declared targets and pin in the result — the returned-attempt's-own-pin
+// receipt rule); a fresh retest follows a graded one.
+export async function startRetest(identity: Identity, rawId: string, raw: unknown): Promise<StartedRetest> {
+  const rootId = parse(uuid, rawId);
+  const command = parse(startRetestSchema, raw);
+  return transaction(async client => {
+    await authorize(client, identity);
+    await lifecycle.scopedRoot(client, identity.userId, rootId);
+    const batch = await batchRow(client, rootId);
+    if (batch.revision !== command.expectedRevision) fail("CONFLICT");
+    const hash = requestHash({ rootId, command });
+    const repeated = await lifecycle.replay(client, identity.userId, command, "start-retest", hash);
+    if (repeated) return repeated as unknown as StartedRetest;
+    // Only an originally FAILED graded ordinary attempt opens recovery.
+    const rootAttempt = await repository.attemptById(client, identity.userId, command.attemptId);
+    if (!rootAttempt || rootAttempt.root_id !== rootId) fail("FORBIDDEN_OR_NOT_FOUND");
+    await lifecycle.assertObjects(client, identity.userId, [rootAttempt.plan_revision_id]);
+    if (rootAttempt.status !== "graded" || rootAttempt.passed !== false) fail("CONFLICT");
+    // The declaration must be a non-empty duplicate-free subset of THIS root's
+    // OPEN targets — validated in EVERY state, including while an open retest
+    // exists (the served winner never excuses a foreign declaration): passed
+    // groups, cleared targets and indexes no item carries are INVALID_INPUT,
+    // never repaired.
+    if (new Set(command.targetIndexes).size !== command.targetIndexes.length) fail("INVALID_INPUT");
+    const openIndexes = new Set(
+      (await repository.targetsForAttempt(client, identity.userId, rootAttempt.id)).filter(target => target.status === "open").map(target => target.objective_index),
+    );
+    if (!command.targetIndexes.every(index => openIndexes.has(index))) fail("INVALID_INPUT");
+    const existing = await repository.openRetestForRootAttempt(client, identity.userId, rootAttempt.id);
+    let retestId = existing?.id ?? crypto.randomUUID();
+    let planRevisionId = existing?.plan_revision_id ?? rootAttempt.plan_revision_id;
+    // The declared subset of the retest actually returned (an existing open
+    // retest keeps ITS OWN declaration — never the fresh command's).
+    let targetIndexes: number[] = existing?.target_objective_indexes ?? [];
+    if (!existing) {
+      const inserted = await repository.insertRetest(client, {
+        id: retestId,
+        rootAttemptId: rootAttempt.id,
+        ownerId: identity.userId,
+        rootId,
+        courseId: rootAttempt.course_id,
+        courseVersion: rootAttempt.course_version,
+        planRevisionId: rootAttempt.plan_revision_id,
+        targetIndexes: command.targetIndexes,
+        snapshot: buildRetestSnapshot(rootAttempt.snapshot, command.targetIndexes),
+      });
+      if (!inserted) {
+        // A concurrent start committed first: its open retest is the retest.
+        const winner = await repository.openRetestForRootAttempt(client, identity.userId, rootAttempt.id);
+        if (!winner) fail("RETRYABLE_FAILURE");
+        retestId = winner.id;
+        planRevisionId = winner.plan_revision_id;
+        targetIndexes = winner.target_objective_indexes;
+      } else {
+        targetIndexes = [...command.targetIndexes];
+      }
+    }
+    const result: StartedRetest = { rootId, operationId: retestId, planRevisionId, targetIndexes, revision: batch.revision, state: "active" };
+    await lifecycle.receipt(client, identity, command, "start-retest", hash, result);
+    return result;
+  });
+}
+
+// Submit the open retest exactly once. One tracked result per submit command
+// (same commandKey replays the identical graded view; a NEW commandKey on a
+// graded retest is CONFLICT). Grading computes each declared target group's
+// earned/total under the retest's own snapshot — which mirrors the root
+// blueprint one-for-one — and a group CLEARS only when it independently
+// reaches the ROOT attempt's snapshotted pass mark by the same integer
+// cross-product; clearing is the status-guarded ledger transition inside THIS
+// retest's grade transaction. The original ordinary row is never touched.
+// The recorded receipt is CONTENT-FREE — no answers, no group results.
+export async function submitRetest(identity: Identity, rawId: string, rawRetestId: string, raw: unknown): Promise<SubmittedRetest> {
+  const rootId = parse(uuid, rawId);
+  const retestId = parse(uuid, rawRetestId);
+  const command = parse(submitRetestSchema, raw);
+  return transaction(async client => {
+    await authorize(client, identity);
+    await lifecycle.scopedRoot(client, identity.userId, rootId);
+    const batch = await batchRow(client, rootId);
+    if (batch.revision !== command.expectedRevision) fail("CONFLICT");
+    const hash = requestHash({ rootId, retestId, command });
+    const repeated = await lifecycle.replay(client, identity.userId, command, "submit-retest", hash);
+    if (repeated) {
+      const recorded = repeated as { operationId?: string };
+      const prior = await repository.retestById(client, identity.userId, recorded.operationId ?? retestId);
+      if (prior && prior.status === "graded") return { ...gradedRetestOf(prior), rootId, revision: batch.revision, state: "graded" as const };
+      return repeated as unknown as SubmittedRetest; // row no longer readable: reduced receipt shape only
+    }
+    const retest = await repository.retestById(client, identity.userId, retestId);
+    if (!retest || retest.root_id !== rootId) fail("FORBIDDEN_OR_NOT_FOUND");
+    // The retest rides the ROOT attempt's plan-revision lifecycle object; a
+    // broken lineage denies before anything is graded or cleared.
+    const rootAttempt = await repository.attemptById(client, identity.userId, retest.root_attempt_id);
+    if (!rootAttempt) fail("FORBIDDEN_OR_NOT_FOUND");
+    await lifecycle.assertObjects(client, identity.userId, [rootAttempt.plan_revision_id]);
+    if (retest.status === "graded") fail("CONFLICT"); // one submission per retest
+    // The retest snapshot is the sole grading basis: answers validate against
+    // ITS items; anything unmatched is INVALID_INPUT, never repaired.
+    if (new Set(command.answers.map(answer => answer.position)).size !== command.answers.length) fail("INVALID_INPUT");
+    for (const answer of command.answers) {
+      const item = retest.snapshot.items.find(candidate => candidate.position === answer.position);
+      if (!item) fail("INVALID_INPUT");
+      if (!item.choices.some(choice => choice.id === answer.choiceId)) fail("INVALID_INPUT");
+    }
+    // Root policy fixed through the chain: the retest snapshot carries the
+    // ROOT attempt's snapshotted pass mark (buildRetestSnapshot pinned it).
+    const mark = retest.snapshot.passMarkPercent;
+    const groups = groupResultsOf(retest.snapshot, command.answers);
+    const stored = groups.map(group => ({ objectiveIndex: group.objectiveIndex, earned: group.earned, total: group.total, cleared: groupCleared(group, mark) }));
+    const claimed = await repository.gradeRetest(client, retestId, { answers: command.answers, groupResults: stored });
+    if (!claimed) fail("CONFLICT"); // a duplicate delivery graded it first; the same-command replay owns retries
+    // Status-guarded clears, only for groups that independently reached the
+    // root mark, inside the retest's grade transaction.
+    for (const group of stored) if (group.cleared) await repository.clearTarget(client, retest.root_attempt_id, group.objectiveIndex, retestId);
+    const graded = await repository.retestById(client, identity.userId, retestId);
+    if (!graded) fail("RETRYABLE_FAILURE");
+    const receiptResult: Receipt = { rootId, operationId: retestId, planRevisionId: retest.plan_revision_id, revision: batch.revision, state: "graded" };
+    await lifecycle.receipt(client, identity, command, "submit-retest", hash, receiptResult);
+    return { ...gradedRetestOf(graded), rootId, revision: batch.revision, state: "graded" as const };
   });
 }

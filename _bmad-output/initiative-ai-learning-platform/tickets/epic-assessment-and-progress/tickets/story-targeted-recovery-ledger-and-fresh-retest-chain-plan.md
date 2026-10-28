@@ -3,7 +3,7 @@ title: 'Targeted recovery ledger and fresh retest chain (3.2)'
 type: 'feature'
 ticket: 2
 created: '2026-10-28'
-status: done
+status: 'built'
 baseline_revision: '20aeeedef188946d3a69ecddc24a562b3e649889'
 route: 'full'
 route_source: 'auto'
@@ -12,7 +12,7 @@ review: 'quick'
 review_source: 'pinned'
 lenses_ran: [quick]
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/initiative-ai-learning-platform/ux-ai-learning-platform/EXPERIENCE.md'
   - '{project-root}/_bmad-output/initiative-ai-learning-platform/product-policies.md'
@@ -120,6 +120,29 @@ Serving decisions (within the plan's contract): `RecoveryState` roots at the new
 ## Plan Change Log
 
 ## Review Triage Log
+
+### 2026-10-28 — Review pass
+- verdicts: 5 findings — high 0, medium 3, low 0, false 2, maybe-false 0
+- findings:
+  - `[medium]` `[patch]` `startRetest` skipped the foreign-target-declaration validation while an open retest existed (the duplicate/membership checks lived inside `if (!existing)`), so a passed-group, unknown-index or duplicate declaration returned 200 with the open winner — the matrix row's `INVALID_INPUT` held only in the no-open-retest state — fixed: the declaration validation (duplicate-free, every index an OPEN target of the root) is hoisted before the open-retest lookup and now runs in every state; regression assertions added while a retest is open; the valid-declaration winner-return behavior is preserved.
+  - `[medium]` `[patch]` the UI grouped focused review by objective TEXT while every server grouping keys on objectiveIndex — legally duplicate outcome strings would merge distinct groups and could label a failed group "Passed — preserved" — fixed: `AssessmentItemView`/`GradedItemView` now carry `objectiveIndex` (additive view field from the snapshot) and the UI groups and keys on it; the view-shape assertion updated.
+  - `[medium]` `[patch]` the recovery panel (including an open retest's form) mounted only in the `graded` state, so starting a new ordinary attempt (or a regeneration) made an open retest unreachable in the UI, contradicting the panel's own "stays listed and readable here" — fixed: the panel mounts whenever a chain exists (the component's `none` early return already excludes the no-course state); the "earlier chain" note now only renders when a graded view proves it.
+  - `[false]` `[reject]` `next-env.d.ts` staged with production typegen imports — the finalize step restores the authorized development imports BEFORE the commit (as in 3.1's run), so the committed change set never ships them; the staged intermediate the lens saw is the documented typegen-dance side effect.
+  - `[false]` `[reject]` the `restore.test.ts` budget change lacked an in-diff justification — refuted by finalize ordering: the run-deviation paragraph recording it (the physical backup toolchain outgrew vitest's 30 s default against accumulated local state; nothing skipped or weakened; the suite's own 120000 pattern) is in this plan file and rides the same commit.
+
+## Auto Run Result
+
+**Summary.** Epic-3 story 2 (3.2) built on `feat/epic3-assessment-and-progress` from baseline `20aeeed…`: the targeted-recovery chain per AD-8/D3 — a failed ordinary grade ledgers every failed objective group OPEN in the same transaction (migration 022 `app.recovery_target` + `app.retest_attempt`); `startRetest`/`submitRetest` run fresh same-demand retests from a manually checked synthetic pool mirroring the root blueprint per-group one-for-one (root pass mark/rubric pinned through the chain); a group clears only by independently reaching the root mark via the same integer cross-product; uncleared targets keep the failed-test requirement unsatisfied; the original score row stays byte-identical with recovery credit served beside it, never merged; the roadmap node completes on passed OR fully-recovered evidence on the current version only. No AI dispatch, no live retest generation (F-A stands), no partial credit/guidance/awards.
+
+**Files changed.** `migrations/022-targeted-recovery.sql` (additive ledger + retest tables, idempotent, cascades); `src/contracts/assessment.ts` (retest commands/snapshots/views, RecoveryState, objectiveIndex on item views); `src/modules/assessment-progress/{bank,scoring,repository,service}.ts` (fresh retest pool + buildRetestSnapshot; group arithmetic + node extension; ledger/clear/retest writers; failed-grade ledgering + retest verbs + state assembly); `src/app/api/v1/[...path]/route.ts` (retest branches); `src/app/assessment-stage.tsx` (focused review per objective, recovery panel, retest flow, side-by-side credit); `tests/{unit,integration}/assessment.test.ts` + `tests/browser/attempt.spec.ts` (matrix rows); `scripts/restart-smoke.ts` (recovery beat); `tests/integration/restore.test.ts` (pre-existing backup test's explicit 120 s budget in the suite's own pattern); `docs/project-structure.md`.
+
+**Review findings breakdown.** 5 findings: 3 medium patched (retest declaration validation hoisted to all states; UI grouping keyed on objectiveIndex; recovery panel mounted in every served state), each with regression cover where testable; 2 false (staging-order artifacts disproven by the finalized change set — dev imports restored before commit, deviation paragraph rides the commit); nothing deferred.
+
+**Follow-up review recommendation.** `true` — three medium entries patched on the first pass. Named unverified risk: the three patches were applied by the orchestrator under the workflow's cannot-continue fallback and verified by scoped suites + two full gates, but a fresh review lens has not seen the PATCHED diff; the panel-visibility change specifically alters rendering in `offered`/`active` states whose browser cover asserts presence at journey level.
+
+**Verification performed.** Full local gate under Node v24.22.0 with the documented typegen dance, run twice (before and after the review patches): audit 0; ESLint+Oxlint 0 warnings + 113-rule coverage; boundaries; both typechecks; unit 251/251 (assessment 19); extractor build + admission; db + migrations (022 applied); integration 188/188 (assessment 6/6 incl. the patched assertions); production build; e2e 62 tests — one transient load flake per run (the pre-existing journey spec's focus assertion, then its supplement-count assertion; both passed solo immediately: 33.1s), all assessment journeys green in every run; restart smoke green with the recovery beat (ledger, cleared target, retest and graded result survive restart; replayed retest submit identical; one graded retest row). D7 per-item verification of the fresh retest pool recorded in Implementation Notes (re-runnable by the owner).
+
+**Residual risks.** Scope-honest limits: the served chain roots at the newest failed attempt with a ledger (earlier chains stay durable in rows, readable via history); recovery is synthetic-bank only — live AI retest generation stays blocked on F-A (no provider authorization exists or was granted); local synthetic evidence only — no deployment, release-readiness or F1 claim; the roadmap node remains a thin derived state (the versioned award contract is entry 3.4).
 
 ## Design Notes
 

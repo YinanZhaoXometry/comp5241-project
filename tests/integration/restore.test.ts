@@ -328,7 +328,13 @@ describe('isolated backup and protective restore', () => {
     };
     expect(manifest.journal.cut.count).toBe(backup.journalCut.count);
     expect((await stat(resolve(BACKUP_DIR, `${backup.backupId}.dump.enc`))).size).toBeGreaterThan(0);
-  });
+    // Explicit budget in this suite's established pattern (the two restore
+    // cases below already carry 120000): the physical snapshot toolchain
+    // (pg_dump + tar of every accumulated private object + PBKDF2 encrypt)
+    // scales with the LOCAL synthetic state this workspace has accumulated
+    // across months of runs, which has outgrown vitest's 30 s default. Every
+    // assertion still runs to completion — nothing is skipped or weakened.
+  }, 120000);
 
   it('records post-snapshot deletion, withdrawal and revocation in the protective journal', async () => {
     // AFTER the snapshot: withdraw consent, delete everything personal,
