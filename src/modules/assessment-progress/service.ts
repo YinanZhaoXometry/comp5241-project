@@ -1175,6 +1175,10 @@ export async function startReplacement(identity: Identity, rawId: string, raw: u
     let replacementId = existing?.id ?? crypto.randomUUID();
     let planRevisionId = existing?.plan_revision_id ?? rootAttempt.plan_revision_id;
     let objectiveIndex = existing?.objective_index ?? dispute.objective_index;
+    // The result must describe the replacement actually returned (the
+    // returned-attempt's-own-pin rule): an existing open replacement — or a
+    // raced winner — keeps ITS OWN dispute pin, never the fresh command's.
+    let returnedDisputeId = existing?.dispute_id ?? dispute.id;
     if (!existing) {
       // The honest resource limit, checked and consumed BEFORE the insert:
       // over-budget fails HERE, the transaction rolls back and zero rows
@@ -1203,9 +1207,10 @@ export async function startReplacement(identity: Identity, rawId: string, raw: u
         replacementId = winner.id;
         planRevisionId = winner.plan_revision_id;
         objectiveIndex = winner.objective_index;
+        returnedDisputeId = winner.dispute_id;
       }
     }
-    const result: StartedReplacement = { rootId, operationId: replacementId, planRevisionId, disputeId: dispute.id, objectiveIndex, revision: batch.revision, state: "active" };
+    const result: StartedReplacement = { rootId, operationId: replacementId, planRevisionId, disputeId: returnedDisputeId, objectiveIndex, revision: batch.revision, state: "active" };
     await lifecycle.receipt(client, identity, command, "start-replacement", hash, result);
     return result;
   });

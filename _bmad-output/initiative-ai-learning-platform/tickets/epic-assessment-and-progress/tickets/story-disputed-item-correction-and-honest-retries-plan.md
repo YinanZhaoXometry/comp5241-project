@@ -3,7 +3,7 @@ title: 'Disputed-item correction and honest retries (3.7)'
 type: 'feature'
 ticket: 7
 created: '2026-10-29'
-status: 'planned'
+status: built
 baseline_revision: '6b0398f2898ab92c3517bf240faec4b0d21c2015'
 route: 'full'
 route_source: 'auto'
@@ -82,18 +82,18 @@ deferred: []
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `migrations/026-disputed-item-correction.sql` — dispute, replacement and generation-use tables.
-- [ ] `src/contracts/assessment.ts` — Story-7 contracts + `AssessmentState` extension.
-- [ ] `src/modules/assessment-progress/bank.ts` — replacement pool + `buildReplacementSnapshot`.
-- [ ] `src/modules/assessment-progress/disputes.ts` — pure pause/satisfaction predicates + quota-honesty contract.
-- [ ] `src/modules/assessment-progress/repository.ts` — dispute/replacement/quota writers and readers.
-- [ ] `src/modules/assessment-progress/service.ts` — dispute-opening flag, replacement verbs, quota bump, pause-gated award evaluation, extended serving.
-- [ ] `src/modules/assessment-progress/scoring.ts` — union widen only.
-- [ ] `src/app/api/v1/[...path]/route.ts` — replacement branches.
-- [ ] `src/app/assessment-stage.tsx` — dispute/pause/quota UI states.
-- [ ] `tests/unit/assessment-disputes.test.ts` — pure-surface coverage.
-- [ ] `tests/integration/disputes.test.ts` — authored-pending-execution verify scenarios.
-- [ ] `docs/project-structure.md` — same-change update.
+- [x] `migrations/026-disputed-item-correction.sql` — dispute, replacement and generation-use tables.
+- [x] `src/contracts/assessment.ts` — Story-7 contracts + `AssessmentState` extension.
+- [x] `src/modules/assessment-progress/bank.ts` — replacement pool + `buildReplacementSnapshot`.
+- [x] `src/modules/assessment-progress/disputes.ts` — pure pause/satisfaction predicates + quota-honesty contract.
+- [x] `src/modules/assessment-progress/repository.ts` — dispute/replacement/quota writers and readers.
+- [x] `src/modules/assessment-progress/service.ts` — dispute-opening flag, replacement verbs, quota bump, pause-gated award evaluation, extended serving.
+- [x] `src/modules/assessment-progress/scoring.ts` — union widen only.
+- [x] `src/app/api/v1/[...path]/route.ts` — replacement branches.
+- [x] `src/app/assessment-stage.tsx` — dispute/pause/quota UI states.
+- [x] `tests/unit/assessment-disputes.test.ts` — pure-surface coverage.
+- [x] `tests/integration/disputes.test.ts` — authored-pending-execution verify scenarios.
+- [x] `docs/project-structure.md` — same-change update.
 
 **Acceptance Criteria:**
 - Given the borderline fixture failure (79.96%) with every required item done, flagging the deciding item marks it Under review and pauses exactly that release's pending completion (no award row; a sibling release/root completes unaffected).
@@ -118,7 +118,13 @@ Every replacement item's correct choice is trivially, self-evidently true agains
 
 ## Auto Run Result
 
-(to be recorded at build time)
+**Status: BUILT — DB-free verification green in ONE run (2026-10-29; Node v24.22.0, `NPM_CONFIG_USERCONFIG=/dev/null NEXT_TELEMETRY_DISABLED=1`).** lint 0 warnings/0 errors (113 inventoried rules, all active mappings verified, 8 negative probes + the JSX reference positive probe), typecheck green (Next generated types bootstrapped once via `npx next dev --hostname 127.0.0.1 -p 3007`, then killed — port 3007 per the lane-split protocol, never 3000), typecheck:worker green, module boundaries green, full unit suite **304/304 in 15 files** (baseline 278 + the new `tests/unit/assessment-disputes.test.ts`'s 26; the pre-existing 278 untouched and still green — no skips/overrides/suppressions anywhere). `npm ci` completed on the fresh worktree first (254 packages).
+
+**Deferred by design — integration execution.** `tests/integration/disputes.test.ts` is AUTHORED (six journeys: flag→Under-review+pause with the sibling-study unaffected check; corrected replacement satisfying the requirement with the ordinary-attempt list unchanged and the 79.96% row byte-identical; non-clearing replacement retry loop with zero failed attempts; earned-pass/award surviving a later flag incl. the optional corrected practice; quota exhaustion → RATE_LIMITED with zero retest/attempt/replacement rows, counter unconsumed by the denial, and recovery after the reset; unlimited pedagogical retries across the chain with the budget naming only fresh generations) but NOT RUN in this phase: the shared DB cluster is reserved for the sibling 3.6 lane; the orchestrator merges that lane into this branch, runs migrations (the sibling's 025 + this story's 026) and executes the suite. The pure halves of every scenario (pause predicate matrix incl. the earned-pass structural case, corrected-satisfaction predicate, replacement-bank D7 checks, quota-honesty contract) are unit-covered to de-risk that run. The production build, e2e and restart legs are likewise deferred to that merged phase by the same DB/lane constraint — they are not claimed here.
+
+**Build summary.** The 3.5 flag now opens the dispute in its own transaction (`app.item_dispute`, one row per flag, `under-review` → single status-guarded `corrected` transition recording the resolving replacement — that row is the defect annotation; the evidence rows stay immutable). The pause is a pure predicate (`disputes.ts`) evaluated at the award INSERT: an OPEN dispute pauses the release's unearned completion decision only while no untainted satisfaction path exists (a clean undisputed pass, or a fully cleared-or-corrected recovery on an untainted chain); earned awards are structurally untouchable — no revoke path exists. The corrected replacement (`app.assessment_replacement`, one open per owner+root) mirrors the ROOT attempt's blueprint for the disputed item's whole objective group with questions from the NEW manually checked replacement pool (prompts distinct from both earlier pools), grades by the same integer cross-product at the root-pinned mark, and a clear resolves the dispute + re-runs the award evaluation in-transaction — satisfying the requirement without any extra ordinary attempt. The honest resource budget (`app.assessment_generation_use`, UTC day key) covers retest + replacement starts only; a denied start fails inside the verb transaction so the rollback leaves zero rows of any kind. UI: Disputed items panel (Under review / Corrected + the replacement flow), completion-paused notice under the roadmap line, quota-delay notice via the guarded start path, and the served `generation` view states the named limit — the 3.5 flag notice string is byte-identical (its browser-test contract).
+
+**Self-review findings fixed before the record (the triage-log style):** (1) `startReplacement`'s returned `disputeId` initially named the fresh command's dispute even when an existing open replacement (or a raced winner) was returned — corrected to the returned replacement's OWN dispute pin (the returned-attempt's-own-pin rule); (2) the first quota-honesty unit expectation asserted a corrected dispute on group 3 satisfied an open target on group 4 — the predicate was right, the test was wrong; recomputed with the correction on the open group.
 
 ## Verification
 
