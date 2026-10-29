@@ -33,12 +33,42 @@ project-new/
 │   │   │                                                                 sources, always-visible keyboard stop
 │   │   │                                                                 control, honest exhaustion past the stored
 │   │   │                                                                 evidence (zero dispatch) and no unlock
-│   │   │   assessment-stage.tsx                                          epic-3 story-1 scored-attempt panel:
-│   │   │                                                                 pre-start disclosure (80% mark, 10000
-│   │   │                                                                 points, scoring criteria) → single-choice
-│   │   │                                                                 items → one submission → honest boundary
-│   │   │                                                                 verdict with per-item reveal and attempt
-│   │   │                                                                 history → derived roadmap line
+│   │   │   roadmap-panel.tsx                                            epic-3 story-6 whole-mini-course roadmap
+│   │   │                                                                 surface: owner-level node list with
+│   │   │                                                                 award-derived states, practice/review
+│   │   │                                                                 pills, recommended order and free
+│   │   │                                                                 browsing (no locks, no XP)
+│   │   │   assessment-stage.tsx                                          epic-3 assessment panel: story-1
+│   │   │                                                                 scored path (pre-start disclosure,
+│   │   │                                                                 80% mark / 10000 points / scoring
+│   │   │                                                                 criteria → single-choice items → one
+│   │   │                                                                 submission → honest boundary verdict
+│   │   │                                                                 with per-item reveal and attempt
+│   │   │                                                                 history → derived roadmap line) plus
+│   │   │                                                                 the story-2 recovery path on a failed
+│   │   │                                                                 grade: focused review grouped per
+│   │   │                                                                 objective ("Needs practice", cause
+│   │   │                                                                 unnamed), the target ledger with
+│   │   │                                                                 initial results, a fresh same-demand
+│   │   │                                                                 retest flow and per-group recovery
+│   │   │                                                                 credit beside the original verdict —
+│   │   │                                                                 never merged, never averaged — plus
+│   │   │                                                                 story 3's scoring surface: per-item
+│   │   │                                                                 disclosed partial-credit rubrics with
+│   │   │                                                                 per-choice credit hints (credit named,
+│   │   │                                                                 never the answer), scale-rendered
+│   │   │                                                                 point amounts, instructor pass-mark
+│   │   │                                                                 override provenance when a snapshot
+│   │   │                                                                 carries one, and a Provisional label
+│   │   │                                                                 path that can award nothing — plus
+│   │   │                                                                 story 4: the completion-awards line
+│   │   │                                                                 (version-scoped, listed, never
+│   │   │                                                                 overwritten) under the award-derived
+│   │   │                                                                 roadmap line, and the study-version
+│   │   │                                                                 switcher — changed-required-work
+│   │   │                                                                 disclosure first, exact
+│   │   │                                                                 acknowledgment to move, prior
+│   │   │                                                                 awards never erased
 │   │   ├── shell/          product + instructor page shells (sidebar/topnav, honesty label)
 │   │   ├── screens/        static styled screen content (library, course, practice, …) plus
 │   │   │                   the LIVE epic-5 screens: instructor-courses/approvals (ported
@@ -59,11 +89,35 @@ project-new/
 │   │   │                       handoff document contract (immutable-per-version
 │   │   │                       block + monotonic derivatives block;
 │   │   │                       attempt-independent by construction)
-│   │   ├── assessment.ts   epic-3 story-1 scored-attempt contracts: command
-│   │   │                       schemas, the server-side snapshot schema
-│   │   │                       (answer key never in a pre-grade view) and the
-│   │   │                       none/offered/active/graded state union with the
-│   │   │                       derived roadmap node
+│   │   ├── assessment.ts   epic-3 scored-attempt + targeted-recovery +
+│   │   │                       scoring-surface contracts: command schemas
+│   │   │                       (ordinary and retest start/submit), the
+│   │   │                       server-side snapshot schemas (answer key
+│   │   │                       never in a pre-grade view), the none/offered/
+│   │   │                       active/graded state union with the derived
+│   │   │                       roadmap node, story 2's recovery views — the
+│   │   │                       per-group target ledger, fresh-retest
+│   │   │                       snapshots/views and the RecoveryState served
+│   │   │                       beside (never merged into) the attempt
+│   │   │                       result — and story 3's additions: per-item
+│   │   │                       optional disclosed partial-credit rubrics
+│   │   │                       (nonnegative scaled-integer credits, never
+│   │   │                       keyed on the answer), the per-snapshot
+│   │   │                       declared finite precision (pointsScale 1 or
+│   │   │                       100, legacy rows defaulting to 1), the
+│   │   │                       snapshotted { source, provenance, value }
+│   │   │                       pass-mark override contract (source "default"
+│   │   │                       in personal study — no instructor writer
+│   │   │                       exists), and the provisional-grade decision
+│   │   │                       type that structurally carries no pass and
+│   │   │                       can never award completion — plus story 4's
+│   │   │                       award/manifest/switch contracts: the
+│   │   │                       version-scoped CompletionAwardView list +
+│   │   │                       current-release award on the state, the
+│   │   │                       parent-manifest schema (unique child
+│   │   │                       releases, required/optional), and the strict
+│   │   │                       switch command whose acknowledged change set
+│   │   │                       must equal the server-computed diff exactly
 │   │   ├── ai-provider.ts  provider-neutral text-completion port (dormant)
 │   │   └── courses.ts      epic-2 S1–S6 generated-course + supplement +
 │   │                         player + why contracts (content v4 = v3
@@ -92,7 +146,14 @@ project-new/
 │   │                       INTO the artifact as owner derivative content,
 │   │                       keeps fetched supplement passages the one honest
 │   │                       class skip — identity/location metadata only rides
-│   │                       along inside each exported course)
+│   │                       along inside each exported course; epic-3 3.9
+│   │                       flips attempt/retest/recovery-ledger/award/flag/
+│   │                       dispute/replacement/studied-pointer rows in as
+│   │                       the assessment-evidence class — snapshots with
+│   │                       answer keys included (the S8 owner-can-reveal
+│   │                       reasoning), deleted roots excluded by the same
+│   │                       snapshot scope — and keeps the content-free
+│   │                       daily generation counter the assessment skip)
 │   │   ├── course-generation/  epic-2 S1–S6 tracer: confirmed-plan → generated
 │   │   │                       course (handoff-consuming service, restart-safe worker
 │   │   │                       running the local synthetic fixture behind
@@ -124,18 +185,131 @@ project-new/
 │   │   │                       lineage; S7 getProvenance — the read-only, owner-
 │   │   │                       scoped, lineage-fenced provenance handoff document
 │   │   │                       (pinned reads byte-stable across supersession)
-│   │   ├── assessment-progress/  epic-3 story-1 scored-attempt tracer: one
-│   │   │                       required objective-linked test from the manually
-│   │   │                       checked synthetic bank, snapshotted at start
-│   │   │                       (blueprint/questions/answer key/answer rules/
-│   │   │                       rubric/point scale/80% default mark) into 021
-│   │   │                       app.test_attempt, submitted exactly once and
-│   │   │                       graded by unrounded scaled-integer
-│   │   │                       cross-product (79.96% does not pass 80%),
-│   │   │                       attempts listed never overwritten, derived
-│   │   │                       roadmap node (required items done + passed
-│   │   │                       attempt on the current version — no award
-│   │   │                       rows, no recovery/partial credit)
+│   │   ├── assessment-progress/  epic-3 assessment module: story 1's scored
+│   │   │                       attempt tracer — one required objective-linked
+│   │   │                       test from the manually checked synthetic bank,
+│   │   │                       snapshotted at start (blueprint/questions/
+│   │   │                       answer key/answer rules/rubric/point scale/
+│   │   │                       80% default mark) into 021 app.test_attempt,
+│   │   │                       submitted exactly once and graded by unrounded
+│   │   │                       scaled-integer cross-product (79.96% does not
+│   │   │                       pass 80%), attempts listed never overwritten —
+│   │   │                       plus story 2's targeted recovery: a failed
+│   │   │                       grade ledgers every failed objective group
+│   │   │                       open in the same transaction (022
+│   │   │                       app.recovery_target), startRetest/
+│   │   │                       submitRetest run fresh same-demand retests
+│   │   │                       from a manually checked fresh pool (022
+│   │   │                       app.retest_attempt mirrors the root blueprint
+│   │   │                       per group, positions renumbered, root pass
+│   │   │                       mark/rubric pinned through the chain), a group
+│   │   │                       clears only at the root mark by the same
+│   │   │                       cross-product, and the roadmap node derives
+│   │   │                       from earned awards (story 4) — original
+│   │   │                       score never rewritten, credit shown separately
+│   │   │                       — plus story 3's scoring surface, with NO
+│   │   │                       stored-shape change (the snapshot jsonb
+│   │   │                       carries the additions; no migration exists):
+│   │   │                       declared-credit earning (full points, a
+│   │   │                       disclosed rubric's exact scaled-integer
+│   │   │                       credit, or zero), the hundredths-scale
+│   │   │                       partial-credit fixture bank + builder beside
+│   │   │                       the unchanged full-credit pools, the carried
+│   │   │                       pass-mark override snapshotted at start
+│   │   │                       (build-time contract; personal study stays
+│   │   │                       default-80), scale-aware point display, and
+│   │   │                       the provisional-grade fence — only a final
+│   │   │                       graded pass or full recovery completes —
+│   │   │                       plus story 4's monotonic completion-award
+│   │   │                       layer (023 app.completion_award +
+│   │   │                       app.studied_release): required items done +
+│   │   │                       passed-or-fully-recovered awards a UNIQUE
+│   │   │                       version-scoped mini-course award inserted
+│   │   │                       once at each contributing verb's transaction
+│   │   │                       (submitAttempt, submitRetest and epic-2's
+│   │   │                       markItemDone through the exported
+│   │   │                       recordCompletionIfEarned hook — never
+│   │   │                       updated, revoked or re-derived), parent
+│   │   │                       manifests award only when every required
+│   │   │                       child release is awarded (optional never
+│   │   │                       block; synthetic multi-child fixtures through
+│   │   │                       the module's own writer), the roadmap node
+│   │   │                       derives FROM award rows, and the explicit
+│   │   │                       version switch (switchCourseVersion +
+│   │   │                       disclosure GET) moves the studied-release
+│   │   │                       pointer only after the changed required work
+│   │   │                       is disclosed and exactly acknowledged —
+│   │   │                       prior awards never erased — plus story 5's
+│   │   │                       evidence-linked gap guidance (guidance.ts,
+│   │   │                       pure read-time derivation, no tables): open
+│   │   │                       chain targets on the studied release read
+│   │   │                       Needs practice (cause unnamed) with lean
+│   │   │                       per-item scored citations, uncovered release
+│   │   │                       objectives read Unknown (never flipped by
+│   │   │                       practice), and epic-2 practice rows render
+│   │   │                       as their own labeled lane through course-
+│   │   │                       generation's first serving reads of 019
+│   │   │                       app.practice_attempt (bounded aggregates)
+│   │   │                       — while 024 app.assessment_flag carries the
+│   │   │                       one-way unclear-item flag (insert-once per
+│   │   │                       graded attempt/retest item, records with
+│   │   │                       the evidence and changes no outcome; the
+│   │   │                       flagAssessmentItem verb) — plus story 6's
+│   │   │                       whole-mini-course roadmap surface (roadmap.ts
+│   │   │                       pure read-time derivation + review-port.ts,
+│   │   │                       NO stored-shape change and no migration: the
+│   │   │                       3.3 precedent): getRoadmap serves an owner-
+│   │   │                       scoped view at GET /api/v1/roadmap with one
+│   │   │                       node per entire mini-course across the
+│   │   │                       confirmed studies, state following R2 awards
+│   │   │                       exactly (deriveRoadmapNode), a Needs practice
+│   │   │                       pill mirroring guidance's chain rule, parent
+│   │   │                       manifests as the recommended-order carriers,
+│   │   │                       honest not-generated/pending/failed and
+│   │   │                       version-superseded states, and a Review due
+│   │   │                       pill fed ONLY by the stubbed versioned
+│   │   │                       review-state query port (unbound default =
+│   │   │                       no pill, never a wrong state, never an input
+│   │   │                       to node state — epic-spaced-review fills it)
+│   │   │                       — and story 7's disputed-item correction and
+│   │   │                       honest retries (disputes.ts, pure
+│   │   │                       pause/satisfaction predicates): the flag now
+│   │   │                       opens a dispute in the same transaction (026
+│   │   │                       app.item_dispute, under-review -> corrected,
+│   │   │                       one row per flag), the unearned award INSERT
+│   │   │                       pauses while an open dispute could affect the
+│   │   │                       release's would-be satisfaction paths
+│   │   │                       (earned awards are never revoked), and the
+│   │   │                       corrected replacement (026
+│   │   │                       app.assessment_replacement, dispute-scoped
+│   │   │                       fresh assessment of the disputed group from
+│   │   │                       the new replacement bank pool) resolves a
+│   │   │                       dispute on an independent clear without
+│   │   │                       ever recording a failed attempt; 026
+│   │   │                       app.assessment_generation_use carries the
+│   │   │                       honest daily fresh-question budget (retest
+│   │   │                       + replacement starts; a denied start rolls
+│   │   │                       back with zero rows) — and story 8's
+│   │   │                       versioned handoff surface (handoff.ts pure
+│   │   │                       AD-13 evaluator verdict + AD-14 reporting
+│   │   │                       projections + epic-6 activity/rubric links,
+│   │   │                       served read-only at GET
+│   │   │                       /studies/{id}/assessment/handoff with the
+│   │   │                       fields= scope fence; no migration — 027
+│   │   │                       unused); story 9 registers every derivative
+│   │   │                       kind with epic 1's lifecycle classes through
+│   │   │                       the assessment-progress port in
+│   │   │                       lifecycle-platform/derivatives.ts (content-
+│   │   │                       free preview counts, deny riding the
+│   │   │                       scopedRoot/assertObjects fences, FK-safe
+│   │   │                       idempotent purge in both scopes — parent-path
+│   │   │                       awards and pointers included, the generation
+│   │   │                       counter root-exempt and personal-purged) with
+│   │   │                       no module change and no migration (028
+│   │   │                       unused): retention rides the seven-day
+│   │   │                       deletion clocks, and the race/denial/
+│   │   │                       idempotency proof suite is
+│   │   │                       tests/integration/assessment-lifecycle.test.ts
 │   │   ├── instructor-courses/  epic-5 entry-1 manual-course approval-
 │   │   │                       enrollment tracer: instructor-owned courses
 │   │   │                       with immutable manual version rows (030),
@@ -194,18 +368,50 @@ project-new/
 │   │                       four-family idempotency, the 120-second honesty
 │   │                       set and post-deletion read denials), provenance
 │   │                       (the epic-2 S7 synthetic consumer), assessment
-│   │                       (the epic-3 scored-attempt tracer: snapshot
-│   │                       pinning, exactly-once, denial sweep, answer
-│   │                       withholding, supersession stability), instructor-
-│   │                       courses (the epic-5 5.1 tracer: approval
-│   │                       idempotency/immutability, enrollment preview/
-│   │                       confirm, approved-only learner visibility, the
-│   │                       no-leak denial sweep and lifecycle-inventory
-│   │                       registration)
+│   │                       (the epic-3 scored-attempt tracer, its story-2
+│   │                       targeted-recovery chain: ledger at grade time,
+│   │                       fresh same-demand retests, partial clearing,
+│   │                       supersession pinning, retake re-ledgering,
+│   │                       denial sweep and original-row immutability, and
+│   │                       story 3's scoring surface: the partial-credit
+│   │                       fixture graded exactly at its declared hundredths
+│   │                       scale through the real verbs, the carried
+│   │                       instructor override pinned mid-attempt while the
+│   │                       next attempt snapshots the current policy, and
+│   │                       the final-grade label on every graded view),
+│   │                       roadmap (epic-3 story-6: awards → roadmap read
+│   │                       model, three-course manifest path, cross-owner
+│   │                       scope denial, version-superseded honesty, the
+│   │                       unbound review-state port and completion
+│   │                       unchanged), assessment-lifecycle (epic-3 story-9:
+│   │                       deletion previews counting every assessment
+│   │                       category, root/personal deletion racing attempt
+│   │                       grading, retest and replacement generation with
+│   │                       no late-recommitted result and complete FK-safe
+│   │                       purge inside the seven-day deadline, owner export
+│   │                       content with cross-owner download denial, and
+│   │                       duplicate lifecycle commands yielding one
+│   │                       tracked effect)
+│   │                       instructor-courses (the epic-5 5.1 tracer:
+│   │                       approval idempotency/immutability, enrollment
+│   │                       preview/confirm, approved-only learner
+│   │                       visibility, the no-leak denial sweep and
+│   │                       lifecycle-inventory registration)
 │   ├── browser/            Playwright: tracer, pages (static product pages), batches,
 │   │                       consent, preferences, handoff, check, export, lifecycle,
 │   │                       course, journey (epic-2 S10 integrated study suite),
-│   │                       attempt (epic-3 boundary honesty + roadmap line),
+│   │                       attempt (epic-3 boundary honesty + roadmap line, the
+│   │                       recovery journey: focused review, retest flow,
+│   │                       side-by-side credit honesty and second-account
+│   │                       denial, and the story-3 partial-credit journey:
+│   │                       rubric disclosed pre-answer, per-choice credit
+│   │                       hints, exact declared credit earned at the
+│   │                       hundredths scale, honest 79.99% boundary) and
+│   │                       roadmap (epic-3 story-6: three-mini-course path
+│   │                       states following awards, Needs practice pill
+│   │                       beside a completed sibling, manifest recommended
+│   │                       order with free keyboard browsing at 360px, and
+│   │                       the unbound review port rendering no pill),
 │   │                       instructor (epic-5 5.1 live studio + learner path) —
 │   │                       production build
 │   └── fixtures/           original synthetic documents only

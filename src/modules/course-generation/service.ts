@@ -37,6 +37,7 @@ import { batchRow } from "../materials-setup/batches";
 import { planRevision } from "../materials-setup/repository";
 import { preferenceRow } from "../setup-preferences/repository";
 import { ledgerTotalTokens } from "../ai-setup/repository";
+import { recordCompletionIfEarned } from "../assessment-progress/service";
 import { buildPracticeFeedback } from "./generation";
 import { declaredGapCount, deriveGaps } from "./supplements";
 import { availableWhyDepth } from "./why";
@@ -248,8 +249,13 @@ export async function getCourse(identity: Identity, rawId: string, requested?: s
 // replayed command returns the same receipt; the UNIQUE row makes a duplicate
 // delivery a no-op). Only REQUIRED items are markable — optional enrichment is
 // labeled and never tracked — and there is deliberately no un-mark verb and no
-// completion, score or credit effect anywhere: done is an explicit learner
-// action, nothing more.
+// score or credit effect anywhere: done is an explicit learner action, nothing
+// more. Epic-3 story 4: marking the last required item is a CONTRIBUTING verb
+// for completion, so this verb invokes assessment-progress's exported
+// recordCompletionIfEarned hook AFTER its own writes, joining THIS transaction
+// (the AD-1 cross-module-command pattern — read-only consumption of
+// assessment's interface here; this module writes no assessment table and the
+// hook writes no course table).
 export async function markItemDone(identity: Identity, rawId: string, raw: unknown): Promise<Receipt & { itemId: string }> {
   const rootId = parse(uuid, rawId);
   const command = parse(markItemDoneSchema, raw);
@@ -273,6 +279,10 @@ export async function markItemDone(identity: Identity, rawId: string, raw: unkno
     if (!target) fail("CONFLICT"); // the item is not part of this course version — re-read the course
     if (!target.required) fail("INVALID_INPUT"); // optional enrichment is labeled, never tracked
     await repository.insertItemState(client, { ownerId: identity.userId, courseId: course.id, itemId: command.itemId });
+    // The completion hook joins THIS transaction: if this mark was the last
+    // required item of an otherwise-satisfied release, the version-scoped
+    // award lands atomically with the mark (idempotent otherwise).
+    await recordCompletionIfEarned(identity, rootId, command.courseId, client);
     const recorded: Receipt & { itemId: string } = {
       rootId,
       operationId: course.id,

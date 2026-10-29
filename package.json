@@ -18,6 +18,7 @@
     "lint:coverage": "node scripts/check-lint-coverage.mjs",
     "test": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration --no-file-parallelism",
+    "queue:drain": "tsx scripts/drain-stale-extraction.ts",
     "db:start": "tsx scripts/local-db.ts start",
     "db:stop": "tsx scripts/local-db.ts stop",
     "migrate": "tsx scripts/migrate.ts",

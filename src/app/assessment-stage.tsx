@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { api, command, json } from "./client";
-import type { AssessmentState, StartedAttempt, SubmittedAttempt } from "../contracts/assessment";
+import type { AssessmentFlag, AssessmentState, GradedItemView, GuidanceScoredCitation, StartedAttempt, StartedRetest, StartedReplacement, SubmittedAttempt, SubmittedRetest, SubmittedReplacement, SwitchDisclosure, SwitchedCourseVersion } from "../contracts/assessment";
+import { displayPointsOf } from "../modules/assessment-progress/scoring";
+import { GENERATION_DELAY_NOTICE } from "../modules/assessment-progress/disputes";
+import { errorCode } from "../platform/errors";
 import type { Study } from "../modules/materials-setup/service";
 
 type Props = { study: Study; busy: boolean; onBusy: (value: boolean) => void; onFailure: (error: unknown) => void };
 type AssessmentResponse = AssessmentState & { objectIds: string[] };
+type SwitchDisclosureResponse = SwitchDisclosure & { objectIds: string[] };
 
 const nodeCopy: Record<AssessmentState["node"], string> = {
   "not-started": "Not started",
@@ -14,26 +18,54 @@ const nodeCopy: Record<AssessmentState["node"], string> = {
   completed: "Completed",
 };
 
-// Epic-3 story-1 tracer stage: the visible scored path over a ready course —
-// disclosure (threshold, available points, scoring criteria BEFORE any
-// start) → options → one submission → honest threshold-boundary result with
-// full attempt history → the derived roadmap line (In progress → Completed).
-// The unrounded comparison decides Pass/Not passed and the display never
-// contradicts it (79.96% does not pass an 80% mark); correct answers appear
-// only after that attempt is graded; previous attempts stay listed, never
-// overwritten; nothing here creates recovery, partial credit, gap guidance or
-// any award — those belong to later entries.
+// Epic-3 story-1 tracer stage + the story-2 targeted-recovery chain + the
+// story-3 scoring surface + the story-4 monotonic completion-award layer:
+// the visible scored path over a ready course — disclosure (threshold,
+// available points, scoring criteria BEFORE any start) → options → one
+// submission → honest threshold-boundary result with full attempt history →
+// the roadmap line (In progress → Completed). The unrounded comparison
+// decides Pass/Not passed and the display never contradicts it (79.96% does
+// not pass an 80% mark); correct answers appear only after that attempt is
+// graded; previous attempts stay listed, never overwritten. Story 3: when an
+// attempt's snapshot carries a disclosed partial-credit rubric, the
+// disclosure shows it up front and each credited choice names its exact
+// declared credit (never the correct answer); point amounts render through
+// the snapshot's declared scale. A FAILED grade opens the recovery path: the
+// failed view groups items per objective ("Needs practice", cause unnamed)
+// as focused review, and a fresh same-demand retest of a declared subset of
+// the open groups mirrors the attempt flow — original verdict and recovery
+// credit side by side, never merged. Story 4: Completed now reads from an
+// EARNED, VERSION-SCOPED award (every required item done + the required test
+// passed or fully recovered — awarded exactly once, never revoked); earned
+// awards list under the roadmap line, and the study-version switcher moves
+// the studied release only through an informed flow that first discloses the
+// changed required work and never erases prior awards.
 export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
   const [state, setState] = useState<AssessmentResponse | null>(null);
   const [notice, setNotice] = useState("");
   const [choices, setChoices] = useState<Record<number, string>>({});
+  const [retestChoices, setRetestChoices] = useState<Record<number, string>>({});
+  // Retest target declaration: open targets default to SELECTED; the learner
+  // may narrow the subset. Stale entries are ignored once the open set moves.
+  const [targetSelection, setTargetSelection] = useState<Record<number, boolean>>({});
+  // Story 4 — the informed switch flow: a chosen target version, the served
+  // changed-work disclosure, and the confirmation that moves the studied
+  // release only after the learner has seen the exact diff.
+  const [switchTarget, setSwitchTarget] = useState("");
+  const [disclosure, setDisclosure] = useState<SwitchDisclosureResponse | null>(null);
+  // Story 7 — the corrected-replacement flow's answer state and headings.
+  const [replacementChoices, setReplacementChoices] = useState<Record<number, string>>({});
   const heading = useRef<HTMLHeadingElement>(null);
   const resultHeading = useRef<HTMLHeadingElement>(null);
+  const recoveryHeading = useRef<HTMLHeadingElement>(null);
+  const retestResultHeading = useRef<HTMLHeadingElement>(null);
+  const switchHeading = useRef<HTMLHeadingElement>(null);
+  const disputeHeading = useRef<HTMLHeadingElement>(null);
   const failureRef = useRef(onFailure);
   useEffect(() => { failureRef.current = onFailure; }, [onFailure]);
-  // The submit command envelope per attempt: a lost response replays the SAME
-  // command (the receipt machinery returns the identical result); a new
-  // attempt always runs under a fresh start command.
+  // The submit command envelope per attempt/retest: a lost response replays
+  // the SAME command (the receipt machinery returns the identical result); a
+  // new attempt always runs under a fresh start command.
   const keys = useRef(new Map<string, ReturnType<typeof command>>());
   const intent = (name: string) => {
     const key = `${name}:${study.revision}`;
@@ -57,10 +89,20 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
     let live = true;
     const read = () => { void api<AssessmentResponse>(`studies/${study.rootId}/assessment`).then(value => { if (live) setState(value); }).catch(error => { if (live) failureRef.current(error); }); };
     read();
-    if (!empty) return () => { live = false; };
-    const timer = setInterval(read, 2000);
+    // Eventually-consistent serving: the panel re-reads on a light always-on
+    // cadence (2s while no course state exists, 3s once settled). The
+    // assessment is a server-derived view of the studied release — an
+    // API-driven regeneration or switch must reach this panel without a
+    // manual reload, and no other stage owns that signal. The poll never
+    // focuses anything; it only refreshes state.
+    const timer = setInterval(read, empty ? 2000 : 3000);
     return () => { live = false; clearInterval(timer); };
-  }, [study.rootId, empty]);
+  }, [study.rootId, study.revision, empty]);
+  // study.revision re-reads: a re-confirmed plan (regeneration) advances the
+  // batch revision — the assessment must re-resolve the studied release then,
+  // even when the stage was not remounted (e.g. an API-driven regeneration
+  // that never unmounts this panel). Without it a stale graded view (an
+  // earlier Completed award) would survive until a manual reload.
   async function act(work: () => Promise<void>) {
     onBusy(true); setNotice("");
     try { await work(); } catch (error) { onFailure(error); } finally { onBusy(false); }
@@ -82,18 +124,192 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
     setNotice(result.verdict);
     requestAnimationFrame(() => resultHeading.current?.focus());
   });
+  // Story 2 — the retest flow mirrors the attempt flow: a fresh start command
+  // (the server returns the pinned open retest while one is open), a stable
+  // submit envelope per retest, and focus choreography onto the recovery
+  // heading after each step.
+  // Story 7 — the honest resource-delay path (D3 retries): a start over the
+  // daily fresh-generation budget fails RATE_LIMITED BEFORE any row is
+  // written — no failed attempt recorded anywhere, saved work unchanged.
+  // The notice states exactly that: the limit, the reset, the saved work
+  // and the zero attempt records — never a generic failure, never an
+  // unlimited-generation promise.
+  // A quota denial focuses the surface the denied start belongs to: the
+  // recovery ledger for retest starts, the dispute panel for corrected
+  // replacements (review disposition 2026-10-29 — the shared handler had
+  // focused the recovery heading for both).
+  const guardedStart = async (work: () => Promise<void>, focus: RefObject<HTMLHeadingElement | null> = recoveryHeading) => {
+    try {
+      await work();
+    } catch (error) {
+      if (errorCode(error) !== "RATE_LIMITED") throw error;
+      setNotice(GENERATION_DELAY_NOTICE);
+      requestAnimationFrame(() => focus.current?.focus());
+    }
+  };
+  const startRetestFlow = (rootAttemptId: string, targetIndexes: number[]) => act(async () => {
+    await guardedStart(async () => {
+      await api<StartedRetest>(`studies/${study.rootId}/assessment/retest`, json({ ...command(study.revision), attemptId: rootAttemptId, targetIndexes }));
+      await refresh(); setRetestChoices({});
+      setNotice(`Targeted retest open — ${targetIndexes.length} objective group${targetIndexes.length === 1 ? "" : "s"}, fresh questions at the same demand. It submits exactly once.`);
+      requestAnimationFrame(() => recoveryHeading.current?.focus());
+    });
+  });
+  const submitRetestFlow = (retestId: string) => act(async () => {
+    const answers = Object.entries(retestChoices).map(([position, choiceId]) => ({ position: Number(position), choiceId }));
+    const result = await api<SubmittedRetest>(`studies/${study.rootId}/assessment/retest/${retestId}/submit`, json({ ...intent(`retest-submit-${retestId}`), retestId, answers }));
+    await refresh(); setRetestChoices({});
+    const cleared = result.groups.filter(group => group.cleared).length;
+    setNotice(`Retest graded — ${cleared} of ${result.groups.length} reassessed group${result.groups.length === 1 ? "" : "s"} cleared at the original pass mark.`);
+    requestAnimationFrame(() => retestResultHeading.current?.focus());
+  });
+  // Story 4 — the informed switch flow: the changed-work disclosure is a
+  // read-only GET shown BEFORE any move; the confirmed switch carries the
+  // exact acknowledged diff (a stale or partial acknowledgment is denied
+  // server-side), a stable per-target command envelope replays idempotently,
+  // and no award is ever erased.
+  const showSwitchDisclosure = () => act(async () => {
+    const shown = await api<SwitchDisclosureResponse>(`studies/${study.rootId}/assessment/switch?course=${encodeURIComponent(switchTarget)}`);
+    setDisclosure(shown);
+    setNotice("Changed required work shown below — confirm to switch, or cancel to stay.");
+    requestAnimationFrame(() => switchHeading.current?.focus());
+  });
+  // The switch-confirm envelope is PINNED per target release AND revision:
+  // a lost response replays the SAME command (the receipt machinery returns
+  // the identical result) instead of minting a fresh key that would CONFLICT
+  // against a switch that actually committed — the component's universal
+  // retry pattern.
+  const switchEnvelope = (courseId: string, revision: number) => {
+    const key = `switch:${courseId}:${revision}`;
+    let value = keys.current.get(key);
+    if (!value) { value = command(revision); keys.current.set(key, value); }
+    return value;
+  };
+  const confirmSwitch = () => {
+    if (!disclosure) return;
+    act(async () => {
+      const acknowledged = {
+        addedRequiredItemIds: disclosure.addedRequiredItems.map(item => item.id),
+        removedRequiredItemIds: disclosure.removedRequiredItems.map(item => item.id),
+        requiredTestChanged: disclosure.requiredTestChanged,
+      };
+      // The confirm command carries the DISCLOSURE's server-fresh revision:
+      // an API-driven regeneration can advance the batch revision without the
+      // study panel ever re-reading (its refresh signal rides course readiness
+      // it already saw), and a stale expectedRevision would deny a switch the
+      // learner just reviewed — the disclosure IS the fresh server truth.
+      await api<SwitchedCourseVersion>(`studies/${study.rootId}/assessment/switch`, json({ ...switchEnvelope(disclosure.to.courseId, disclosure.revision), courseId: disclosure.to.courseId, acknowledged }));
+      await refresh(); setDisclosure(null); setSwitchTarget("");
+      setNotice(`Now studying version ${disclosure.to.version}. Prior awards and attempts stay listed.`);
+      requestAnimationFrame(() => switchHeading.current?.focus());
+    });
+  };
+  // Story 5 — flag one graded item unclear from the guidance/result surface:
+  // a stable per-item-and-revision command envelope replays idempotently (the
+  // component's universal retry pattern), and the flag records WITH the
+  // evidence while changing no outcome — the notice states exactly that (the
+  // diagnostic's words). Under-review handling is entry 7's, not this panel's.
+  const flagItem = (evidenceKind: "attempt" | "retest", evidenceId: string, position: number) => act(async () => {
+    await api<AssessmentFlag>(`studies/${study.rootId}/assessment/flag`, json({ ...intent(`flag-${evidenceKind}-${evidenceId}-${position}`), evidenceKind, evidenceId, position }));
+    await refresh();
+    setNotice("Flagged — the flag is recorded with the evidence; it changes no outcome.");
+  });
+  // Story 7 — the corrected-replacement flow (the dispute's correction
+  // path): start names only the dispute (the group/pins derive server-side),
+  // the submit envelope is stable per replacement (the component's universal
+  // retry pattern), and a clear resolves the dispute WITHOUT counting it as
+  // another failure — the notices state exactly that.
+  const startReplacementFlow = (disputeId: string) => act(async () => {
+    await guardedStart(async () => {
+      await api<StartedReplacement>(`studies/${study.rootId}/assessment/replacement`, json({ ...command(study.revision), disputeId }));
+      await refresh(); setReplacementChoices({});
+      setNotice("Corrected replacement open — fresh comparable questions for the disputed objective group at the original pass mark. It submits exactly once; the dispute never counts as another failure.");
+      requestAnimationFrame(() => disputeHeading.current?.focus());
+    }, disputeHeading);
+  });
+  const submitReplacementFlow = (replacementId: string) => act(async () => {
+    const answers = Object.entries(replacementChoices).map(([position, choiceId]) => ({ position: Number(position), choiceId }));
+    const result = await api<SubmittedReplacement>(`studies/${study.rootId}/assessment/replacement/${replacementId}/submit`, json({ ...intent(`replacement-submit-${replacementId}`), replacementId, answers }));
+    await refresh(); setReplacementChoices({});
+    setNotice(result.group.cleared
+      ? "Corrected replacement cleared — the dispute is resolved as corrected, the defect is annotated on the evidence, and no failed attempt was recorded."
+      : "Corrected replacement not cleared — the dispute stays Under review; no failed attempt was recorded, and you may try again without limit.");
+    requestAnimationFrame(() => disputeHeading.current?.focus());
+  });
   if (!state || state.state === "none") return null;
   const test = state.test;
   const active = state.state === "active" && state.attempt && !("gradedAt" in state.attempt) ? state.attempt : null;
   const graded = state.state === "graded" && state.attempt && "gradedAt" in state.attempt ? state.attempt : null;
   const answered = active ? active.items.filter(item => choices[item.position]).length : 0;
+  // Story 2: group the graded items per objective as focused review — failed
+  // groups read "Needs practice" (observed difficulty, cause unnamed, D2);
+  // passed groups read "Passed — preserved" and are never re-tested. Grouping
+  // keys on objectiveIndex (the ledger/clearing/retest key) — objective TEXT
+  // is display only and may legally repeat across distinct groups.
+  const gradedGroups: Array<{ objectiveIndex: number; objective: string; earned: number; total: number; failed: boolean; items: GradedItemView[] }> = [];
+  if (graded) {
+    for (const item of graded.items) {
+      let group = gradedGroups.find(candidate => candidate.objectiveIndex === item.objectiveIndex);
+      if (!group) { group = { objectiveIndex: item.objectiveIndex, objective: item.objective, earned: 0, total: 0, failed: false, items: [] }; gradedGroups.push(group); }
+      group.total += item.points;
+      group.earned += item.earned;
+      group.items.push(item);
+    }
+    for (const group of gradedGroups) group.failed = group.earned * 100 < graded.passMarkPercent * group.total;
+  }
+  const recovery = state.recovery;
+  const recoveryOpen = recovery ? recovery.targets.filter(target => target.status === "open") : [];
+  const recoveryLive = !!(recovery && graded && recovery.rootAttemptId === graded.attemptId);
+  const activeRetest = recovery?.retest && !("gradedAt" in recovery.retest) ? recovery.retest : null;
+  const gradedRetest = recovery?.retest && "gradedAt" in recovery.retest ? recovery.retest : null;
+  const selectedTargets = recoveryOpen.filter(target => targetSelection[target.objectiveIndex] !== false);
+  const retestAnswered = activeRetest ? activeRetest.items.filter(item => retestChoices[item.position]).length : 0;
+  // Story 7 — dispute/replacement derived values for the panels below: the
+  // open-vs-latest replacement of the root and the pause notice state.
+  const disputes = state.disputes;
+  const activeReplacement = state.replacement && !("gradedAt" in state.replacement) ? state.replacement : null;
+  const gradedReplacement = state.replacement && "gradedAt" in state.replacement ? state.replacement : null;
+  const replacementAnswered = activeReplacement ? activeReplacement.items.filter(item => replacementChoices[item.position]).length : 0;
+  const replacementObjective = (disputeId: string) => disputes.find(dispute => dispute.disputeId === disputeId)?.objective ?? "";
+  // Story 5 — hide-once-flagged and the citation links. A citation links to
+  // its item only when that container's items are actually rendered on this
+  // page (the focused review shows the LATEST graded attempt; the recovery
+  // panel shows the served retest); otherwise it names the earlier container
+  // honestly instead of pointing at nothing.
+  const flaggedKeys = new Set(state.flags.map(flag => `${flag.evidenceKind}:${flag.evidenceId}:${flag.position}`));
+  const isFlagged = (evidenceKind: "attempt" | "retest", evidenceId: string, position: number) => flaggedKeys.has(`${evidenceKind}:${evidenceId}:${position}`);
+  const citationLink = (citation: GuidanceScoredCitation) => {
+    if (citation.source === "attempt" && graded?.attemptId === citation.evidenceId)
+      return <a href={`#attempt-item-${citation.evidenceId}-${citation.position}`}>item {citation.position}</a>;
+    if (citation.source === "targeted-retest" && gradedRetest?.retestId === citation.evidenceId)
+      return <a href={`#retest-item-${citation.evidenceId}-${citation.position}`}>item {citation.position}</a>;
+    return <span>item {citation.position} of an earlier {citation.source === "attempt" ? "attempt" : "retest"} (listed in the histories)</span>;
+  };
+  // Story 3: the snapshot's declared scale renders every point amount, and an
+  // item's disclosed partial-credit rubric (if its snapshot carries one — the
+  // served root test never does) names each credited choice's exact credit
+  // beside that choice. The rubric's credits map never contains the correct
+  // answer, so the hints disclose credit without disclosing the key.
+  const scale = test?.pointsScale ?? 1;
+  const rubricOf = (position: number) => test?.items.find(entry => entry.position === position)?.partialCredit ?? null;
   return <section className="panel"><p className="eyebrow">REQUIRED TEST · SCORED ATTEMPT TRACER</p><h3 ref={heading} tabIndex={-1}>Assessment &amp; progress</h3>
     <output>{notice}</output>
-    <p><strong>Roadmap: {nodeCopy[state.node]}.</strong> <span className="fine">Derived, never awarded — Completed requires every required course item done and a passed attempt on the current course version. Review never revokes it.</span></p>
+    <p><strong>Roadmap: {nodeCopy[state.node]}.</strong> <span className="fine">Completed appears only from an earned, version-scoped award — every required course item done and the required test passed or fully recovered. Awards are recorded once and never revoked by later results, edits or review.</span></p>
+    {state.completionPaused && <div className="notice"><p className="fine">Completion decision paused — a disputed test item on this mini-course is Under review. Prior evidence is retained and earned results are never revoked; the pending decision resumes when the dispute is resolved (see Disputed items below).</p></div>}
+    {state.awards.length > 0 && <div className="tracker-row">
+      <p><strong>Completion awards</strong> <span className="fine">· version-scoped, listed, never overwritten</span></p>
+      <ul>{state.awards.map(award => <li key={award.awardId} className="fine">
+        {award.kind === "mini-course"
+          ? `Mini-course version ${award.courseVersion} — completed ${new Date(award.awardedAt).toLocaleString()}`
+          : `Parent path (${award.manifest?.children.filter(child => child.required).length ?? 0} required children) — completed ${new Date(award.awardedAt).toLocaleString()}`}
+      </li>)}</ul>
+    </div>}
     {test && <div className="tracker-row">
-      <p><strong>{test.title}</strong> <span className="fine">· {test.itemCount} items · {test.itemPoints.join(" + ")} = {test.totalPoints} points</span></p>
+      <p><strong>{test.title}</strong> <span className="fine">· {test.itemCount} items · {test.itemPoints.map(points => displayPointsOf(points, test.pointsScale)).join(" + ")} = {displayPointsOf(test.totalPoints, test.pointsScale)} points</span></p>
       <p><strong>Pass mark: {test.passMarkPercent}%</strong> — shown before you start. The unrounded earned-points comparison decides; the display never rounds a Not passed into looking like a pass.</p>
+      {test.passMarkOverride.source === "instructor" && <p className="fine">Pass-mark override: instructor-set {test.passMarkOverride.value}%, carried on this attempt&apos;s at-start snapshot (recorded {new Date(test.passMarkOverride.recordedAt).toLocaleString()}) — later policy changes apply only to new attempts.</p>}
       <p className="fine"><strong>Scoring criteria:</strong> {test.answerRule} {test.rubric} Source: manually authored synthetic fixture — no live AI, no generated questions.</p>
+      {test.items.filter(entry => entry.partialCredit).map(entry => <p className="fine" key={entry.position}><strong>Item {entry.position} partial-credit rubric ({displayPointsOf(entry.points, test.pointsScale)} points):</strong> {entry.partialCredit!.disclosure}</p>)}
     </div>}
     {state.state === "offered" && <>
       <p>One required test is available for this mini-course. The threshold, available points and scoring criteria above apply before you start; your answers submit exactly once and previous attempts stay listed.</p>
@@ -104,35 +320,204 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
       <p>Attempt open — {answered} of {active.items.length} answered. Pinned to course version {active.courseVersion}; a newer version would not change this attempt&apos;s questions or verdict.</p>
       <form onSubmit={event => { event.preventDefault(); void submit(active.attemptId); }}>
         {active.items.map(item => <fieldset key={item.position} disabled={busy}>
-          <legend>Item {item.position} of {active.items.length} · {item.points} points · objective: {item.objective}</legend>
+          <legend>Item {item.position} of {active.items.length} · {displayPointsOf(item.points, scale)} points · objective: {item.objective}</legend>
           <p>{item.prompt}</p>
           {item.choices.map(option => <div className="answer-row" key={option.id}>
             <input type="radio" id={`test-choice-${item.position}-${option.id}`} name={`test-choice-${item.position}`} value={option.id} checked={choices[item.position] === option.id} onChange={() => setChoices(previous => ({ ...previous, [item.position]: option.id }))} />
-            <label htmlFor={`test-choice-${item.position}-${option.id}`}>{option.text}</label>
+            <label htmlFor={`test-choice-${item.position}-${option.id}`}>{option.text}{rubricOf(item.position)?.credits[option.id] !== undefined ? <span className="fine"> — earns {displayPointsOf(rubricOf(item.position)!.credits[option.id]!, scale)} of {displayPointsOf(item.points, scale)} points if chosen</span> : null}</label>
           </div>)}
         </fieldset>)}
         <div className="actions"><button type="submit" disabled={busy || answered < active.items.length}>Submit test ({answered}/{active.items.length} answered)</button></div>
       </form>
-      <p className="fine">The attempt submits exactly once — choose an answer for every item first. An unanswered item would score zero under the full-credit rubric.</p>
+      <p className="fine">The attempt submits exactly once — choose an answer for every item first. An unanswered item would score zero{test && test.items.some(entry => entry.partialCredit) ? "; on an item with a disclosed partial-credit rubric, a non-correct choice earns only its declared credit" : ""}.</p>
     </>}
     {graded && <>
       <h4 ref={resultHeading} tabIndex={-1}>Result</h4>
-      <div className="notice"><p><strong>{graded.verdict}</strong> — {graded.earnedPoints}/{graded.totalPoints} points. The unrounded comparison decided this; one decimal is shown only when it cannot contradict the verdict.</p></div>
+      <div className="notice"><p><strong>{graded.verdict}</strong> — {displayPointsOf(graded.earnedPoints, graded.pointsScale)}/{displayPointsOf(graded.totalPoints, graded.pointsScale)} points. The unrounded comparison decided this; one decimal is shown only when it cannot contradict the verdict.</p></div>
+      {graded.gradeKind === "provisional" && <p className="fine">Provisional — pending instructor confirmation. A provisional grade cannot award completion.</p>}
       <p className="fine">Attempt {graded.attemptId.slice(0, 8)}… · course version {graded.courseVersion} · graded {new Date(graded.gradedAt).toLocaleString()} · started {new Date(graded.startedAt).toLocaleString()}.</p>
-      {graded.items.map(item => <fieldset key={item.position}>
-        <legend>Item {item.position} · {item.earned === item.points ? `correct · ${item.points} points` : item.chosenChoiceId === null ? "unanswered · 0 points" : "not correct · 0 points"}</legend>
+      <h4>Focused review</h4>
+      <p className="fine">Items grouped per objective. “Needs practice” names observed difficulty only — it does not claim a cause. Passed groups are preserved and never re-tested.</p>
+      {gradedGroups.map(group => <div className="tracker-row" key={group.objectiveIndex}>
+        <p><strong>{group.failed ? "Needs practice" : "Passed — preserved"}</strong> · {group.objective} · {displayPointsOf(group.earned, graded.pointsScale)}/{displayPointsOf(group.total, graded.pointsScale)} on the original attempt{group.failed ? "" : " — never re-tested"}</p>
+        {group.items.map(item => <fieldset key={item.position} id={`attempt-item-${graded.attemptId}-${item.position}`}>
+          <legend>Item {item.position} · {item.earned === item.points ? `correct · ${displayPointsOf(item.points, graded.pointsScale)} points` : item.earned > 0 ? `partly correct · ${displayPointsOf(item.earned, graded.pointsScale)} of ${displayPointsOf(item.points, graded.pointsScale)} points` : item.chosenChoiceId === null ? "unanswered · 0 points" : "not correct · 0 points"}</legend>
+          <p>{item.prompt}</p>
+          <p><strong>Correct answer:</strong> {item.choices.find(choice => choice.id === item.correctChoiceId)?.text ?? item.correctChoiceId}{item.chosenChoiceId !== null && item.chosenChoiceId !== item.correctChoiceId && <> — your answer: {item.choices.find(choice => choice.id === item.chosenChoiceId)?.text ?? item.chosenChoiceId}</>}</p>
+          <p className="fine">Objective: {item.objective} · {displayPointsOf(item.points, graded.pointsScale)} points.</p>
+        </fieldset>)}
+      </div>)}
+      {/* Story 5 — the evidence-linked gap guidance (spine: guidance
+          {components.callout} inside the result/recovery path): the note
+          callout states the limits, then every entry names its objective,
+          cites the specific scored responses it draws on (linked to the
+          focused review/retest items above), renders practice evidence as
+          its own labeled lane (never merged with the unaided attempt), and
+          marks unassessed objectives Unknown — visibly distinct from Needs
+          practice. Each cited item carries the quiet one-way flag. */}
+      {state.guidance && <>
+        <h4>What to study next</h4>
+        <div className="notice"><p className="fine">{state.guidance.note}</p></div>
+        <div className="guidance-entries">
+          {state.guidance.entries.map(entry => <div className="tracker-row" key={entry.objectiveIndex}>
+            <p><strong>{entry.status === "needs-practice" ? "Needs practice" : "Unknown"}</strong> · {entry.objective}{entry.status === "unknown" ? " — not yet assessed, not weakness" : ""}</p>
+            {entry.scored.length > 0 && <ul className="fine">
+              {entry.scored.map(citation => {
+                const kind = citation.source === "attempt" ? "attempt" : "retest";
+                return <li key={`${citation.source}-${citation.evidenceId}-${citation.position}`}>
+                  Scored evidence ({citation.source === "attempt" ? "unaided attempt" : "targeted retest"}) — {citationLink(citation)}: {displayPointsOf(citation.earned, graded.pointsScale)} of {displayPointsOf(citation.points, graded.pointsScale)} points.
+                  {isFlagged(kind, citation.evidenceId, citation.position)
+                    ? <span className="fine"> Flagged as unclear — recorded with the evidence.</span>
+                    : <button className="quiet" disabled={busy} onClick={() => { void flagItem(kind, citation.evidenceId, citation.position); }}>Flag as unclear</button>}
+                </li>;
+              })}
+            </ul>}
+            {entry.practice && <p className="fine">Practice evidence (separate from the scored attempt, labeled by kind): unaided {entry.practice.unaidedCorrect} correct / {entry.practice.unaidedIncorrect} incorrect; assisted {entry.practice.assistedCorrect} correct / {entry.practice.assistedIncorrect} incorrect.{entry.practice.latestIncorrect && <> Latest incorrect ({entry.practice.latestIncorrect.evidenceKind}): “{entry.practice.latestIncorrect.attempted}” — {new Date(entry.practice.latestIncorrect.submittedAt).toLocaleString()}.</>}</p>}
+          </div>)}
+        </div>
+      </>}
+      <div className="actions"><button disabled={busy} onClick={() => { void start(); }}>Start a new attempt</button></div>
+      <p className="fine">No pedagogical attempt limit — a fresh attempt is always offered, never forced. Flagging a question records the dispute with the evidence; it changes no outcome here.</p>
+    </>}
+    {/* The recovery panel mounts whenever a chain exists in any served state —
+        the component's `none` early return above already excludes the honest
+        no-course state, so an open retest stays reachable even while a new
+        ordinary attempt is open or the test is re-offered. */}
+    {recovery && <div className="tracker-row">
+      <h4 ref={recoveryHeading} tabIndex={-1}>Recovery</h4>
+      {graded && !recoveryLive && <p className="fine">This chain belongs to an earlier failed attempt and stays listed and readable here.</p>}
+      <p><strong>Failed-test requirement: {recovery.requirementSatisfied ? "satisfied" : `open — ${recoveryOpen.length} target group${recoveryOpen.length === 1 ? "" : "s"} uncleared`}.</strong> <span className="fine">Satisfied only when every ledgered group independently clears a fresh same-demand retest at the original pass mark; no untested group is inferred passed.</span></p>
+      <ul>{recovery.targets.map(target => <li key={target.objectiveIndex} className="fine">
+        {target.objective} — initial {displayPointsOf(target.initialEarned, target.pointsScale)}/{displayPointsOf(target.initialTotal, target.pointsScale)} ({target.initialDisplayPercent}) · {target.status === "cleared" ? `cleared ${target.clearedAt ? new Date(target.clearedAt).toLocaleString() : ""}` : "open"}
+      </li>)}</ul>
+      <p className="fine">Recovery credit lists beside the original result above — never merged, never averaged into a new score. The original row never changes.</p>
+      {activeRetest && <>
+        <p><strong>Retest open</strong> — {activeRetest.items.length} fresh item{activeRetest.items.length === 1 ? "" : "s"} for {activeRetest.targetIndexes.length} group{activeRetest.targetIndexes.length === 1 ? "" : "s"}, {displayPointsOf(activeRetest.items.reduce((sum, item) => sum + item.points, 0), activeRetest.pointsScale)} points. The original pass mark{recoveryLive && graded ? ` (${graded.passMarkPercent}%)` : ""}, answer rule and rubric apply; pinned to course version {activeRetest.courseVersion}.</p>
+        <form onSubmit={event => { event.preventDefault(); void submitRetestFlow(activeRetest.retestId); }}>
+          {activeRetest.items.map(item => <fieldset key={item.position} disabled={busy}>
+            <legend>Retest item {item.position} of {activeRetest.items.length} · {displayPointsOf(item.points, activeRetest.pointsScale)} points · objective: {item.objective}</legend>
+            <p>{item.prompt}</p>
+            {item.choices.map(option => <div className="answer-row" key={option.id}>
+              <input type="radio" id={`retest-choice-${item.position}-${option.id}`} name={`retest-choice-${item.position}`} value={option.id} checked={retestChoices[item.position] === option.id} onChange={() => setRetestChoices(previous => ({ ...previous, [item.position]: option.id }))} />
+              <label htmlFor={`retest-choice-${item.position}-${option.id}`}>{option.text}</label>
+            </div>)}
+          </fieldset>)}
+          <div className="actions"><button type="submit" disabled={busy || retestAnswered < activeRetest.items.length}>Submit retest ({retestAnswered}/{activeRetest.items.length} answered)</button></div>
+        </form>
+        <p className="fine">The retest submits exactly once. A group clears only when it independently reaches the original pass mark by the unrounded comparison.</p>
+      </>}
+      {gradedRetest && <>
+        <h4 ref={retestResultHeading} tabIndex={-1}>Retest result</h4>
+        <div className="notice"><p>Retest {gradedRetest.retestId.slice(0, 8)}… · {gradedRetest.groups.filter(group => group.cleared).length} of {gradedRetest.groups.length} reassessed group{gradedRetest.groups.length === 1 ? "" : "s"} cleared.</p></div>
+        <ul>{gradedRetest.groups.map(group => <li key={group.objectiveIndex} className="fine">
+          {group.objective} — {displayPointsOf(group.earned, group.pointsScale)}/{displayPointsOf(group.total, group.pointsScale)} ({group.displayPercent}) · {group.cleared ? "cleared" : "still open — the requirement stays unsatisfied"}
+        </li>)}</ul>
+        {gradedRetest.items.map(item => <fieldset key={item.position} id={`retest-item-${gradedRetest.retestId}-${item.position}`}>
+          <legend>Retest item {item.position} · {item.earned === item.points ? `correct · ${displayPointsOf(item.points, gradedRetest.pointsScale)} points` : item.earned > 0 ? `partly correct · ${displayPointsOf(item.earned, gradedRetest.pointsScale)} of ${displayPointsOf(item.points, gradedRetest.pointsScale)} points` : item.chosenChoiceId === null ? "unanswered · 0 points" : "not correct · 0 points"}</legend>
+          <p>{item.prompt}</p>
+          <p><strong>Correct answer:</strong> {item.choices.find(choice => choice.id === item.correctChoiceId)?.text ?? item.correctChoiceId}{item.chosenChoiceId !== null && item.chosenChoiceId !== item.correctChoiceId && <> — your answer: {item.choices.find(choice => choice.id === item.chosenChoiceId)?.text ?? item.chosenChoiceId}</>}</p>
+          <p className="fine">Objective: {item.objective} · {displayPointsOf(item.points, gradedRetest.pointsScale)} points.</p>
+        </fieldset>)}
+      </>}
+      {!activeRetest && recoveryOpen.length > 0 && <>
+        <p>Declare the open group{recoveryOpen.length === 1 ? "" : "s"} this retest covers — fresh questions mirroring the original per-group points exactly:</p>
+        {recoveryOpen.map(target => <div className="answer-row" key={target.objectiveIndex}>
+          <input type="checkbox" id={`retest-target-${target.objectiveIndex}`} checked={targetSelection[target.objectiveIndex] !== false} onChange={() => setTargetSelection(previous => ({ ...previous, [target.objectiveIndex]: previous[target.objectiveIndex] === false }))} disabled={busy} />
+          <label htmlFor={`retest-target-${target.objectiveIndex}`}>{target.objective} — initial {displayPointsOf(target.initialEarned, target.pointsScale)}/{displayPointsOf(target.initialTotal, target.pointsScale)} ({target.initialDisplayPercent})</label>
+        </div>)}
+        <div className="actions"><button disabled={busy || selectedTargets.length === 0} onClick={() => { void startRetestFlow(recovery.rootAttemptId, selectedTargets.map(target => target.objectiveIndex)); }}>Start targeted retest ({selectedTargets.length} of {recoveryOpen.length} open group{recoveryOpen.length === 1 ? "" : "s"})</button></div>
+        <p className="fine">Available now: {displayPointsOf(selectedTargets.reduce((sum, target) => sum + target.initialTotal, 0), recoveryOpen[0]?.pointsScale ?? scale)} points across {selectedTargets.length} group{selectedTargets.length === 1 ? "" : "s"}; a group clears only at the original pass mark. Passed groups are never re-tested; there is no time limit.</p>
+      </>}
+      {recovery.retests.length > 0 && <div>
+        <p><strong>Retest history</strong> <span className="fine">· listed, never overwritten</span></p>
+        <ul>{recovery.retests.map(retest => <li key={retest.retestId} className="fine">
+          {new Date(retest.startedAt).toLocaleString()} · groups {retest.targetIndexes.join(", ")} · {retest.status === "active" ? "open — not yet submitted" : retest.groups ? retest.groups.map(group => `${displayPointsOf(group.earned, group.pointsScale)}/${displayPointsOf(group.total, group.pointsScale)} ${group.cleared ? "cleared" : "not cleared"}`).join(" · ") : "graded"}
+        </li>)}</ul>
+      </div>}
+    </div>}
+    {/* Story 7 — the disputed-items panel (EXPERIENCE State Patterns "Item
+        under review"): flagging opened the dispute in the same transaction;
+        each dispute shows its Under-review/Corrected state, the correction
+        path (a dispute-scoped fresh replacement of the disputed group),
+        and the honest no-extra-failed-attempt wording. Earned passes and
+        completion are never revoked — only pending decisions pause, and
+        the panel says so in text. */}
+    {disputes.length > 0 && <div className="tracker-row">
+      <h4 ref={disputeHeading} tabIndex={-1}>Disputed items</h4>
+      <p className="fine">Each flagged scored item is Under review while its validity is checked. A pending completion decision that could rest on it pauses; already-earned passes and completion are never revoked. The corrected replacement re-assesses the disputed objective group with fresh comparable questions — the dispute never counts as another failure.</p>
+      {disputes.map(dispute => <div className="tracker-row" key={dispute.disputeId}>
+        <p><strong>{dispute.status === "under-review" ? "Under review" : "Corrected"}</strong> · item {dispute.position} of the {dispute.evidenceKind === "attempt" ? "attempt" : "retest"} {dispute.evidenceId.slice(0, 8)}… · objective: {dispute.objective} · course version {dispute.courseVersion} · opened {new Date(dispute.openedAt).toLocaleString()}.</p>
+        {dispute.status === "corrected"
+          ? <p className="fine">Resolved corrected by replacement {dispute.resolvedByReplacement?.slice(0, 8) ?? ""}… {dispute.resolvedAt ? new Date(dispute.resolvedAt).toLocaleString() : ""} — the defect is annotated on the evidence, history is preserved, and the original row never changed.</p>
+          : <div className="actions">
+            <button disabled={busy || !!activeReplacement} onClick={() => { void startReplacementFlow(dispute.disputeId); }}>Start corrected replacement</button>
+            <span className="fine">Fresh comparable questions for this objective group at the original pass mark; a clear resolves the dispute without an extra failed attempt. Retries are unlimited.</span>
+          </div>}
+        {dispute.replacements.length > 0 && <ul className="fine">
+          {dispute.replacements.map(replacement => <li key={replacement.replacementId}>
+            {new Date(replacement.startedAt).toLocaleString()} · {replacement.status === "active" ? "open — not yet submitted" : replacement.group ? `${replacement.group.displayPercent} — ${replacement.group.cleared ? "cleared" : "not cleared"} (no failed attempt recorded)` : "graded"}
+          </li>)}
+        </ul>}
+      </div>)}
+      {activeReplacement && <>
+        <p><strong>Corrected replacement open</strong> — {activeReplacement.items.length} fresh item{activeReplacement.items.length === 1 ? "" : "s"} for the objective “{replacementObjective(activeReplacement.disputeId)}”, {displayPointsOf(activeReplacement.items.reduce((sum, item) => sum + item.points, 0), activeReplacement.pointsScale)} points at the original pass mark. Pinned to course version {activeReplacement.courseVersion}.</p>
+        <form onSubmit={event => { event.preventDefault(); void submitReplacementFlow(activeReplacement.replacementId); }}>
+          {activeReplacement.items.map(item => <fieldset key={item.position} disabled={busy}>
+            <legend>Replacement item {item.position} of {activeReplacement.items.length} · {displayPointsOf(item.points, activeReplacement.pointsScale)} points · objective: {item.objective}</legend>
+            <p>{item.prompt}</p>
+            {item.choices.map(option => <div className="answer-row" key={option.id}>
+              <input type="radio" id={`replacement-choice-${item.position}-${option.id}`} name={`replacement-choice-${item.position}`} value={option.id} checked={replacementChoices[item.position] === option.id} onChange={() => setReplacementChoices(previous => ({ ...previous, [item.position]: option.id }))} />
+              <label htmlFor={`replacement-choice-${item.position}-${option.id}`}>{option.text}</label>
+            </div>)}
+          </fieldset>)}
+          <div className="actions"><button type="submit" disabled={busy || replacementAnswered < activeReplacement.items.length}>Submit corrected replacement ({replacementAnswered}/{activeReplacement.items.length} answered)</button></div>
+        </form>
+        <p className="fine">The replacement submits exactly once. The group clears only at the original pass mark by the unrounded comparison; a non-clearing result records no failed attempt and leaves the dispute Under review — you may try again without limit.</p>
+      </>}
+      {gradedReplacement && !activeReplacement && gradedReplacement.items.map(item => <fieldset key={item.position} id={`replacement-item-${gradedReplacement.replacementId}-${item.position}`}>
+        <legend>Replacement item {item.position} · {item.earned === item.points ? `correct · ${displayPointsOf(item.points, gradedReplacement.pointsScale)} points` : item.earned > 0 ? `partly correct · ${displayPointsOf(item.earned, gradedReplacement.pointsScale)} of ${displayPointsOf(item.points, gradedReplacement.pointsScale)} points` : item.chosenChoiceId === null ? "unanswered · 0 points" : "not correct · 0 points"}</legend>
         <p>{item.prompt}</p>
         <p><strong>Correct answer:</strong> {item.choices.find(choice => choice.id === item.correctChoiceId)?.text ?? item.correctChoiceId}{item.chosenChoiceId !== null && item.chosenChoiceId !== item.correctChoiceId && <> — your answer: {item.choices.find(choice => choice.id === item.chosenChoiceId)?.text ?? item.chosenChoiceId}</>}</p>
-        <p className="fine">Objective: {item.objective} · {item.points} points.</p>
       </fieldset>)}
-      <div className="actions"><button disabled={busy} onClick={() => { void start(); }}>Start a new attempt</button></div>
-      <p className="fine">No pedagogical attempt limit — a fresh attempt is always offered, never forced. This tracer has no recovery path, partial credit or gap guidance; those belong to later entries.</p>
-    </>}
+      <p className="fine">Fresh-question generation (retests and corrected replacements) has a daily resource limit — {state.generation.usedToday} of {state.generation.dailyLimit} used today, resetting tomorrow. It is a resource limit only: pedagogical retries are unlimited, and a delay never records a failed attempt or promises unlimited free generation.</p>
+    </div>}
     {state.attempts.length > 0 && <div className="tracker-row">
       <p><strong>Attempt history</strong> <span className="fine">· listed, never overwritten</span></p>
       <ul>{state.attempts.map(attempt => <li key={attempt.attemptId} className="fine">
-        {new Date(attempt.startedAt).toLocaleString()} · course version {attempt.courseVersion} · {attempt.status === "active" ? "open — not yet submitted" : `${attempt.displayPercent} — ${attempt.passed ? "Pass" : "Not passed"} (${attempt.earnedPoints}/${attempt.totalPoints})`}
+        {new Date(attempt.startedAt).toLocaleString()} · course version {attempt.courseVersion} · {attempt.status === "active" ? "open — not yet submitted" : `${attempt.displayPercent} — ${attempt.passed ? "Pass" : "Not passed"} (${displayPointsOf(attempt.earnedPoints ?? 0, attempt.pointsScale)}/${displayPointsOf(attempt.totalPoints ?? 0, attempt.pointsScale)})`}
       </li>)}</ul>
+    </div>}
+    {state.versions.length > 1 && <div className="tracker-row">
+      <h4 ref={switchHeading} tabIndex={-1}>Study version</h4>
+      <p className="fine">You are studying version {state.version}. A newer or older release never moves you silently — switching is your explicit choice, and it never erases earned awards or listed attempts.</p>
+      <div className="actions">
+        <label htmlFor="switch-target">Switch to version</label>
+        <select id="switch-target" value={switchTarget} onChange={event => { setSwitchTarget(event.target.value); setDisclosure(null); }} disabled={busy}>
+          <option value="">Choose a version…</option>
+          {state.versions.filter(version => version !== state.version).map(version => <option key={version} value={version}>{version}</option>)}
+        </select>
+        <button disabled={busy || !switchTarget} onClick={() => { void showSwitchDisclosure(); }}>Show what changes</button>
+      </div>
+      {disclosure && <div>
+        <p><strong>Changed required work — version {disclosure.from.version ?? "none"} → version {disclosure.to.version}:</strong></p>
+        {disclosure.requiredTestChanged
+          ? <p className="fine">The required test changes on version {disclosure.to.version} (different objectives and questions).</p>
+          : <p className="fine">The required test is unchanged between these versions.</p>}
+        {disclosure.addedRequiredItems.length > 0 && <div>
+          <p className="fine">New required work you would have to complete:</p>
+          <ul>{disclosure.addedRequiredItems.map(item => <li key={item.id} className="fine">Added — {item.title}</li>)}</ul>
+        </div>}
+        {disclosure.removedRequiredItems.length > 0 && <div>
+          <p className="fine">Required work that no longer counts on the target version:</p>
+          <ul>{disclosure.removedRequiredItems.map(item => <li key={item.id} className="fine">Removed — {item.title}</li>)}</ul>
+        </div>}
+        {disclosure.addedRequiredItems.length === 0 && disclosure.removedRequiredItems.length === 0 && <p className="fine">No required reading items change between these versions.</p>}
+        <div className="actions">
+          <button disabled={busy} onClick={() => { void confirmSwitch(); }}>Confirm switch to version {disclosure.to.version}</button>
+          <button className="quiet" disabled={busy} onClick={() => { setDisclosure(null); setNotice("Switch canceled — you stay on the studied version."); }}>Cancel</button>
+        </div>
+        <p className="fine">Confirming moves your studied version; your award for version {disclosure.from.version ?? "—"} stays earned and listed.</p>
+      </div>}
     </div>}
   </section>;
 }

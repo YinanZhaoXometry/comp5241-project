@@ -1,4 +1,8 @@
 # Ordered assessment-and-progress stories, 2026-10-24; no leaf files or execution plans yet.
+# 2026-10-29 CLOSURE: entries 1-11 done on local synthetic evidence (epic conditionally
+# closed; see epic-assessment-and-progress.md Notes). 3.11 re-sliced at its authorization
+# boundary: local integrated suite done; the F-C authorized-release half dropped-deferred
+# (revivable under its own authorization); F-A live-AI acceptance open by design.
 # covers uses THIS epic's R1-R4 (parent R10/R13/R14/R20), not initiative R ids.
 # One lane protects shared attempt/evidence/award schema and scoring semantics;
 # the 2026-10-21 whole-epic execution gates still apply to every entry.

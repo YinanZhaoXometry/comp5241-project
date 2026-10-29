@@ -10,6 +10,7 @@ import { GoalStage } from "./goal-stage";
 import { CheckStage } from "./check-stage";
 import { CourseStage } from "./course-stage";
 import { AssessmentStage } from "./assessment-stage";
+import { RoadmapPanel } from "./roadmap-panel";
 import { ExportPanel } from "./export-panel";
 import { DangerZone } from "./danger-zone";
 import { AiAssist } from "./ai-assist";
@@ -21,7 +22,7 @@ import type { Receipt } from "../contracts/setup";
 type Session = { user: { id: string; name: string }; needsRefresh: boolean };
 type Entry = { rootId: string; filename: string; revision: number; state: string; confirmed: boolean; cleanupState: string; courseGenerated: boolean };
 
-export function StudyApp({ prefillEmail }: Readonly<{ prefillEmail?: string }>) {
+export function StudyApp({ prefillEmail, prefillPassword }: Readonly<{ prefillEmail?: string; prefillPassword?: string }>) {
   const [session, setSession] = useState<Session | null>(null);
   const [ready, setReady] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -149,9 +150,10 @@ export function StudyApp({ prefillEmail }: Readonly<{ prefillEmail?: string }>) 
         <p className="subtitle">A small, source-led learning journey. Your plan stays yours.</p>
         <div role="alert" className={notice ? "notice" : undefined}>{notice}</div>
         {!ready && <output>Checking your session…</output>}
-        {ready && !session && <section className="panel signin"><h2>Sign in</h2><p>Use an operator-provisioned synthetic account. Public sign-up and self-promotion are unavailable.</p><form onSubmit={event => { void signIn(event); }}><label htmlFor="email">Email</label><input id="email" name="email" type="email" autoComplete="username" required maxLength={254} defaultValue={prefillEmail} /><label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="current-password" required minLength={16} maxLength={128} /><button disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form><p className="fine">{prefillEmail ? "Email prefilled from the local synthetic learner account." : "Contact the local operator for account access or recovery."}</p></section>}
+        {ready && !session && <section className="panel signin"><h2>Sign in</h2><p>Use an operator-provisioned synthetic account. Public sign-up and self-promotion are unavailable.</p><form onSubmit={event => { void signIn(event); }}><label htmlFor="email">Email</label><input id="email" name="email" type="email" autoComplete="username" required maxLength={254} defaultValue={prefillEmail} /><label htmlFor="password">Password</label><input id="password" name="password" type="password" autoComplete="current-password" required minLength={16} maxLength={128} defaultValue={prefillPassword} /><button disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button></form><p className="fine">{prefillEmail ? "Email and password prefilled from the local synthetic learner account." : "Contact the local operator for account access or recovery."}</p></section>}
         {session && <>
           <p className="fine">Signed in as {session.user.name}</p>
+          <RoadmapPanel key={session.user.id} busy={busy} onFailure={failure} onOpen={root => { void open(root); }} />
           {uploading && <button className="quiet" onClick={() => uploadAbort.current?.abort()}>Cancel upload</button>}
           {receipt && <section className="panel"><h2>Deletion receipt</h2><output>{receipt}</output></section>}
           {!study && <section className="panel"><h2>Start with sources</h2><FilePicker busy={busy} onUpload={upload} /></section>}

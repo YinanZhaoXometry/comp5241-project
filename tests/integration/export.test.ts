@@ -143,9 +143,17 @@ describe('authenticated consistent personal-setup export', () => {
     // Epic-2 S8 flipped generated-courses, practice-evidence and
     // why-explanations INTO the artifact (owner derivative content), so the
     // skip set is exactly: the two diagnostic answer-key tables, advisory AI
-    // drafts, and fetched supplement passages.
-    expect(manifest.skipped.map(item => item.category)).toEqual(['diagnostic-evidence', 'diagnostic-evidence', 'ai-drafts', 'supplements']);
+    // drafts, and fetched supplement passages. Epic-3 3.9 adds the one
+    // assessment skip: the content-free daily generation counter (owner
+    // accounting, not study content — the attempts/retests/replacements it
+    // counted ship under assessment-evidence).
+    expect(manifest.skipped.map(item => item.category)).toEqual(['diagnostic-evidence', 'diagnostic-evidence', 'ai-drafts', 'supplements', 'assessment-generation-use']);
     expect(manifest.skipped.filter(item => item.category === 'diagnostic-evidence').every(item => item.reason.includes('Deliberately excluded') && item.reason.includes('answer keys'))).toBe(true);
+    // Epic-3 3.9: the generation counter's exclusion is deliberate and says
+    // why (content-free resource accounting), naming where the counted
+    // evidence does ship.
+    expect(manifest.skipped.find(item => item.category === 'assessment-generation-use')!.reason).toContain('content-free');
+    expect(manifest.skipped.find(item => item.category === 'assessment-generation-use')!.reason).toContain('assessment-evidence');
     // S6: advisory AI drafts are deliberately excluded (suggestions, not owner
     // content); no excerpt or provider reply ever enters the artifact.
     expect(manifest.skipped.find(item => item.category === 'ai-drafts')!.reason).toContain('Deliberately excluded');

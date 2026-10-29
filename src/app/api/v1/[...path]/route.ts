@@ -13,7 +13,7 @@ import { listExports, requestExport, downloadExport } from "../../../../modules/
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
 import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState, getProvenance } from "../../../../modules/course-generation/service";
 import { listInstructorCourses, createCourse, getCourseDetail, saveDraft, approveVersion, previewEnrollment, confirmEnrollment, getApprovals, learnerEnrollments, learnerCourse } from "../../../../modules/instructor-courses/service";
-import { getAssessment, startTest, submitAttempt } from "../../../../modules/assessment-progress/service";
+import { getAssessment, startTest, submitAttempt, startRetest, submitRetest, getSwitchDisclosure, switchCourseVersion, flagAssessmentItem, startReplacement, submitReplacement, getRoadmap, getAssessmentHandoff } from "../../../../modules/assessment-progress/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -140,8 +140,83 @@ async function handle(request: Request, context: Context) {
       if (path.length === 3 && request.method === "POST") return Response.json(await startTest(identity, rootId, await jsonBody(request) as Command), { headers: privateHeaders });
       if (request.method === "POST") return Response.json(await submitAttempt(identity, rootId, path[3], await jsonBody(request)), { headers: privateHeaders });
     }
+    // Epic-3 story-2 targeted recovery: the retest verbs mirror the attempt
+    // verbs above. POST starts a fresh same-demand retest of one
+    // graded-failed attempt's declared open target groups (body names the
+    // root attempt + target subset); the submit verb grades the open retest
+    // exactly once, clearing each independently passing group in the same
+    // transaction. The recovery ledger rides the existing assessment GET —
+    // never an answer before that retest is graded.
+    if (path[0] === "studies" && path[2] === "assessment" && path[3] === "retest" && (path.length === 4 || (path.length === 6 && path[5] === "submit"))) {
+      const rootId = path[1];
+      if (path.length === 4 && request.method === "POST") return Response.json(await startRetest(identity, rootId, await jsonBody(request)), { headers: privateHeaders });
+      if (request.method === "POST") return Response.json(await submitRetest(identity, rootId, path[4], await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-3 story-4 explicit version switch (D1): GET serves the changed-
+    // required-work disclosure between the studied release and the target
+    // (?course=<uuid|version>, read-only); POST is the informed command —
+    // the acknowledged change set must match the server-computed diff
+    // exactly, and switching never erases prior awards.
+    if (path[0] === "studies" && path[2] === "assessment" && path[3] === "switch" && path.length === 4) {
+      const rootId = path[1];
+      if (request.method === "GET") {
+        const requested = new URL(request.url).searchParams.get("course") ?? undefined;
+        const disclosure = await getSwitchDisclosure(identity, rootId, requested);
+        return protectedResponse(identity, rootId, disclosure, request.signal, false, disclosure.objectIds);
+      }
+      if (request.method === "POST") return Response.json(await switchCourseVersion(identity, rootId, await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-3 story-5 evidence-linked guidance rides the assessment GET above
+    // (no route of its own); the one-way unclear-item flag is the story's only
+    // write: it records WITH the evidence and changes no outcome — Under-
+    // review, pauses and corrections are entry 7's, not this verb's.
+    if (path[0] === "studies" && path[2] === "assessment" && path[3] === "flag" && path.length === 4) {
+      const rootId = path[1];
+      if (request.method === "POST") return Response.json(await flagAssessmentItem(identity, rootId, await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-3 story-7 disputed-item correction: the flag above now opens the
+    // dispute (Under review) in its own transaction; the corrected
+    // replacement verbs mirror the retest verbs — POST starts (or re-offers)
+    // the dispute-scoped fresh assessment of the disputed item's group (the
+    // body names the dispute), and the submit grades the open replacement
+    // exactly once, resolving the dispute only on an independent clear at
+    // the root pass mark. The dispute/pause/quota states ride the
+    // assessment GET above; no route of their own.
+    if (path[0] === "studies" && path[2] === "assessment" && path[3] === "replacement" && (path.length === 4 || (path.length === 6 && path[5] === "submit"))) {
+      const rootId = path[1];
+      if (path.length === 4 && request.method === "POST") return Response.json(await startReplacement(identity, rootId, await jsonBody(request)), { headers: privateHeaders });
+      if (request.method === "POST") return Response.json(await submitReplacement(identity, rootId, path[4], await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-3 story-8 versioned completion and evidence handoff surface
+    // (AD-13/AD-14): a read-only owner-scoped GET serving the pinned handoff
+    // document downstream epics consume — awards, applicable pass-mark
+    // snapshots, the shared evaluator verdict, reporting projections and the
+    // activity/rubric/completion links. Optional ?course=<uuid|version> pins
+    // one ready release (the studied release by default); optional
+    // ?fields=<a,b> declares the consumer's intended contract fields — a
+    // name outside the contract is INVALID_INPUT before anything is read.
+    // EVERY value of a repeated ?fields= parameter is joined into the
+    // declaration, so no non-contract name can hide behind a first valid
+    // one (the provenance rule).
+    if (path[0] === "studies" && path[2] === "assessment" && path[3] === "handoff" && path.length === 4 && request.method === "GET") {
+      const rootId = path[1];
+      const parameters = new URL(request.url).searchParams;
+      const requested = parameters.get("course") ?? undefined;
+      const fieldValues = parameters.getAll("fields");
+      const fields = fieldValues.length ? fieldValues.join(",") : undefined;
+      const handoff = await getAssessmentHandoff(identity, rootId, requested, fields);
+      return protectedResponse(identity, rootId, handoff, request.signal, false, handoff.objectIds);
+    }
     if (path[0] === "studies" && path.length === 3 && path[2] === "dependencies" && request.method === "POST") {
       return Response.json(await dependenciesPreview(identity, path[1], await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-3 story-6 whole-mini-course roadmap surface: an owner-scoped GET
+    // (the preferences precedent — no rootId; every read inside is
+    // owner_id-scoped, so cross-owner denial is structural). Read-only: the
+    // roadmap derives from awards/attempts/ledgers/manifests and the stubbed
+    // versioned review-state query port; nothing writes.
+    if (path[0] === "roadmap" && path.length === 1 && request.method === "GET") {
+      return Response.json(await getRoadmap(identity), { headers: privateHeaders });
     }
     if (path[0] === "studies" && path.length >= 2 && path.length <= 3) {
       const rootId = path[1]; const action = path[2];

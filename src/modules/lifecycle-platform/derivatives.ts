@@ -429,3 +429,116 @@ const instructorCoursesPort: LifecyclePort = {
 };
 
 registerLifecyclePort(instructorCoursesPort);
+// Epic-3 entry 9: scored-assessment derivatives (migrations 021–026) —
+// attempts with their at-start snapshots, the targeted-recovery ledger and
+// retest chain, monotonic completion awards (mini-course AND parent-path
+// rows), the studied-release pointer, the one-way item flag, the dispute
+// state machine, its corrected replacements and the content-free daily
+// generation counter. Root scope deletes by root_id because the parent-path
+// award rows and (transitively) anything else whose course linkage is NULL
+// never ride the course ON DELETE CASCADE — the port, not the FK graph, is
+// what makes root purge complete. Guidance records are a read-time
+// derivation over these rows (no stored copy exists to register). Deny
+// rides the existing fences exactly like the course port: every assessment
+// verb and read re-runs scopedRoot plus the plan-revision assertObjects
+// inside its own AD-2 transaction, the replay path re-runs scopedRoot with
+// includeDeleted=false for non-delete actions, and the root-row FOR UPDATE
+// serializes an in-flight grade against deletion (a submit either commits
+// before the tombstone and is purged with the root, or is denied after) —
+// so no blind state write is needed. app.assessment_generation_use is
+// CONTENT-FREE owner accounting (the ai_dispatch_ledger precedent): it is
+// deliberately not previewed and survives ROOT purge (deleting one study
+// must not under-count a budget already consumed); whole-personal removal
+// purges it owner-wide.
+const assessmentProgressPort: LifecyclePort = {
+  name: "assessment-progress",
+  label: "Scored assessment evidence",
+  async preview(client, scope) {
+    const scopeColumn = scope.personal ? "owner_id" : "root_id";
+    const scopeArg = scope.personal ? [scope.ownerId] : scope.rootIds;
+    if (!scopeArg.length) return [];
+    const count = async (table: string, columns: string[]) => {
+      if (!(await tableReady(client, `app.${table}`, columns))) return null;
+      const rows = await client.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM app.${table} WHERE ${scopeColumn}=ANY($1::uuid[])`,
+        [scopeArg],
+      );
+      return rows.rows[0].count;
+    };
+    const categories: PortCategory[] = [];
+    const attempts = await count("test_attempt", ["root_id"]);
+    if (attempts === null) return categories;
+    categories.push({ key: "assessment-attempts", label: "Scored test attempts", count: attempts });
+    const retests = await count("retest_attempt", ["root_id"]);
+    if (retests !== null) categories.push({ key: "assessment-retests", label: "Targeted recovery retests", count: retests });
+    const targets = await count("recovery_target", ["root_id"]);
+    if (targets !== null) categories.push({ key: "assessment-recovery-ledger", label: "Recovery ledger entries", count: targets });
+    const awards = await count("completion_award", ["root_id"]);
+    if (awards !== null) categories.push({ key: "assessment-awards", label: "Completion awards and parent paths", count: awards });
+    const flags = await count("assessment_flag", ["root_id"]);
+    if (flags !== null) categories.push({ key: "assessment-flags", label: "One-way item flags", count: flags });
+    const disputes = await count("item_dispute", ["root_id"]);
+    if (disputes !== null) categories.push({ key: "assessment-disputes", label: "Item disputes", count: disputes });
+    const replacements = await count("assessment_replacement", ["root_id"]);
+    if (replacements !== null) categories.push({ key: "assessment-replacements", label: "Corrected replacements", count: replacements });
+    const pointers = await count("studied_release", ["root_id"]);
+    if (pointers !== null) categories.push({ key: "assessment-release-pointers", label: "Studied-release pointers", count: pointers });
+    return categories;
+  },
+  async deny() {
+    // Fenced by scopedRoot + plan-revision assertObjects inside every
+    // assessment transaction; see above.
+  },
+  async purge(client, scope) {
+    if (scope.personal) {
+      // Owner-wide removal: every assessment row of the owner, generation
+      // counter included. Same FK-safe order as the root scope.
+      if (await tableReady(client, "app.item_dispute", ["owner_id"]))
+        await client.query("DELETE FROM app.item_dispute WHERE owner_id=$1", [scope.ownerId]);
+      if (await tableReady(client, "app.assessment_replacement", ["owner_id"]))
+        await client.query("DELETE FROM app.assessment_replacement WHERE owner_id=$1", [scope.ownerId]);
+      if (await tableReady(client, "app.recovery_target", ["owner_id"]))
+        await client.query("DELETE FROM app.recovery_target WHERE owner_id=$1", [scope.ownerId]);
+      if (await tableReady(client, "app.retest_attempt", ["owner_id"]))
+        await client.query("DELETE FROM app.retest_attempt WHERE owner_id=$1", [scope.ownerId]);
+      if (await tableReady(client, "app.test_attempt", ["owner_id"]))
+        await client.query("DELETE FROM app.test_attempt WHERE owner_id=$1", [scope.ownerId]);
+      if (await tableReady(client, "app.assessment_flag", ["owner_id"]))
+        await client.query("DELETE FROM app.assessment_flag WHERE owner_id=$1", [scope.ownerId]);
+      if (await tableReady(client, "app.completion_award", ["owner_id"]))
+        await client.query("DELETE FROM app.completion_award WHERE owner_id=$1", [scope.ownerId]);
+      if (await tableReady(client, "app.studied_release", ["owner_id"]))
+        await client.query("DELETE FROM app.studied_release WHERE owner_id=$1", [scope.ownerId]);
+      if (await tableReady(client, "app.assessment_generation_use", ["owner_id"]))
+        await client.query("DELETE FROM app.assessment_generation_use WHERE owner_id=$1", [scope.ownerId]);
+      return;
+    }
+    if (!scope.rootIds.length) return;
+    // FK-safe order (review disposition 2026-10-29: the ledger precedes the
+    // retests it references — recovery_target.cleared_by carries no cascade,
+    // a graded clearing retest leaves a ledger row pointing at it): disputes
+    // before replacements (026's circular resolved_by_replacement FK carries
+    // no cascade), ledger before retest AND root attempts; deleting by
+    // root_id makes the purge complete regardless of what the course cascade
+    // already removed.
+    if (await tableReady(client, "app.item_dispute", ["root_id"]))
+      await client.query("DELETE FROM app.item_dispute WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
+    if (await tableReady(client, "app.assessment_replacement", ["root_id"]))
+      await client.query("DELETE FROM app.assessment_replacement WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
+    if (await tableReady(client, "app.recovery_target", ["root_id"]))
+      await client.query("DELETE FROM app.recovery_target WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
+    if (await tableReady(client, "app.retest_attempt", ["root_id"]))
+      await client.query("DELETE FROM app.retest_attempt WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
+    if (await tableReady(client, "app.test_attempt", ["root_id"]))
+      await client.query("DELETE FROM app.test_attempt WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
+    if (await tableReady(client, "app.assessment_flag", ["root_id"]))
+      await client.query("DELETE FROM app.assessment_flag WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
+    if (await tableReady(client, "app.completion_award", ["root_id"]))
+      await client.query("DELETE FROM app.completion_award WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
+    if (await tableReady(client, "app.studied_release", ["root_id"]))
+      await client.query("DELETE FROM app.studied_release WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
+    // The content-free generation counter survives root purge by design.
+  },
+};
+
+registerLifecyclePort(assessmentProgressPort);
