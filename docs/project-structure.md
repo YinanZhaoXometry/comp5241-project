@@ -139,7 +139,14 @@ project-new/
 │   │                       INTO the artifact as owner derivative content,
 │   │                       keeps fetched supplement passages the one honest
 │   │                       class skip — identity/location metadata only rides
-│   │                       along inside each exported course)
+│   │                       along inside each exported course; epic-3 3.9
+│   │                       flips attempt/retest/recovery-ledger/award/flag/
+│   │                       dispute/replacement/studied-pointer rows in as
+│   │                       the assessment-evidence class — snapshots with
+│   │                       answer keys included (the S8 owner-can-reveal
+│   │                       reasoning), deleted roots excluded by the same
+│   │                       snapshot scope — and keeps the content-free
+│   │                       daily generation counter the assessment skip)
 │   │   ├── course-generation/  epic-2 S1–S6 tracer: confirmed-plan → generated
 │   │   │                       course (handoff-consuming service, restart-safe worker
 │   │   │                       running the local synthetic fixture behind
@@ -275,7 +282,27 @@ project-new/
 │   │   │                       app.assessment_generation_use carries the
 │   │   │                       honest daily fresh-question budget (retest
 │   │   │                       + replacement starts; a denied start rolls
-│   │   │                       back with zero rows)
+│   │   │                       back with zero rows) — and story 8's
+│   │   │                       versioned handoff surface (handoff.ts pure
+│   │   │                       AD-13 evaluator verdict + AD-14 reporting
+│   │   │                       projections + epic-6 activity/rubric links,
+│   │   │                       served read-only at GET
+│   │   │                       /studies/{id}/assessment/handoff with the
+│   │   │                       fields= scope fence; no migration — 027
+│   │   │                       unused); story 9 registers every derivative
+│   │   │                       kind with epic 1's lifecycle classes through
+│   │   │                       the assessment-progress port in
+│   │   │                       lifecycle-platform/derivatives.ts (content-
+│   │   │                       free preview counts, deny riding the
+│   │   │                       scopedRoot/assertObjects fences, FK-safe
+│   │   │                       idempotent purge in both scopes — parent-path
+│   │   │                       awards and pointers included, the generation
+│   │   │                       counter root-exempt and personal-purged) with
+│   │   │                       no module change and no migration (028
+│   │   │                       unused): retention rides the seven-day
+│   │   │                       deletion clocks, and the race/denial/
+│   │   │                       idempotency proof suite is
+│   │   │                       tests/integration/assessment-lifecycle.test.ts
 │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
 │   │                           derivative ports, dependencies preview (S9),
 │   │                           retention registry/scheduler + archive contract (S10)
@@ -339,7 +366,15 @@ project-new/
 │   │                       model, three-course manifest path, cross-owner
 │   │                       scope denial, version-superseded honesty, the
 │   │                       unbound review-state port and completion
-│   │                       unchanged)
+│   │                       unchanged), assessment-lifecycle (epic-3 story-9:
+│   │                       deletion previews counting every assessment
+│   │                       category, root/personal deletion racing attempt
+│   │                       grading, retest and replacement generation with
+│   │                       no late-recommitted result and complete FK-safe
+│   │                       purge inside the seven-day deadline, owner export
+│   │                       content with cross-owner download denial, and
+│   │                       duplicate lifecycle commands yielding one
+│   │                       tracked effect)
 │   ├── browser/            Playwright: tracer, pages (static product pages), batches,
 │   │                       consent, preferences, handoff, check, export, lifecycle,
 │   │                       course, journey (epic-2 S10 integrated study suite),
