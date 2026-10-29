@@ -232,7 +232,14 @@ describe('epic-3 story-8: versioned completion and evidence handoff surface', ()
     expect(v2.course.version).toBe(2);
 
     const pinnedAfter = await getAssessmentHandoff(a, study.rootId, v1.course.courseId);
-    expect(pinnedAfter).toEqual(pinnedBefore); // value-identical across supersession
+    // The pinned FACTS are value-identical across supersession; only the
+    // live command envelope — the study's current revision, served so the
+    // next command can carry expectedRevision — legitimately advances with
+    // the superseding confirm+regenerate (authored test had hardcoded 7).
+    const { revision: revisionAfter, ...pinnedFactsAfter } = pinnedAfter;
+    const { revision: revisionBefore, ...pinnedFactsBefore } = pinnedBefore;
+    expect(pinnedFactsAfter).toEqual(pinnedFactsBefore);
+    expect(revisionAfter).toBeGreaterThan(revisionBefore);
     const freshDefault = await getAssessmentHandoff(a, study.rootId);
     if (freshDefault.state !== 'ready') throw new Error('expected a ready default document');
     expect(freshDefault.handoff.release.courseId).toBe(v2.course.courseId); // the new read sees it
