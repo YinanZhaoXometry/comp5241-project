@@ -958,3 +958,205 @@ export type SubmittedReplacement = GradedReplacementView & {
   revision: number;
   state: "graded";
 };
+
+// ---------------------------------------------------------------------------
+// Story 8 — the versioned completion and evidence handoff surface (AD-13/
+// AD-14; the epic boundary's supplies to epics 4/5/6). A READ-TIME,
+// owner-scoped, lineage-fenced document served per (root, pinned release) at
+// GET /api/v1/studies/{rootId}/assessment/handoff — the epic-2 getProvenance
+// precedent applied to assessment facts: no writes, no tables, no scheduling
+// surface anywhere. The document carries the three supplies: versioned
+// completion + applicable marks + the AD-13 shared evaluator verdict (epic 4),
+// the attempt/pass/recovery reporting projections with the provisional-grade
+// contract (epic 5), and the activity/rubric/completion link shape epic 6
+// extends. Version pinning mirrors the course reads: the optional
+// ?course=<uuid|version> selector resolves one READY release (a foreign or
+// stale pin is the same no-leak denial as every view); absent it, the STUDIED
+// release resolves (the explicit pointer, else getCourse's default with
+// honest pending/failed/none states) — the release AD-13's review consumer
+// pins. Supersession stability is the provenance no-live-pointer rule: no
+// field below reads "latest ready version" or any live pointer, so a pinned
+// read is value-identical across a superseding regeneration; the document's
+// arrays are immutable row data of the pinned release's own rows and may
+// only APPEND (new attempts, newly planted parent manifests), never rewrite
+// an entry — the documented monotonic-derivatives split.
+// ---------------------------------------------------------------------------
+
+// The AD-13 shared evaluator verdict — the authoritative review-purpose
+// verdict review consumes from this module (never the other way around: the
+// derivation reads no review state, and review never writes completion).
+// UNAIDED by construction: the only inputs are scored attempt/recovery
+// evidence (AD-7 purpose separation — practice and self-report have no field
+// to enter through), and the final-only grade fence means a provisional
+// grade can never read as demonstrated. The policy is PINNED: the
+// satisfying attempt's own snapshotted mark/override/answer rule/rubric
+// (root policy fixed through recovery), falling back to the release's
+// published deterministic build — later policy edits affect only later
+// attempts and reviews, never a pinned verdict.
+export const EVALUATOR_VERDICT_VERSION = 1;
+export const evaluatorVerdictOutcomes = ["demonstrated", "not-demonstrated"] as const;
+export type EvaluatorVerdictOutcome = (typeof evaluatorVerdictOutcomes)[number];
+
+export type EvaluatorPolicyPin = {
+  passMarkPercent: number;
+  passMarkOverride: PassMarkOverride;
+  answerRule: string;
+  rubric: string;
+};
+
+export type EvaluatorVerdict = {
+  schemaVersion: typeof EVALUATOR_VERDICT_VERSION;
+  courseId: string;
+  courseVersion: number;
+  // Structural: this verdict is computed from unaided scored evidence only.
+  assistance: "unaided";
+  // The pinned policy the outcome was computed under (see above).
+  policy: EvaluatorPolicyPin;
+  // Demonstrated exactly when a clean satisfaction path exists: a final
+  // graded pass free of open attempt-item disputes, or a graded-failed
+  // attempt whose ledger is fully cleared-or-corrected on an untainted
+  // chain. While an open dispute pauses the pending decision, the verdict
+  // reads honestly not-demonstrated with pausedByOpenDispute — the 3.7
+  // pause rule; an earned award is never revoked by any of this.
+  outcome: EvaluatorVerdictOutcome;
+  basis: { kind: "final-pass" | "full-recovery"; attemptId: string } | null;
+  pausedByOpenDispute: boolean;
+  // Read-only completion state (review never grants or revokes it).
+  awardAwardedAt: string | null;
+};
+
+// The activity/rubric/completion contract shape epic 6 extends (its activity
+// families will grow this link; this epic publishes the shape and serves
+// instances for the release's own activities). `role` states how the
+// activity enters the completion contract: required items must be done,
+// the required test must pass or fully recover, optional activities never
+// block. The rubric contract carries the DISCLOSED policy only — mark,
+// carried override provenance, answer rule, rubric text, declared point
+// scale and total — never an answer key (absent ≡ withheld everywhere).
+export const ACTIVITY_COMPLETION_LINK_VERSION = 1;
+export const activityCompletionRoles = ["required-item", "required-test", "optional-activity"] as const;
+export type ActivityCompletionRole = (typeof activityCompletionRoles)[number];
+
+export type ActivityRubricContract = {
+  pointsScale: 1 | 100;
+  totalPoints: number;
+  answerRule: string;
+  rubric: string;
+  passMarkPercent: number;
+  passMarkOverride: PassMarkOverride;
+};
+
+export type ActivityCompletionLink = {
+  schemaVersion: typeof ACTIVITY_COMPLETION_LINK_VERSION;
+  activityId: string;
+  role: ActivityCompletionRole;
+  // The objective groups the activity maps to (the required test's item
+  // coverage; tracker items carry none in this build).
+  objectiveIndexes: number[];
+  // Null on unscored activities (required items are done/not-done).
+  rubric: ActivityRubricContract | null;
+};
+
+// The handoff document blocks.
+export type HandoffReleasePin = { courseId: string; version: number; planRevisionId: string };
+
+// Every parent manifest pinning the pinned release as a child, with the
+// pin's required standing and the parent award state (monotonic: new
+// manifests may append; an existing row never changes).
+export type HandoffParentPin = { manifestId: string; required: boolean; awardedAt: string | null };
+
+export type HandoffAwardsBlock = {
+  // The release's monotonic mini-course award (insert-once, never updated —
+  // served read-only), or null while unearned.
+  miniCourse: CompletionAwardView | null;
+  parents: HandoffParentPin[];
+};
+
+// The applicable pass-mark snapshot of every attempt that started on the
+// pinned release: the mark, the carried {source,provenance,value} override
+// contract and the declared point scale pinned at start — immutable row
+// data (a later policy edit never rewrites one).
+export type PassMarkSnapshot = {
+  attemptId: string;
+  status: AttemptStatus;
+  passMarkPercent: number;
+  passMarkOverride: PassMarkOverride;
+  pointsScale: 1 | 100;
+  startedAt: string;
+};
+
+// The epic-5 reporting projections (AD-14: reporting is a scoped read
+// model). One entry per attempt of the pinned release, oldest first; the
+// grade kind rides every graded entry (every attempt this build writes is
+// final — the provisional kind is the typed contract epic 5's instructor
+// grades ride, and no pass can be read off it anywhere downstream).
+export type HandoffAttemptProjection = {
+  attemptId: string;
+  status: AttemptStatus;
+  gradeKind: GradeKind | null;
+  passed: boolean | null;
+  displayPercent: string | null;
+  earnedPoints: number | null;
+  totalPoints: number | null;
+  pointsScale: 1 | 100;
+  startedAt: string;
+  gradedAt: string | null;
+};
+
+// The pinned release's recovery chain (the same served-chain rule as the
+// assessment state: the newest graded-failed attempt that has a ledger),
+// through the SAME additive cleared-or-corrected predicate the award
+// evaluation uses.
+export type HandoffRecoveryProjection = {
+  rootAttemptId: string;
+  targets: Array<{ objectiveIndex: number; objective: string; status: RecoveryTargetStatus; clearedBy: string | null }>;
+  requirementSatisfied: boolean;
+};
+
+export type HandoffReportingBlock = {
+  attempts: HandoffAttemptProjection[];
+  recovery: HandoffRecoveryProjection | null;
+  // Always 0 in personal study — computed, not asserted: the count of
+  // graded attempts whose grade kind is provisional. Epic 5's confirmed
+  // grades land through the same projection.
+  provisionalGrades: number;
+};
+
+export type AssessmentHandoffDocument = {
+  release: HandoffReleasePin;
+  awards: HandoffAwardsBlock;
+  marks: PassMarkSnapshot[];
+  evaluatorVerdict: EvaluatorVerdict;
+  reporting: HandoffReportingBlock;
+  activities: ActivityCompletionLink[];
+};
+
+// Owner-scoped handoff state, mirroring the course/provenance states: the
+// honest none/pending/failed states of the default resolution; only `ready`
+// carries the document.
+export type AssessmentHandoffState =
+  | { state: "none"; rootId: string; revision: number }
+  | { state: "pending"; rootId: string; revision: number; requestId: string }
+  | { state: "failed"; rootId: string; revision: number; requestId: string; failureCode: string | null }
+  | { state: "ready"; rootId: string; revision: number; handoff: AssessmentHandoffDocument };
+
+// The `fields=` scope declaration (the provenance fence verbatim): the
+// names a consumer may ask for. Anything else — answers, scheduling,
+// roster, invented names — is invalid input: the field does not exist in
+// the contract, so the surface cannot serve it, and the check runs before
+// a single row is read. Declaring fields never projects or filters: the
+// response is always the full document; the parameter exists so a
+// consumer's intended scope is checked against the contract first.
+export const handoffFieldNames = ["awards", "marks", "evaluator-verdict", "reporting", "activities"] as const;
+export type HandoffFieldName = (typeof handoffFieldNames)[number];
+const handoffFieldNameSet: ReadonlySet<string> = new Set(handoffFieldNames);
+
+// Pure parser (contracts import no platform): the caller turns
+// `{ ok: false }` into INVALID_INPUT. An empty declaration names no
+// contract field and is likewise invalid.
+export function parseHandoffFields(raw: string): { ok: true; fields: HandoffFieldName[] } | { ok: false } {
+  const names = raw.split(",").map(name => name.trim());
+  if (names.length === 0 || names.some(name => !handoffFieldNameSet.has(name))) return { ok: false };
+  // Sound narrowing: every remaining name is a member of the field-name set.
+  return { ok: true, fields: names.map(name => name as HandoffFieldName) };
+}

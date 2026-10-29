@@ -12,7 +12,7 @@ import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finish
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
 import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState, getProvenance } from "../../../../modules/course-generation/service";
-import { getAssessment, startTest, submitAttempt, startRetest, submitRetest, getSwitchDisclosure, switchCourseVersion, flagAssessmentItem, startReplacement, submitReplacement, getRoadmap } from "../../../../modules/assessment-progress/service";
+import { getAssessment, startTest, submitAttempt, startRetest, submitRetest, getSwitchDisclosure, switchCourseVersion, flagAssessmentItem, startReplacement, submitReplacement, getRoadmap, getAssessmentHandoff } from "../../../../modules/assessment-progress/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -185,6 +185,26 @@ async function handle(request: Request, context: Context) {
       const rootId = path[1];
       if (path.length === 4 && request.method === "POST") return Response.json(await startReplacement(identity, rootId, await jsonBody(request)), { headers: privateHeaders });
       if (request.method === "POST") return Response.json(await submitReplacement(identity, rootId, path[4], await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-3 story-8 versioned completion and evidence handoff surface
+    // (AD-13/AD-14): a read-only owner-scoped GET serving the pinned handoff
+    // document downstream epics consume — awards, applicable pass-mark
+    // snapshots, the shared evaluator verdict, reporting projections and the
+    // activity/rubric/completion links. Optional ?course=<uuid|version> pins
+    // one ready release (the studied release by default); optional
+    // ?fields=<a,b> declares the consumer's intended contract fields — a
+    // name outside the contract is INVALID_INPUT before anything is read.
+    // EVERY value of a repeated ?fields= parameter is joined into the
+    // declaration, so no non-contract name can hide behind a first valid
+    // one (the provenance rule).
+    if (path[0] === "studies" && path[2] === "assessment" && path[3] === "handoff" && path.length === 4 && request.method === "GET") {
+      const rootId = path[1];
+      const parameters = new URL(request.url).searchParams;
+      const requested = parameters.get("course") ?? undefined;
+      const fieldValues = parameters.getAll("fields");
+      const fields = fieldValues.length ? fieldValues.join(",") : undefined;
+      const handoff = await getAssessmentHandoff(identity, rootId, requested, fields);
+      return protectedResponse(identity, rootId, handoff, request.signal, false, handoff.objectIds);
     }
     if (path[0] === "studies" && path.length === 3 && path[2] === "dependencies" && request.method === "POST") {
       return Response.json(await dependenciesPreview(identity, path[1], await jsonBody(request)), { headers: privateHeaders });

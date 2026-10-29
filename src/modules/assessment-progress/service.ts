@@ -11,7 +11,9 @@ import {
   submitReplacementSchema,
   passMarkOverrideOf,
   pointsScaleOf,
+  parseHandoffFields,
   type ActiveAttemptView,
+  type AssessmentHandoffState,
   type ActiveReplacementView,
   type ActiveRetestView,
   type AssessmentDisputeView,
@@ -56,6 +58,7 @@ import { completionEarned, deriveRoadmapNode, displayPercentOf, earnedOfItem, gr
 import { deriveGuidance } from "./guidance";
 import { deriveCompletionPause, generationAllows, generationUseView, recoverySatisfiedWithCorrections } from "./disputes";
 import { deriveRoadmapView, type RoadmapCourseFact, type RoadmapRootFact } from "./roadmap";
+import { deriveHandoffDocument } from "./handoff";
 import { queryReviewState, reviewStatePortBound } from "./review-port";
 import * as repository from "./repository";
 import type { AttemptRow, AwardRow, DisputeRow, FlagRow, RecoveryTargetRow, ReplacementRow, RetestRow } from "./repository";
@@ -1394,5 +1397,77 @@ export async function submitReplacement(identity: Identity, rawId: string, rawRe
     const receiptResult: Receipt = { rootId, operationId: replacementId, planRevisionId: replacement.plan_revision_id, revision: batch.revision, state: "graded" };
     await lifecycle.receipt(client, identity, command, "submit-replacement", hash, receiptResult);
     return { ...gradedReplacementOf(graded), rootId, revision: batch.revision, state: "graded" as const };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Story 8 — the versioned completion and evidence handoff surface (AD-13/
+// AD-14): a READ-TIME owner-scoped, lineage-fenced document over rows this
+// module and the course module already own — the epic-2 getProvenance
+// precedent applied to assessment facts. One gather transaction (identify →
+// authorize → scopedRoot → reads), then the pure deriveHandoffDocument; no
+// write exists anywhere on this path. Version pinning mirrors the course
+// reads: the optional `requested` selector (course id uuid or per-root
+// version number) resolves one READY release (anything else is the same
+// no-leak denial as every view); absent it, the STUDIED release resolves —
+// the explicit pointer first (falling back to the default resolution when a
+// pointer target is not ready — the roadmap resolution rule), else
+// getCourse's default (the current confirmed revision's row in ANY status —
+// honest pending/failed/none states — falling back to the latest ready
+// one). The `fields=` scope declaration is checked against the contract
+// BEFORE anything is read (the provenance fence): a name outside the
+// contract is INVALID_INPUT — the surface structurally cannot serve what it
+// does not own.
+// ---------------------------------------------------------------------------
+export async function getAssessmentHandoff(identity: Identity, rawId: string, requested?: string, rawFields?: string): Promise<AssessmentHandoffState & { objectIds: string[] }> {
+  const rootId = parse(uuid, rawId);
+  if (requested !== undefined && !uuid.safeParse(requested).success && !/^[1-9]\d*$/u.test(requested)) fail("INVALID_INPUT");
+  if (rawFields !== undefined && !parseHandoffFields(rawFields).ok) fail("INVALID_INPUT");
+  return transaction(async client => {
+    await authorize(client, identity);
+    await lifecycle.scopedRoot(client, identity.userId, rootId);
+    const batch = await batchRow(client, rootId);
+    const objectIdsOf = (row: courseRepository.CourseWithScope | null) =>
+      row ? [row.object_id, ...(row.object_ids ?? [])].filter((id): id is string => !!id) : [];
+    let row: courseRepository.CourseWithScope | null = null;
+    if (requested !== undefined) {
+      // The pinned prior-version read: only a READY course of this owner and
+      // root resolves; anything else is the same no-leak denial as every view.
+      row = uuid.safeParse(requested).success
+        ? await courseRepository.readyCourseById(client, identity.userId, rootId, requested)
+        : await courseRepository.readyCourseByVersion(client, identity.userId, rootId, Number(requested));
+      if (!row) fail("FORBIDDEN_OR_NOT_FOUND");
+    } else {
+      // The studied release (AD-13's pin): the explicit pointer's ready
+      // release (a non-ready/purged target falls back to the default
+      // resolution — the honest studied state is never a pending/failed
+      // pointer target), else getCourse's default resolution.
+      const pointer = await repository.studiedRelease(client, identity.userId, rootId);
+      if (pointer) row = await courseRepository.readyCourseById(client, identity.userId, rootId, pointer.course_id);
+      if (!row) {
+        const current = batch.confirmed_id ? await courseRepository.courseForPlan(client, rootId, batch.confirmed_id) : null;
+        row = current ?? await courseRepository.latestReadyCourse(client, identity.userId, rootId);
+      }
+    }
+    if (!row) return { state: "none" as const, rootId, revision: batch.revision, objectIds: [] };
+    if (row.status === "pending") return { state: "pending" as const, rootId, revision: batch.revision, requestId: row.id, objectIds: objectIdsOf(row) };
+    if (row.status === "failed") return { state: "failed" as const, rootId, revision: batch.revision, requestId: row.id, failureCode: row.failure_code, objectIds: objectIdsOf(row) };
+    if (!row.content || !row.settled_at) fail("RETRYABLE_FAILURE");
+    const content = storedCourseContent(row.content);
+    if (!content) fail("RETRYABLE_FAILURE");
+    const handoff = deriveHandoffDocument({
+      release: { courseId: row.id, version: row.version ?? 1, planRevisionId: row.plan_revision_id },
+      // The published deterministic build — the same buildSnapshot the
+      // offered disclosure serves (the verdict's policy fallback and the
+      // required test's rubric contract source).
+      publishedSnapshot: buildSnapshot(content.objectives),
+      trackerItems: courseTrackerItems(content).map(item => ({ id: item.id, required: item.required })),
+      attempts: await repository.attemptsForRoot(client, identity.userId, rootId),
+      targets: await repository.targetsForRoot(client, identity.userId, rootId),
+      disputes: await repository.disputesForRoot(client, identity.userId, rootId),
+      award: await repository.awardForCourse(client, identity.userId, row.id),
+      parentManifests: await repository.parentManifestsFor(client, identity.userId),
+    });
+    return { state: "ready" as const, rootId, revision: batch.revision, handoff, objectIds: objectIdsOf(row) };
   });
 }
