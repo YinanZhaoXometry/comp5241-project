@@ -3,7 +3,7 @@ title: 'Assessment lifecycle, ownership and deletion integration (3.9)'
 type: 'feature'
 ticket: 9
 created: '2026-10-29'
-status: 'planned'
+status: built
 baseline_revision: '1b274f8'
 route: 'full'
 route_source: 'auto'
@@ -77,13 +77,13 @@ deferred: []
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/modules/lifecycle-platform/derivatives.ts` — assessmentProgressPort (preview/deny/purge, both scopes).
-- [ ] `src/contracts/export.ts` — the two new categories + labels.
-- [ ] `src/modules/setup-export/manifest.ts` — captureAssessmentDerivatives + activeCounts + skip constant + `jsonSafe`.
-- [ ] `src/modules/setup-export/service.ts` — preview mapping for the new categories.
-- [ ] `tests/unit/assessment-lifecycle.test.ts` — registration/contract/phrasing/retention-pin coverage.
-- [ ] `tests/integration/assessment-lifecycle.test.ts` — authored-pending-execution verify scenarios.
-- [ ] `docs/project-structure.md` — same-change update.
+- [x] `src/modules/lifecycle-platform/derivatives.ts` — assessmentProgressPort (preview/deny/purge, both scopes).
+- [x] `src/contracts/export.ts` — the two new categories + labels.
+- [x] `src/modules/setup-export/manifest.ts` — captureAssessmentDerivatives + activeCounts + skip constant + `jsonSafe`.
+- [x] `src/modules/setup-export/service.ts` — preview mapping for the new categories.
+- [x] `tests/unit/assessment-lifecycle.test.ts` — registration/contract/phrasing/retention-pin coverage.
+- [x] `tests/integration/assessment-lifecycle.test.ts` — authored-pending-execution verify scenarios.
+- [x] `docs/project-structure.md` — same-change update.
 
 **Acceptance Criteria:**
 - Given an owner with the full assessment chain, a root or personal deletion preview counts every assessment derivative category honestly and the journal stays content-free.
@@ -105,3 +105,15 @@ Latitude taken (recorded per the house rule): (1) **No migration** — the port 
 - `npm run boundaries` — expected: green (contracts import nothing new; the port adds no import outside lifecycle-platform's existing set).
 - `npm run test` — expected: full unit suite green including the new `tests/unit/assessment-lifecycle.test.ts`.
 - `tests/integration/assessment-lifecycle.test.ts` — AUTHORED ONLY this phase (the shared DB cluster is reserved for the serialized full gate); the orchestrator merges, runs migrations (unchanged set) and executes it. Unit coverage pins the registration/contract/phrasing surface to de-risk that run.
+
+## Auto Run Result
+
+**Status: BUILT — DB-free verification green in ONE run (2026-10-29; Node v24.22.0, `NPM_CONFIG_USERCONFIG=/dev/null NEXT_TELEMETRY_DISABLED=1`).** `npm ci` completed on the fresh worktree first (254 packages). lint 0 warnings/0 errors (113 inventoried rules, all active mappings verified, 8 negative probes + the JSX reference positive probe), typecheck green (Next generated types bootstrapped with `npx next typegen` — the documented non-server typegen command, NOT a dev server; the worktree's `next-env.d.ts` was already in the production-import form when the lane started, and that uncommitted state is preserved), typecheck:worker green, module boundaries green, full unit suite **337/337 in 18 files** (baseline 331 + the new `tests/unit/assessment-lifecycle.test.ts`'s 6; the pre-existing 331 untouched and still green — no skips/overrides/suppressions anywhere).
+
+**One existing test file edited (flagged):** `tests/unit/export.test.ts` — its category-count pin moved 13 → 15 with the story's rationale added to its history comment. The pin's purpose is to force conscious category additions; the contract extension is this story's core deliverable, so the pin necessarily tracks it. Nothing else in any existing test file changed. (The sibling-lane rule is otherwise honored: both new suites are new files.)
+
+**Deferred by design — integration execution.** `tests/integration/assessment-lifecycle.test.ts` is AUTHORED (six journeys: honest root+personal deletion previews across all eight categories with a content-free journal and cross-owner preview denial; root deletion fencing an in-flight open attempt with immediate denial on submit/assessment/handoff/retest/start reads, one-tracked-effect duplicate delete, complete purge and an intact sibling; root deletion fencing open retest + under-review dispute + open replacement with late-submit denial, FK-safe purge of the whole dispute chain INCLUDING a planted parent-path award row no CASCADE reaches, and the generation counter's deliberate root-scope survival; grade-committed-first ordering where the same-command submit replay denies, the direct lineage fence rejects a synthetic late recommit, and the graded rows + award purge; whole-personal removal purging all nine tables owner-wide under the registered seven-day deletion clock — with the clock's no-alert-before-deadline and alert-past-deadline behavior exercised through the retention scheduler — plus one-receipt replay and another actor standing; and the owner export carrying the 79.96% attempt/score row, recovery ledger, earned award and corrected dispute with the deleted-root scope honored, the generation-counter skip recorded, and another actor's download denied) but NOT RUN in this phase: the shared DB cluster is reserved for the orchestrator's serialized full gate. The pure halves (port registration contract, export category/label/lifecycle-fence contracts, skip-reason phrasing, the executable no-new-retention-class pin, the payload date mapping) are unit-covered to de-risk that run. The production build, e2e and restart legs are likewise deferred to that phase.
+
+**Build summary.** Every assessment derivative kind of 021–026 is now registered with epic 1's lifecycle classes: the `assessment-progress` port (the course-generation/instructor-courses registration shape) gives the S9 deletion inventory content-free per-category preview counts (attempts, retests, recovery ledger, awards incl. parent-path rows, flags, disputes, replacements, studied-release pointers) in both scopes, a deny that rides the already-structural fences (every verb/read runs `scopedRoot` + plan-revision `assertObjects` inside its AD-2 transaction; the replay path re-runs `scopedRoot` closed for non-delete actions; the root-row `FOR UPDATE` serializes in-flight grading against deletion), and an idempotent FK-safe purge that deletes by `root_id`/`owner_id` (disputes before replacements — 026's circular `resolved_by_replacement` FK has no cascade — so parent-path award rows and pointers that never ride the course CASCADE purge with the root) while the content-free generation counter survives root purge and purges owner-wide on personal removal (the `ai_dispatch_ledger` precedent). The S8 export artifact gains the `assessment-evidence` class (full stored rows — snapshots with answer keys included under the epic-2 owner-can-reveal reasoning — snapshot-scoped exactly like the epic-2 classes, eight per-table payloads under `assessments/`, live preview counts) plus the honest `assessment-generation-use` skip; `lifecycleCategories` is untouched (unit-pinned). Retention coverage resolves the epic-2 entry-8 way: the seven-day `deletion-active-purge` clock every accepted deletion already registers covers the derivative purge through the port — no new class, no migration (027 stays 3.8's unused number, 028 now also unused; flagged to the orchestrator since the lane numbering reserved it). No assessment-progress module file changed: its fences were already correct; this story registered and proves them.
+
+**Self-review notes (the triage-log style):** (1) the first unit run assumed epic-5's instructor-courses port was registered on this branch — it is a parallel lane (f4cd0a0 is NOT an ancestor of this branch's HEAD); the assertion now checks only this branch's four established ports and records the fact in a comment. (2) The worktree's `next-env.d.ts` arrived in the production-import form with no `.next` cache; `npx next typegen` (the documented non-server bootstrap) generated the types — no dev server was booted, no port touched.

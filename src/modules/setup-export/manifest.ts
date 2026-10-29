@@ -139,6 +139,21 @@ export async function captureManifest(
   // owner-specific courses); practice evidence carries the learner's own
   // attempted text; why explanations are the owner's settled derivative rows.
   await captureCourseDerivatives(client, ownerId, { entries, payloads, skipped });
+  // Epic-3 3.9 export scope decision (this entry's recorded call, the S8
+  // pattern applied to assessment): attempts with their at-start snapshots,
+  // the recovery ledger and retest chain, completion awards, item flags,
+  // dispute states, corrected replacements and the studied-release pointer
+  // are OWNER derivative content and join the artifact honestly. Snapshots
+  // include answer keys by the same S8 reasoning — the owner can already
+  // reveal any answer by submitting, so no assessment exclusion is invented.
+  // The content-free daily generation counter is deliberately excluded (the
+  // skip line below records the reason).
+  await captureAssessmentDerivatives(client, ownerId, { entries, payloads, skipped });
+  if (await tableColumns(client, 'assessment_generation_use')) {
+    skipped.push({ category: 'assessment-generation-use', reason: ASSESSMENT_GENERATION_USE_SKIP });
+  } else {
+    skipped.push({ category: 'assessment-generation-use', reason: 'Table app.assessment_generation_use is not present in this deployment' });
+  }
   // S6: advisory AI draft requests are deliberately excluded from the artifact
   // (the simpler honest option per the S6 plan): they are suggestions the
   // learner edits, not canonical owner content, and no source excerpt or
@@ -447,6 +462,100 @@ async function captureDiagnostics(client: PoolClient, ownerId: string, sink: Cap
   }
 }
 
+// The epic-3 3.9 deliberate-exclusion reason for the content-free daily
+// generation counter (the ai_dispatch_ledger precedent): it is owner
+// accounting, not study content, and shipping it would add nothing the
+// owner's exported attempt/retest/replacement history does not already
+// carry.
+export const ASSESSMENT_GENERATION_USE_SKIP =
+  'Deliberately excluded: the daily assessment generation counter is a content-free resource accounting row (how many fresh retests/replacements started today), not study content; the attempts, retests and replacements it counted are exported under assessment-evidence';
+
+// jsonb round-trips Date objects as ISO strings only if mapped first — the
+// assessment payloads carry timestamps at the row top level, so every row
+// passes through this pure mapping before it joins a payload.
+export function jsonSafe(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(jsonSafe);
+  if (value !== null && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, jsonSafe(item)]));
+  }
+  return value;
+}
+
+// The snapshot-scope guard shared by every assessment query below, exactly
+// the epic-2 S8 hardened shape: rows of tombstoned roots are excluded, and
+// course-linked rows are excluded when their course's own lifecycle object
+// was invalidated. Assessment tables carry no storage keys — entries are
+// content-free locators plus the payload rows themselves.
+async function captureAssessmentDerivatives(client: PoolClient, ownerId: string, sink: CaptureSink) {
+  type Row = Record<string, unknown> & { id: string; root_id: string; course_id?: string | null };
+
+  const captureTable = async (
+    table: string,
+    payloadName: string,
+    courseJoin: string,
+    guard: string,
+    stampColumn: string,
+    metaOf: (row: Row) => unknown,
+  ) => {
+    if (!(await tableColumns(client, table))) {
+      sink.skipped.push({ category: 'assessment-evidence', reason: `Table app.${table} is not present in this deployment` });
+      return;
+    }
+    const rows = await client.query<Row>(
+      `SELECT t.* FROM app.${table} t
+       JOIN app.lifecycle_root r ON r.id = t.root_id
+       ${courseJoin}
+       WHERE t.owner_id=$1 AND r.deleted_at IS NULL ${guard}
+       ORDER BY t.${stampColumn}, t.id`,
+      [ownerId],
+    );
+    for (const item of rows.rows) {
+      const stamp = item[stampColumn];
+      sink.entries.push({
+        category: 'assessment-evidence',
+        objectId: item.id,
+        rootId: item.root_id,
+        storageKey: null,
+        parents: item.course_id ? [item.course_id] : [],
+        createdAt: stamp instanceof Date ? iso(stamp) : new Date(0).toISOString(),
+        metadata: metaOf(item),
+      });
+    }
+    sink.payloads.push({ name: payloadName, value: { table: `app.${table}`, rows: rows.rows.map(row => jsonSafe(row)) } });
+  };
+
+  // Every course-linked table uses the same invalidation guard the epic-2
+  // practice/why queries carry; the award query's guard also admits the
+  // parent-path rows whose course linkage is NULL (they ride the root
+  // tombstone alone), and the flag query joins its attempt's course because
+  // the flag row itself carries no course column.
+  const courseJoin = 'JOIN app.generated_course c ON c.id = t.course_id LEFT JOIN app.lifecycle_object o ON o.id = c.object_id';
+  const courseGuard = 'AND (c.object_id IS NULL OR o.invalidated_at IS NULL)';
+  const nullableCourseGuard = 'AND (c.id IS NULL OR c.object_id IS NULL OR o.invalidated_at IS NULL)';
+
+  await captureTable('test_attempt', 'assessments/attempts.json', courseJoin, courseGuard, 'created_at',
+    row => ({ status: row.status, courseVersion: row.course_version, passed: row.passed, earnedPoints: row.earned_points, totalPoints: row.total_points }));
+  await captureTable('retest_attempt', 'assessments/retests.json', courseJoin, courseGuard, 'created_at',
+    row => ({ status: row.status, courseVersion: row.course_version, targetIndexes: row.target_objective_indexes }));
+  await captureTable('recovery_target', 'assessments/recovery-ledger.json', courseJoin, courseGuard, 'created_at',
+    row => ({ objectiveIndex: row.objective_index, status: row.status, clearedBy: row.cleared_by }));
+  await captureTable('completion_award', 'assessments/awards.json',
+    'LEFT JOIN app.generated_course c ON c.id = t.course_id LEFT JOIN app.lifecycle_object o ON o.id = c.object_id', nullableCourseGuard, 'created_at',
+    row => ({ kind: row.kind, courseVersion: row.course_version, awardedAt: row.awarded_at instanceof Date ? iso(row.awarded_at) : null }));
+  await captureTable('assessment_flag', 'assessments/flags.json',
+    'JOIN app.test_attempt a ON a.id = t.attempt_id JOIN app.generated_course c ON c.id = a.course_id LEFT JOIN app.lifecycle_object o ON o.id = c.object_id',
+    courseGuard, 'flagged_at',
+    row => ({ position: row.position, evidenceKind: row.retest_id ? 'retest' : 'attempt' }));
+  await captureTable('item_dispute', 'assessments/disputes.json', courseJoin, courseGuard, 'opened_at',
+    row => ({ status: row.status, objectiveIndex: row.objective_index, position: row.position, courseVersion: row.course_version }));
+  await captureTable('assessment_replacement', 'assessments/replacements.json', courseJoin, courseGuard, 'created_at',
+    row => ({ status: row.status, objectiveIndex: row.objective_index, courseVersion: row.course_version }));
+  await captureTable('studied_release', 'assessments/release-pointers.json', courseJoin, courseGuard, 'switched_at',
+    row => ({ courseId: row.course_id }));
+}
+
 // Owner-scoped active counts for the pre-request category preview.
 export async function activeCounts(client: PoolClient, ownerId: string) {
   const objects = await client.query<{ kind: string; count: number }>(
@@ -494,6 +603,19 @@ export async function activeCounts(client: PoolClient, ownerId: string) {
       )
     : null;
   const byKind = new Map(objects.rows.map((item) => [item.kind, item.count]));
+  // Epic-3 3.9: the assessment class carries live owner counts under the
+  // same snapshot scope as its capture (deleted roots excluded, invalidated
+  // course objects out) — the epic-2 S8 flipped-class pattern.
+  const assessment = (await tableColumns(client, 'test_attempt'))
+    ? await client.query<{ count: number }>(
+        `SELECT count(*)::int AS count FROM app.test_attempt t
+         JOIN app.lifecycle_root r ON r.id=t.root_id
+         JOIN app.generated_course c ON c.id=t.course_id
+         LEFT JOIN app.lifecycle_object o ON o.id=c.object_id
+         WHERE t.owner_id=$1 AND r.deleted_at IS NULL AND (c.object_id IS NULL OR o.invalidated_at IS NULL)`,
+        [ownerId],
+      )
+    : null;
   return {
     originals: byKind.get('original') ?? 0,
     extractions: byKind.get('extraction') ?? 0,
@@ -503,6 +625,7 @@ export async function activeCounts(client: PoolClient, ownerId: string) {
     courses: courses?.rows[0]?.count ?? null,
     practice: practice?.rows[0]?.count ?? null,
     why: why?.rows[0]?.count ?? null,
+    assessmentAttempts: assessment?.rows[0]?.count ?? null,
   };
 }
 

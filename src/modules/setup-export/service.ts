@@ -42,6 +42,10 @@ export async function listExports(identity: { userId: string; sessionId: string 
       'generated-courses': counts.courses,
       'practice-evidence': counts.practice,
       'why-explanations': counts.why,
+      // Epic-3 3.9: the assessment class is a flipped class too (live owner
+      // attempt count under the capture's snapshot scope); the generation
+      // counter stays a deliberate skip with its recorded reason.
+      'assessment-evidence': counts.assessmentAttempts,
     };
     const categories: ExportCategoryInfo[] = [];
     for (const category of exportCategories) {
@@ -68,9 +72,13 @@ export async function listExports(identity: { userId: string; sessionId: string 
                       ? 'practice_attempt'
                       : category === 'why-explanations'
                         ? 'why_explanation'
-                        : null;
+                        : category === 'assessment-evidence'
+                          ? 'test_attempt'
+                          : category === 'assessment-generation-use'
+                            ? 'assessment_generation_use'
+                            : null;
       const present = table ? await tablePresent(client, table) : false;
-      if (category === 'ai-drafts' || category === 'supplements') {
+      if (category === 'ai-drafts' || category === 'supplements' || category === 'assessment-generation-use') {
         categories.push(
           present
             ? { category, label, count: null, available: true, note: 'Present; deliberately excluded from the artifact — see the manifest skip note' }

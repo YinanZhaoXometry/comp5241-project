@@ -97,8 +97,12 @@ describe('export contracts', () => {
     // S8 scope decision flipped generated-courses, practice-evidence and
     // why-explanations INTO the artifact (owner derivative content); only
     // ai-drafts and fetched supplement passages stay deliberately excluded
-    // (listed so owners see the exclusion).
-    expect(exportCategories).toHaveLength(13);
+    // (listed so owners see the exclusion). Epic-3 3.9 added
+    // 'assessment-evidence' (flipped in: attempt/retest/recovery/award/flag/
+    // dispute/replacement/pointer rows, the S8 owner-can-reveal reasoning)
+    // and 'assessment-generation-use' (the content-free counter's deliberate
+    // skip line).
+    expect(exportCategories).toHaveLength(15);
     expect(MAX_EXPORT_BYTES).toBe(512 * 1024 * 1024);
   });
 
