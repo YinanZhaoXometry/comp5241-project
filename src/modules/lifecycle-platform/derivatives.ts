@@ -425,12 +425,12 @@ const assessmentProgressPort: LifecyclePort = {
         await client.query("DELETE FROM app.item_dispute WHERE owner_id=$1", [scope.ownerId]);
       if (await tableReady(client, "app.assessment_replacement", ["owner_id"]))
         await client.query("DELETE FROM app.assessment_replacement WHERE owner_id=$1", [scope.ownerId]);
+      if (await tableReady(client, "app.recovery_target", ["owner_id"]))
+        await client.query("DELETE FROM app.recovery_target WHERE owner_id=$1", [scope.ownerId]);
       if (await tableReady(client, "app.retest_attempt", ["owner_id"]))
         await client.query("DELETE FROM app.retest_attempt WHERE owner_id=$1", [scope.ownerId]);
       if (await tableReady(client, "app.test_attempt", ["owner_id"]))
         await client.query("DELETE FROM app.test_attempt WHERE owner_id=$1", [scope.ownerId]);
-      if (await tableReady(client, "app.recovery_target", ["owner_id"]))
-        await client.query("DELETE FROM app.recovery_target WHERE owner_id=$1", [scope.ownerId]);
       if (await tableReady(client, "app.assessment_flag", ["owner_id"]))
         await client.query("DELETE FROM app.assessment_flag WHERE owner_id=$1", [scope.ownerId]);
       if (await tableReady(client, "app.completion_award", ["owner_id"]))
@@ -442,20 +442,23 @@ const assessmentProgressPort: LifecyclePort = {
       return;
     }
     if (!scope.rootIds.length) return;
-    // FK-safe order: disputes before replacements (026's circular
-    // resolved_by_replacement FK carries no cascade), attempts before the
-    // ledger/flag rows keyed to them; deleting by root_id makes the purge
-    // complete regardless of what the course cascade already removed.
+    // FK-safe order (review disposition 2026-10-29: the ledger precedes the
+    // retests it references — recovery_target.cleared_by carries no cascade,
+    // a graded clearing retest leaves a ledger row pointing at it): disputes
+    // before replacements (026's circular resolved_by_replacement FK carries
+    // no cascade), ledger before retest AND root attempts; deleting by
+    // root_id makes the purge complete regardless of what the course cascade
+    // already removed.
     if (await tableReady(client, "app.item_dispute", ["root_id"]))
       await client.query("DELETE FROM app.item_dispute WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
     if (await tableReady(client, "app.assessment_replacement", ["root_id"]))
       await client.query("DELETE FROM app.assessment_replacement WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
+    if (await tableReady(client, "app.recovery_target", ["root_id"]))
+      await client.query("DELETE FROM app.recovery_target WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
     if (await tableReady(client, "app.retest_attempt", ["root_id"]))
       await client.query("DELETE FROM app.retest_attempt WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
     if (await tableReady(client, "app.test_attempt", ["root_id"]))
       await client.query("DELETE FROM app.test_attempt WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
-    if (await tableReady(client, "app.recovery_target", ["root_id"]))
-      await client.query("DELETE FROM app.recovery_target WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
     if (await tableReady(client, "app.assessment_flag", ["root_id"]))
       await client.query("DELETE FROM app.assessment_flag WHERE root_id=ANY($1::uuid[])", [scope.rootIds]);
     if (await tableReady(client, "app.completion_award", ["root_id"]))

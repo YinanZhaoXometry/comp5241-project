@@ -27,6 +27,7 @@ import {
   reconcileCopies,
 } from '../../src/modules/lifecycle-platform/service';
 import { assertObjects } from '../../src/modules/lifecycle-platform/repository';
+import { registerLifecyclePort, unregisterLifecyclePort, registeredPorts } from '../../src/modules/lifecycle-platform/derivatives';
 import { requestExport, downloadExport, listExports } from '../../src/modules/setup-export/service';
 import { runExport } from '../../src/modules/setup-export/worker';
 import { reconcileRetention } from '../../src/modules/lifecycle-platform/retention';
@@ -576,5 +577,48 @@ describe('epic-3 story-9: assessment lifecycle, ownership and deletion integrati
     // Another actor's download of this artifact denies at the fence.
     const b = await actor('alife-export-other');
     await expect(downloadExport(b, request.rootId, new AbortController().signal)).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+  });
+
+  it('the assessment port purges a RECOVERED chain standalone-FK-safe: the cleared-ledger order holds without the course cascade (review disposition 2026-10-29)', async () => {
+    const { identity: a, study } = await readyStudyWithRequiredDone('alife-recovered-purge');
+    // The epic's core recovered shape: boundary failure opens the ledger, a
+    // graded clearing retest satisfies the group (recovery_target.cleared_by
+    // now references that retest — the FK the pre-disposition delete order
+    // violated) and the completion award lands on the recovered chain.
+    const { attemptId } = await failAtBoundary(a, study.rootId, study.revision);
+    const openIndex = await openTargetOf(a, study.rootId);
+    const retest = await startRetest(a, study.rootId, { ...command(study.revision), attemptId, targetIndexes: [openIndex] });
+    const retestSnapshot = await retestSnapshotOf(retest.operationId);
+    await submitRetest(a, study.rootId, retest.operationId, { ...command(study.revision), retestId: retest.operationId, answers: answersFrom(retestSnapshot) });
+    const completed = await getAssessment(a, study.rootId);
+    expect(completed.currentAward).not.toBeNull();
+
+    // Prove the port's OWN delete order: unregister the course port so its
+    // CASCADE cannot empty the assessment tables first — with the
+    // pre-disposition order this purge violates recovery_target's cleared_by
+    // FK; with the ledger-first order it completes. The port re-registers in
+    // the finally so later journeys keep the full registry.
+    const coursePort = registeredPorts().find(port => port.name === 'course-generation')!;
+    unregisterLifecyclePort('course-generation');
+    try {
+      await removeRoot(a, study.rootId, command(study.revision));
+      await reconcileCopies();
+      await reconcileCopies();
+    } finally {
+      registerLifecyclePort(coursePort);
+    }
+    const counts = await assessmentCounts('root_id', study.rootId);
+    for (const [table, count] of Object.entries(counts))
+      if (table !== 'assessment_generation_use')
+        expect(count, `${table} must purge standalone with the root`).toBe(0);
+    // The content-free counter deliberately SURVIVES the root purge (journey
+    // 3's design proof): this journey's clearing retest consumed one unit.
+    const counter = await database().query<{ used: number }>('SELECT used FROM app.assessment_generation_use WHERE owner_id=$1', [a.userId]);
+    expect(counter.rows[0]?.used ?? 0).toBeGreaterThanOrEqual(1);
+    // The unregistered course port left the course rows behind (its own
+    // suite proves its coverage): clean the now-parentless course rows so
+    // the shared database carries no orphans from this ordering probe.
+    await database().query('DELETE FROM app.generated_course WHERE root_id=$1', [study.rootId]);
+    await expect(getAssessment(a, study.rootId)).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
   });
 });
