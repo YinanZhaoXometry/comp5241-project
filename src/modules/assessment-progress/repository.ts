@@ -510,6 +510,131 @@ export async function flagsForRoot(client: PoolClient, ownerId: string, rootId: 
 }
 
 // ---------------------------------------------------------------------------
+// Story 6 — the whole-mini-course roadmap READ MODEL (owner-scoped batch
+// reads; the roadmap.ts derivation is pure over these facts and this module
+// gains NO write anywhere). Every query below is owner_id-scoped exactly like
+// the per-root reads above; the bounds mirror listStudies (at most 100
+// confirmed studies). Epic-1/2 state (plan revisions, study batches, course
+// rows, tracker item states) is consumed READ-ONLY — the cross-module
+// read-only precedent of itemStates/practiceSummariesForCourse.
+// ---------------------------------------------------------------------------
+
+// The owner's confirmed, non-deleted studies — the roadmap's node source
+// (R4 "after goal selection": only a confirmed plan carries a node; a
+// deleted/revoked study is an unauthorized node and never renders). The
+// confirmation pointer lives on app.study_batch (the batchRow precedent —
+// app.material predates batching and carries no row for later studies).
+// Carries the confirmed plan revision's jsonb so the node can name the
+// plan-pinned mini-course title/topic, and the confirmation instant (the
+// standalone recommended order). Oldest confirmation first for stable
+// serving.
+export type ConfirmedRootRow = { rootId: string; confirmedAt: Date; plan: unknown };
+export async function confirmedRootsForOwner(client: PoolClient, ownerId: string): Promise<ConfirmedRootRow[]> {
+  const result = await client.query<ConfirmedRootRow>(
+    `SELECT r.id AS "rootId", pc.confirmed_at AS "confirmedAt", pr.plan
+     FROM app.lifecycle_root r
+     JOIN app.study_batch b ON b.id = r.id
+     JOIN app.plan_revision pr ON pr.id = b.confirmed_id
+     JOIN app.plan_confirmation pc ON pc.plan_id = pr.id
+     WHERE r.owner_id=$1 AND r.deleted_at IS NULL AND b.confirmed_id IS NOT NULL
+     ORDER BY pc.confirmed_at, r.id
+     LIMIT 100`,
+    [ownerId],
+  );
+  return result.rows;
+}
+
+// Every explicit studied-release pointer of the owner (story 4's switch
+// state) — the resolution override each node honors before the default.
+export async function studiedReleasesForOwner(client: PoolClient, ownerId: string): Promise<Array<{ root_id: string; course_id: string }>> {
+  const result = await client.query<{ root_id: string; course_id: string }>(
+    "SELECT root_id,course_id FROM app.studied_release WHERE owner_id=$1",
+    [ownerId],
+  );
+  return result.rows;
+}
+
+// The DEFAULT course resolution per root, mirroring getCourse's own order:
+// the current confirmed revision's latest course row (ANY status — a pending
+// or failed generation of the confirmed plan is the honest resolution), else
+// the latest READY row (any plan revision). DISTINCT ON takes the first row
+// per root under that priority; the confirmed pointer reads app.study_batch
+// (the batchRow precedent).
+export type ResolvedCourseRow = { root_id: string; course_id: string; version: number | null; status: "pending" | "ready" | "failed"; content: unknown };
+export async function resolvedCoursesForRoots(client: PoolClient, ownerId: string, rootIds: string[]): Promise<Map<string, ResolvedCourseRow>> {
+  if (!rootIds.length) return new Map();
+  const result = await client.query<ResolvedCourseRow>(
+    `SELECT DISTINCT ON (c.root_id) c.root_id, c.id AS course_id, c.version, c.status, c.content
+     FROM app.generated_course c
+     JOIN app.study_batch b ON b.id = c.root_id
+     WHERE c.owner_id=$1 AND c.root_id=ANY($2::uuid[])
+     ORDER BY c.root_id,
+       CASE WHEN b.confirmed_id IS NOT NULL AND c.plan_revision_id = b.confirmed_id THEN 0 WHEN c.status='ready' THEN 1 ELSE 2 END,
+       c.created_at DESC, c.id DESC`,
+    [ownerId, rootIds],
+  );
+  return new Map(result.rows.map(row => [row.root_id, row]));
+}
+
+// The newest READY per-root version (the Version-superseded honesty input:
+// the node names it when the studied release is older than the newest ready
+// one — switching stays the learner's explicit choice).
+export async function latestReadyVersionsForRoots(client: PoolClient, ownerId: string, rootIds: string[]): Promise<Map<string, number>> {
+  if (!rootIds.length) return new Map();
+  const result = await client.query<{ root_id: string; version: number }>(
+    "SELECT root_id,max(version) AS version FROM app.generated_course WHERE owner_id=$1 AND root_id=ANY($2::uuid[]) AND status='ready' GROUP BY root_id",
+    [ownerId, rootIds],
+  );
+  return new Map(result.rows.map(row => [row.root_id, row.version]));
+}
+
+// Course rows by id (owner-scoped): serves the pointer-override reads (the
+// switch target must be a ready release of this owner) and the manifest
+// child courseId -> rootId mapping (a path groups STUDIES, so a child
+// release resolves to the root whose node renders in the path).
+export async function coursesForIds(client: PoolClient, ownerId: string, courseIds: string[]): Promise<Array<{ course_id: string; root_id: string; version: number | null; status: "pending" | "ready" | "failed"; content: unknown }>> {
+  if (!courseIds.length) return [];
+  const result = await client.query<{ course_id: string; root_id: string; version: number | null; status: "pending" | "ready" | "failed"; content: unknown }>(
+    "SELECT id AS course_id,root_id,version,status,content FROM app.generated_course WHERE owner_id=$1 AND id=ANY($2::uuid[])",
+    [ownerId, courseIds],
+  );
+  return result.rows;
+}
+
+// The owner's earned mini-course award pins (course release ids) — the ONLY
+// input that can make a node Completed (the story-4 monotonic rule).
+export async function miniCourseAwardsForOwner(client: PoolClient, ownerId: string): Promise<string[]> {
+  const result = await client.query<{ course_id: string }>(
+    "SELECT course_id FROM app.completion_award WHERE owner_id=$1 AND kind='mini-course' AND course_id IS NOT NULL",
+    [ownerId],
+  );
+  return result.rows.map(row => row.course_id);
+}
+
+// Every attempt of the owner across the given roots, newest first (the
+// nodeNeedsPractice chain rule reads newest-first, exactly like
+// attemptsForRoot in getAssessment/guidance serving).
+export async function attemptsForOwner(client: PoolClient, ownerId: string, rootIds: string[]): Promise<AttemptRow[]> {
+  if (!rootIds.length) return [];
+  const result = await client.query<AttemptRow>(
+    `SELECT ${attemptColumns} FROM app.test_attempt WHERE owner_id=$1 AND root_id=ANY($2::uuid[]) ORDER BY created_at DESC, id DESC`,
+    [ownerId, rootIds],
+  );
+  return result.rows;
+}
+
+// Every recovery-target row of the owner across the given roots (the
+// Needs-practice pill input).
+export async function targetsForOwner(client: PoolClient, ownerId: string, rootIds: string[]): Promise<RecoveryTargetRow[]> {
+  if (!rootIds.length) return [];
+  const result = await client.query<RecoveryTargetRow>(
+    `SELECT ${targetColumns} FROM app.recovery_target WHERE owner_id=$1 AND root_id=ANY($2::uuid[]) ORDER BY created_at, objective_index`,
+    [ownerId, rootIds],
+  );
+  return result.rows;
+}
+
+// ---------------------------------------------------------------------------
 // Story 7 — the dispute state machine (app.item_dispute, migration 026):
 // one row per 3.5 flag, opening UNDER REVIEW, with the single
 // status-guarded under-review -> corrected transition recording which

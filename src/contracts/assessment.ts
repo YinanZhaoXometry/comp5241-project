@@ -854,6 +854,93 @@ export type SubmittedRetest = GradedRetestView & {
   revision: number;
   state: "graded";
 };
+
+// ---------------------------------------------------------------------------
+// Story 6 — the whole-mini-course roadmap surface and its stubbed
+// versioned review-state query port (R4/D1/D6).
+// ---------------------------------------------------------------------------
+
+// The honest course-resolution states a roadmap node can carry. `ready` is
+// the only state in which the three D1 node states exist; the others render
+// their own honest lines INSTEAD of a progress state (no invented progress —
+// "Plan confirmed — course not generated" is the Empty-surface pattern, the
+// pending/failed lines are the generation states the course module serves).
+export const roadmapCourseStates = ["ready", "not-generated", "pending", "failed"] as const;
+export type RoadmapCourseStatus = (typeof roadmapCourseStates)[number];
+
+// One whole-mini-course node. `state` is null exactly when courseStatus is
+// not "ready" — a node with no studyable release claims NO progress state.
+// The state follows R2 awards exactly through the story-4 rule: Completed
+// only from an earned version-scoped award pinning the resolved studied
+// release, monotonic forever; In progress on real engagement; Not started
+// otherwise. `needsPractice` mirrors story-5's guidance classification at
+// node altitude (an open recovery-target group of the resolved release's
+// own newest failed chain, suppressed by a newer passing attempt). The
+// review pill NEVER feeds the state: `reviewDue` is derived independently
+// (D6 — a due review can never remove completion, structurally).
+// `superseded`/`latestVersion` carry the Version-superseded honesty: the
+// learner stays on the studied release until an explicit switch.
+export type RoadmapNodeView = {
+  rootId: string;
+  // The plan-pinned mini-course title (plan.miniCourse.title).
+  title: string;
+  // The plan topic (display context; the node is the whole mini-course).
+  topic: string;
+  courseId: string | null;
+  version: number | null;
+  courseStatus: RoadmapCourseStatus;
+  state: RoadmapNode | null;
+  needsPractice: boolean;
+  reviewDue: boolean;
+  superseded: boolean;
+  latestVersion: number | null;
+};
+
+// One recommended path: a parent manifest's pinned child order (the plan's
+// recommended prerequisite order carrier — story 4), or a standalone study's
+// own single-node path (manifestId null; personal study has one mini-course
+// per root, so multi-child paths are the synthetic-manifest shape). The
+// order is numbering, NEVER enforcement: every authorized node is freely
+// browsable, with no locks and no XP anywhere in this contract.
+// `completedAt` carries the parent award (every required child release
+// awarded — the story-4 monotonic parent rule) when the path's manifest
+// earned it; null on standalone paths (no parent award exists) and on
+// pending manifests.
+export type RoadmapPathView = {
+  manifestId: string | null;
+  completedAt: string | null;
+  nodes: RoadmapNodeView[];
+};
+
+// The fixed honesty note rides the view so every surface states the same
+// limits in words (the accessibility floor).
+export const ROADMAP_HONESTY_NOTE =
+  "Recommended order is guidance only — every node is open at any time, with no locks, prerequisites or points. Completed appears only from an earned, version-scoped award and is never revoked by later results or review. Practice and review indicators are separate from completion.";
+export type RoadmapView = {
+  paths: RoadmapPathView[];
+  // Whether a review-state query binding exists. False is the honest default
+  // of this build (scheduling is epic-spaced-review's): no Review due pill
+  // renders and the note below says so plainly.
+  reviewPortBound: boolean;
+  reviewUnavailableNote: string | null;
+  note: string;
+};
+
+// The VERSIONED review-state query port (the epic contract's stubbed touch
+// point): review scheduling/verdict sequencing is owned by epic-spaced-review;
+// this epic consumes ONLY a per-release due signal pinned to the exact course
+// release. The default binding is UNBOUND — it resolves no state, performs no
+// I/O, and renders no pill; unbound is an honest first-class state, never an
+// error and never a wrong state.
+export const REVIEW_STATE_PORT_VERSION = 1;
+export type ReviewStateInput = { ownerId: string; courseId: string; courseVersion: number };
+export type ReviewDueState = {
+  schemaVersion: typeof REVIEW_STATE_PORT_VERSION;
+  courseId: string;
+  courseVersion: number;
+  due: boolean;
+};
+
 // Story 7 receipts follow the same content-free rule: a replacement's
 // replayable receipt records ids and state only — the graded view rebuilds
 // deterministically from the stored snapshot row.

@@ -33,6 +33,11 @@ project-new/
 │   │   │                                                                 sources, always-visible keyboard stop
 │   │   │                                                                 control, honest exhaustion past the stored
 │   │   │                                                                 evidence (zero dispatch) and no unlock
+│   │   │   roadmap-panel.tsx                                            epic-3 story-6 whole-mini-course roadmap
+│   │   │                                                                 surface: owner-level node list with
+│   │   │                                                                 award-derived states, practice/review
+│   │   │                                                                 pills, recommended order and free
+│   │   │                                                                 browsing (no locks, no XP)
 │   │   │   assessment-stage.tsx                                          epic-3 assessment panel: story-1
 │   │   │                                                                 scored path (pre-start disclosure,
 │   │   │                                                                 80% mark / 10000 points / scoring
@@ -235,14 +240,30 @@ project-new/
 │   │   │                       one-way unclear-item flag (insert-once per
 │   │   │                       graded attempt/retest item, records with
 │   │   │                       the evidence and changes no outcome; the
-│   │   │                       flagAssessmentItem verb) — plus story 7's
-│   │   │                       disputed-item correction and honest retries
-│   │   │                       (disputes.ts, pure pause/satisfaction
-│   │   │                       predicates): the flag now opens a dispute in
-│   │   │                       the same transaction (026 app.item_dispute,
-│   │   │                       under-review -> corrected, one row per
-│   │   │                       flag), the unearned award INSERT pauses
-│   │   │                       while an open dispute could affect the
+│   │   │                       flagAssessmentItem verb) — plus story 6's
+│   │   │                       whole-mini-course roadmap surface (roadmap.ts
+│   │   │                       pure read-time derivation + review-port.ts,
+│   │   │                       NO stored-shape change and no migration: the
+│   │   │                       3.3 precedent): getRoadmap serves an owner-
+│   │   │                       scoped view at GET /api/v1/roadmap with one
+│   │   │                       node per entire mini-course across the
+│   │   │                       confirmed studies, state following R2 awards
+│   │   │                       exactly (deriveRoadmapNode), a Needs practice
+│   │   │                       pill mirroring guidance's chain rule, parent
+│   │   │                       manifests as the recommended-order carriers,
+│   │   │                       honest not-generated/pending/failed and
+│   │   │                       version-superseded states, and a Review due
+│   │   │                       pill fed ONLY by the stubbed versioned
+│   │   │                       review-state query port (unbound default =
+│   │   │                       no pill, never a wrong state, never an input
+│   │   │                       to node state — epic-spaced-review fills it)
+│   │   │                       — and story 7's disputed-item correction and
+│   │   │                       honest retries (disputes.ts, pure
+│   │   │                       pause/satisfaction predicates): the flag now
+│   │   │                       opens a dispute in the same transaction (026
+│   │   │                       app.item_dispute, under-review -> corrected,
+│   │   │                       one row per flag), the unearned award INSERT
+│   │   │                       pauses while an open dispute could affect the
 │   │   │                       release's would-be satisfaction paths
 │   │   │                       (earned awards are never revoked), and the
 │   │   │                       corrected replacement (026
@@ -313,7 +334,12 @@ project-new/
 │   │                       scale through the real verbs, the carried
 │   │                       instructor override pinned mid-attempt while the
 │   │                       next attempt snapshots the current policy, and
-│   │                       the final-grade label on every graded view)
+│   │                       the final-grade label on every graded view),
+│   │                       roadmap (epic-3 story-6: awards → roadmap read
+│   │                       model, three-course manifest path, cross-owner
+│   │                       scope denial, version-superseded honesty, the
+│   │                       unbound review-state port and completion
+│   │                       unchanged)
 │   ├── browser/            Playwright: tracer, pages (static product pages), batches,
 │   │                       consent, preferences, handoff, check, export, lifecycle,
 │   │                       course, journey (epic-2 S10 integrated study suite),
@@ -323,7 +349,12 @@ project-new/
 │   │                       denial, and the story-3 partial-credit journey:
 │   │                       rubric disclosed pre-answer, per-choice credit
 │   │                       hints, exact declared credit earned at the
-│   │                       hundredths scale, honest 79.99% boundary) —
+│   │                       hundredths scale, honest 79.99% boundary) and
+│   │                       roadmap (epic-3 story-6: three-mini-course path
+│   │                       states following awards, Needs practice pill
+│   │                       beside a completed sibling, manifest recommended
+│   │                       order with free keyboard browsing at 360px, and
+│   │                       the unbound review port rendering no pill) —
 │   │                       production build
 │   └── fixtures/           original synthetic documents only
 ├── docs/                   guides: ai-provider-adapter, bounded-document-extraction,

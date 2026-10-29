@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg";
-import { uuid, type Identity, type Receipt } from "../../contracts/setup";
+import { planSchema, uuid, type Identity, type Receipt } from "../../contracts/setup";
 import {
   startTestSchema,
   submitAttemptSchema,
@@ -39,6 +39,8 @@ import {
   type SwitchDisclosure,
   type SwitchedCourseVersion,
   type TestDescriptorView,
+  type RoadmapView,
+  type ReviewDueState,
 } from "../../contracts/assessment";
 import { courseTrackerItems, storedCourseContent, type CourseState } from "../../contracts/courses";
 import { transaction } from "../../adapters/postgres/database";
@@ -53,6 +55,8 @@ import { buildSnapshot, buildRetestSnapshot, buildReplacementSnapshot } from "./
 import { completionEarned, deriveRoadmapNode, displayPercentOf, earnedOfItem, gradeAwardsCompletion, groupCleared, groupResultsOf, groupViewOf, parentEarned, scoreAttempt, verdictLine } from "./scoring";
 import { deriveGuidance } from "./guidance";
 import { deriveCompletionPause, generationAllows, generationUseView, recoverySatisfiedWithCorrections } from "./disputes";
+import { deriveRoadmapView, type RoadmapCourseFact, type RoadmapRootFact } from "./roadmap";
+import { queryReviewState, reviewStatePortBound } from "./review-port";
 import * as repository from "./repository";
 import type { AttemptRow, AwardRow, DisputeRow, FlagRow, RecoveryTargetRow, ReplacementRow, RetestRow } from "./repository";
 
@@ -1134,6 +1138,104 @@ export async function flagAssessmentItem(identity: Identity, rawId: string, raw:
   });
 }
 
+// ---------------------------------------------------------------------------
+// Story 6 — the whole-mini-course roadmap surface (R4/D1/D6). A READ-TIME
+// owner-scoped view with no writes: one gather transaction over owner-scoped
+// batch reads (the guidance.ts read-only precedent at owner altitude), then
+// the versioned review-state port queries AFTER the transaction closes (the
+// unbound stub is instant; a future epic-4 binding owns its own consistency
+// and can never hold this gather's transaction open), then the pure
+// deriveRoadmapView. Node states follow R2 awards exactly (the story-4
+// rule); the review port feeds ONLY the pill, so a due review can never
+// remove completion; no scopedRoot exists here because the query is
+// owner-level — every read below is owner_id-scoped, which makes cross-owner
+// denial structural (another owner's roadmap reads return only their own
+// studies).
+// ---------------------------------------------------------------------------
+
+// The epic-2 tracker facts of one ready release (consumed read-only through
+// course-generation's scoped reads — the same facts getAssessment assembles
+// per root): the required tracker items and this owner's done count.
+async function requiredItemFacts(client: PoolClient, ownerId: string, course: repository.ResolvedCourseRow): Promise<{ total: number; done: number }> {
+  const content = storedCourseContent(course.content);
+  if (!content) fail("RETRYABLE_FAILURE"); // a ready row that cannot serve is a structural fault — same call getCourse makes
+  const required = courseTrackerItems(content).filter(item => item.required);
+  const done = new Set((await courseRepository.itemStates(client, ownerId, course.course_id)).map(state => state.item_id));
+  return { total: required.length, done: required.filter(item => done.has(item.id)).length };
+}
+
+export async function getRoadmap(identity: Identity): Promise<RoadmapView> {
+  const gathered = await transaction(async client => {
+    await authorize(client, identity);
+    const rootRows = await repository.confirmedRootsForOwner(client, identity.userId);
+    const roots: RoadmapRootFact[] = [];
+    for (const row of rootRows) {
+      const plan = planSchema.safeParse(row.plan);
+      roots.push({
+        rootId: row.rootId,
+        confirmedAt: row.confirmedAt,
+        title: plan.success ? plan.data.miniCourse.title : "Confirmed study",
+        topic: plan.success ? plan.data.topic : "",
+      });
+    }
+    const rootIds = roots.map(root => root.rootId);
+    const empty = {
+      roots,
+      resolved: new Map<string, RoadmapCourseFact | null>(),
+      latestReadyVersions: new Map<string, number>(),
+      awardedCourseIds: [] as string[],
+      attempts: [] as AttemptRow[],
+      targets: [] as RecoveryTargetRow[],
+      manifests: [] as AwardRow[],
+      courseRoots: new Map<string, string>(),
+    };
+    if (!rootIds.length) return empty;
+    const pointers = (await repository.studiedReleasesForOwner(client, identity.userId)).filter(pointer => rootIds.includes(pointer.root_id));
+    const defaults = await repository.resolvedCoursesForRoots(client, identity.userId, rootIds);
+    const latestReadyVersions = await repository.latestReadyVersionsForRoots(client, identity.userId, rootIds);
+    const awardedCourseIds = await repository.miniCourseAwardsForOwner(client, identity.userId);
+    const attempts = await repository.attemptsForOwner(client, identity.userId, rootIds);
+    const targets = await repository.targetsForOwner(client, identity.userId, rootIds);
+    const manifests = (await repository.parentManifestsFor(client, identity.userId)).filter(row => row.manifest_id !== null);
+    const childIds = [...new Set(manifests.flatMap(row => (row.manifest?.children ?? []).map(child => child.courseId)))];
+    const courseRoots = new Map((await repository.coursesForIds(client, identity.userId, childIds)).map(row => [row.course_id, row.root_id]));
+    // Resolve each root's studied release: the explicit pointer's ready
+    // release (a purged target cascades the pointer away; a non-ready row
+    // falls back to the default resolution — the honest studied state is
+    // never a pending/failed pointer target), else getCourse's default.
+    const pointerCourses = new Map(
+      (await repository.coursesForIds(client, identity.userId, [...new Set(pointers.map(pointer => pointer.course_id))]))
+        .filter(row => row.status === "ready")
+        .map(row => [row.course_id, row]),
+    );
+    const resolved = new Map<string, RoadmapCourseFact | null>();
+    const factOf = async (row: repository.ResolvedCourseRow | undefined): Promise<RoadmapCourseFact | null> => {
+      if (!row) return null;
+      if (row.status !== "ready") return { rootId: row.root_id, courseId: row.course_id, version: null, status: row.status, requiredTotal: 0, requiredDone: 0 };
+      const facts = await requiredItemFacts(client, identity.userId, row);
+      return { rootId: row.root_id, courseId: row.course_id, version: row.version ?? 1, status: "ready", requiredTotal: facts.total, requiredDone: facts.done };
+    };
+    for (const root of roots) {
+      const pointer = pointers.find(candidate => candidate.root_id === root.rootId);
+      const pointed = pointer ? pointerCourses.get(pointer.course_id) : undefined;
+      const row: repository.ResolvedCourseRow | undefined = pointed ? { root_id: root.rootId, course_id: pointed.course_id, version: pointed.version, status: pointed.status, content: pointed.content } : defaults.get(root.rootId);
+      resolved.set(root.rootId, await factOf(row));
+    }
+    return { roots, resolved, latestReadyVersions, awardedCourseIds, attempts, targets, manifests, courseRoots };
+  });
+  // The review-state port runs after the gather transaction closes: this
+  // build's binding is the unbound stub (no I/O, no state), and a future
+  // epic-4 binding owns its own reads. Only READY resolved releases are
+  // asked about; a result pinned to anything but the exact release is
+  // ignored by the derivation (never a wrong state).
+  const reviewStates = new Map<string, ReviewDueState>();
+  for (const course of gathered.resolved.values())
+    if (course?.status === "ready") {
+      const state = await queryReviewState({ ownerId: identity.userId, courseId: course.courseId, courseVersion: course.version ?? 1 });
+      if (state) reviewStates.set(course.courseId, state);
+    }
+  return deriveRoadmapView({ ...gathered, reviewStates, reviewPortBound: reviewStatePortBound() });
+}
 // ---------------------------------------------------------------------------
 // Story 7 — the corrected-replacement verbs (D3 correction: a dispute-scoped
 // fresh assessment that can resolve a dispute WITHOUT counting it as
