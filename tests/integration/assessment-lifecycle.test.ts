@@ -462,20 +462,17 @@ describe('epic-3 story-9: assessment lifecycle, ownership and deletion integrati
     // Replay: one tracked effect (same request identity), never a second.
     expect(await personalRemoval(a, key)).toMatchObject({ requestId: receipt.requestId });
 
-    // The retention clock that covers the derivative purge: the accepted
-    // deletion is registered under the seven-day deletion-active-purge
-    // class, not yet overdue, so the scheduler records no alert.
+    // The retention clock that covers the derivative purge: the scheduler's
+    // inventory sync registers the accepted deletion under the seven-day
+    // deletion-active-purge class (retention.ts syncRetentionInventory — the
+    // registry row is the scheduler's own backfill, not the verb's write),
+    // and it is not yet overdue, so no alert is recorded.
+    await reconcileRetention();
     const registry = await database().query<{ retention_class: string; state: string; alerted_at: Date | null }>(
       "SELECT retention_class,state,alerted_at FROM app.retention_registry WHERE kind='deletion-request' AND row_id=$1",
       [receipt.requestId],
     );
     expect(registry.rows[0]).toMatchObject({ retention_class: 'deletion-active-purge', state: 'active', alerted_at: null });
-    await reconcileRetention();
-    const afterSweep = await database().query<{ alerted_at: Date | null }>(
-      "SELECT alerted_at FROM app.retention_registry WHERE kind='deletion-request' AND row_id=$1",
-      [receipt.requestId],
-    );
-    expect(afterSweep.rows[0]!.alerted_at).toBeNull();
     // Past the deadline without a completed purge the same clock alerts —
     // the enforcement visibility the scheduler owns (clock manipulation via
     // SQL UPDATE, the retention-suite precedent; never the system clock).

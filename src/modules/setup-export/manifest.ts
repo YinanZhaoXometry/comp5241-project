@@ -146,14 +146,7 @@ export async function captureManifest(
   // are OWNER derivative content and join the artifact honestly. Snapshots
   // include answer keys by the same S8 reasoning — the owner can already
   // reveal any answer by submitting, so no assessment exclusion is invented.
-  // The content-free daily generation counter is deliberately excluded (the
-  // skip line below records the reason).
   await captureAssessmentDerivatives(client, ownerId, { entries, payloads, skipped });
-  if (await tableColumns(client, 'assessment_generation_use')) {
-    skipped.push({ category: 'assessment-generation-use', reason: ASSESSMENT_GENERATION_USE_SKIP });
-  } else {
-    skipped.push({ category: 'assessment-generation-use', reason: 'Table app.assessment_generation_use is not present in this deployment' });
-  }
   // S6: advisory AI draft requests are deliberately excluded from the artifact
   // (the simpler honest option per the S6 plan): they are suggestions the
   // learner edits, not canonical owner content, and no source excerpt or
@@ -181,6 +174,14 @@ export async function captureManifest(
     });
   } else {
     skipped.push({ category: 'supplements', reason: 'Table app.course_supplement is not present in this deployment' });
+  }
+  // Epic-3 3.9: the content-free daily generation counter is the one
+  // assessment skip — deliberately excluded (the ASSESSMENT_GENERATION_USE_SKIP
+  // reason records why and where the counted evidence ships).
+  if (await tableColumns(client, 'assessment_generation_use')) {
+    skipped.push({ category: 'assessment-generation-use', reason: ASSESSMENT_GENERATION_USE_SKIP });
+  } else {
+    skipped.push({ category: 'assessment-generation-use', reason: 'Table app.assessment_generation_use is not present in this deployment' });
   }
 
   return {
