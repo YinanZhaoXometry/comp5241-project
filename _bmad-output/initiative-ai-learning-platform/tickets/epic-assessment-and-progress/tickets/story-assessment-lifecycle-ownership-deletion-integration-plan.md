@@ -1,0 +1,107 @@
+---
+title: 'Assessment lifecycle, ownership and deletion integration (3.9)'
+type: 'feature'
+ticket: 9
+created: '2026-10-29'
+status: 'planned'
+baseline_revision: '1b274f8'
+route: 'full'
+route_source: 'auto'
+risk: 'high'
+review: ''
+review_source: ''
+lenses_ran: []
+review_loop_iteration: 0
+followup_review_recommended: false
+context:
+  - '{project-root}/_bmad-output/initiative-ai-learning-platform/product-policies.md'
+  - '{project-root}/_bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md'
+  - '{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-grounded-mini-courses/tickets/story-generation-honesty-consent-denial-and-descendant-lifecycle-plan.md'
+  - '{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-assessment-and-progress/tickets/story-disputed-item-correction-and-honest-retries-plan.md'
+  - '{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-assessment-and-progress/tickets/story-versioned-completion-and-evidence-handoff-plan.md'
+warnings: []
+deferred: []
+---
+
+<intent-contract>
+
+## Intent
+
+**Problem:** Stories 3.1–3.8 built the full assessment surface — attempts with at-start snapshots, the targeted-recovery ledger and retest chain, monotonic completion awards and parent manifests, the studied-release pointer, the one-way flag, the dispute machine with corrected replacements and the daily generation budget, guidance, the roadmap and the 3.8 handoff — but none of it is registered with epic 1's lifecycle classes the way epic 2's entry 8 registered course derivatives: the S9 deletion inventory (preview/deny/purge ports) does not know any assessment table, so a root or whole-personal deletion preview under-counts what will be revoked and the purge leaves non-cascading residue (023's parent-path award rows have `course_id NULL`, so they never ride the course `ON DELETE CASCADE`; `app.assessment_generation_use` is owner-keyed only); the S8 export artifact excludes every assessment class (no attempt/score/recovery history ships, with no honest exclusion reason either); and the deletion-race/idempotency/cross-owner guarantees that hold structurally (every 3.1–3.8 verb and read runs `scopedRoot` + `assertObjects` inside its AD-2 transaction) are unproven as a set for grading/retest/replacement racing deletion.
+
+**Approach:** Exactly the epic-2 entry-8 shape — an integration entry, no new product surface, no assessment-module behavior change: (1) **one new lifecycle port** (`assessment-progress`) in `lifecycle-platform/derivatives.ts`, the course-generation/ai-setup/instructor-courses precedent: content-free per-category `preview` counts of every assessment derivative kind in both scopes (attempts incl. their snapshots, retests, recovery-ledger rows, completion awards incl. parent-path rows, one-way flags, disputes, replacements, studied-release pointers — guidance records are a read-time derivation over these rows with no stored copy, which the preview cannot and does not count), `deny` riding the existing fences (every verb/read re-runs `scopedRoot` + plan-revision `assertObjects` inside one transaction, and the root-row `FOR UPDATE` serializes in-flight grading against deletion — the same "no blind state write" decision the course and ai-setup ports recorded), and an idempotent `purge` that deletes by `root_id`/`owner_id` in FK-safe order (disputes before replacements — 026's circular `resolved_by_replacement` FK has no cascade — then attempts/retests/targets/flags, then awards and pointers), leaving the content-free generation counter in root scope and purging it owner-wide in personal scope (the `ai_dispatch_ledger` precedent); (2) **export scope flip** following the recorded epic-2 S8 decision pattern: attempt/retest/recovery/award/flag/dispute/replacement/pointer rows are OWNER derivative content and join the artifact honestly under one `assessment-evidence` category, snapshot-scoped exactly like the course classes (deleted roots excluded by the root tombstone; course-linked rows additionally excluded when their course's lifecycle object was invalidated), with the full stored rows shipped (snapshots include answer keys — the owner can already reveal any answer by submitting; the epic-2 recall-answer reasoning applies verbatim to owner-specific assessment rows), while the content-free daily generation counter is a deliberate, honestly-reasoned skip; (3) **retention coverage without a new class**: assessment derivatives purge inside the seven-day deletion deadline through the registered port exactly as epic-2's course derivatives do — the `deletion-active-purge` registry clock already recorded per accepted deletion is the retention clock that covers them, no new `RETENTION_CLASSES` member is persisted and no migration is needed (the epic-2 entry-8 resolution of the same question: "rides the deletion deadlines through the existing ports"); (4) **proof, not mechanism, for the race set**: late grading commits are already structurally suppressed — every submit path takes the root row lock (`scopedRoot FOR UPDATE`) before touching evidence, deletion takes the same lock, so a grade either lands before deletion commits (and is then purged with the root) or is denied after it; the new integration suite proves both orders, the immediate post-deletion denial on every read path (including 3.7's dispute/replacement reads and 3.8's handoff), the direct lineage-fence rejection of a synthetic late recommit, complete purge inside deadlines via the reconciler, cross-owner export download denial, and duplicate lifecycle commands yielding one tracked effect.
+
+## Boundaries & Constraints
+
+**Always:**
+- The port is content-free everywhere: preview counts only, deny/purge row effects only — no material, prompt, answer or plan text is ever read, logged or returned by lifecycle code (the S9 contract).
+- Purge is complete and idempotent in both scopes: root scope removes every assessment row of the transitive root set (including parent-path award rows and pointers that never cascade from the course); personal scope removes every assessment row of the owner including the generation counter; FK-safe delete order (disputes → replacements → retests → attempts → targets → flags → awards → pointers) because 026's `resolved_by_replacement` FK carries no cascade; re-running purge is a no-op; the reconciler completes a failed purge later and a failing port never restores access.
+- Deny rides the existing fences — no blind state write is invented: the root tombstone + lineage invalidation already deny every assessment verb/read (each runs `scopedRoot` + `assertObjects(plan_revision_id)` inside its AD-2 transaction), the replay path denies deleted roots (`lifecycle.replay` re-runs `scopedRoot` with `includeDeleted=false` for non-delete actions), and the root-row `FOR UPDATE` serializes an in-flight grade against deletion — "suppress late grading commits" is proven, not re-implemented.
+- Export: the new `assessment-evidence` category captures full stored rows (snapshot, answers, earned/total/passed, group results, dispute states, award pins, pointers) with manifest entries per row (`parents` = the course lineage where the row carries one); the category is NOT in `lifecycleCategories` (assessment entries are not lifecycle objects and never enter the artifact's parent fence); deleted-root rows are excluded by snapshot scope exactly like every other class; the `assessment-generation-use` skip line records the deliberate exclusion of the content-free counter with its reason; counts and labels in the pre-request preview stay honest (live owner counts, the epic-2 S8 pattern).
+- Retention: the seven-day `deletion-active-purge` deadline (the registry row every accepted deletion already records) is the retention clock covering assessment derivative purge; `RETENTION_CLASSES` is unchanged and no migration is created — 027 stays intentionally unused (3.8's record) and 028 stays unused because no stored shape changes (the port needs no schema, the export is read-time, the retention decision adds no class member). Flagged to the orchestrator since the lane numbering reserves 028 for this story.
+- Cross-owner/revoked denial covers every read path structurally and stays that way: all 3.1–3.8 reads are `scopedRoot`-fenced or owner_id-scoped (`getRoadmap` filters deleted roots); this story adds no read path and weakens none — the suite proves denial for the 3.7 dispute/replacement paths and the 3.8 handoff after deletion and for foreign actors.
+- `npm run lint`, `typecheck`, `typecheck:worker`, `boundaries`, full unit suite green NOW; the integration suite is AUTHORED to the assessment.test.ts conventions but NOT RUN this phase (the shared DB cluster is reserved for the serialized full gate the orchestrator runs); no skips/overrides/suppressions anywhere.
+
+**Never:**
+- No migration at all (027 and 028 both stay unused — no stored shape changes); no new product surface, route or UI; no assessment-progress module edits (its verbs, repository and contracts are untouched — the fences this story proves already live there); no edits to `tests/unit/{assessment,assessment-disputes,assessment-handoff,export,retention}.test.ts` or `tests/integration/{assessment,disputes,roadmap,assessment-handoff,lifecycle,export,retention}.test.ts` (sibling-file collision rule — new test files only); no new dependencies, no lint-config changes, no refactors (3.10's job); no revocation or rewrite of any attempt/retest/ledger/flag/dispute/award row by lifecycle code (AD-5 — purge DELETEs whole rows after revocation is durable, exactly like every registered port); no AI dispatch, no queue changes; loopback-only, original synthetic fixtures only.
+
+## I/O & Edge-Case Matrix
+
+| Scenario | Input / State | Expected Output / Behavior | Error Handling |
+|----------|--------------|---------------------------|----------------|
+| Root deletion preview | owner with attempts/retests/targets/awards/flags/disputes/replacements/pointer on one root | `dependenciesPreview` counts every assessment category honestly (per-root scope); journal stores counts only | none |
+| Personal preview | same owner, several roots | personal preview counts owner-wide assessment categories | none |
+| Root deletion vs in-flight attempt | open attempt; `removeRoot` accepted | next `submitAttempt`/`startRetest`/`getAssessment`/handoff read denies immediately; reconciler purge leaves zero assessment rows; sibling root's rows untouched | `FORBIDDEN_OR_NOT_FOUND`, no leak |
+| Grade-then-delete order | grade committed first, then deletion | graded rows purge with the root inside the deadline; replayed submit command denies (no late recommit through replay); direct `assertObjects(planRevisionId)` rejects | `FORBIDDEN_OR_NOT_FOUND` |
+| Retest/replacement race | open retest + under-review dispute + open replacement at deletion | late submits deny; purge removes chain, dispute and replacement rows completely (FK-safe order) | `FORBIDDEN_OR_NOT_FOUND` |
+| Parent-award residue | parent-path award row (course_id NULL) exists | root purge removes it (the port deletes by root_id — the cascade never would) | none |
+| Personal removal | whole-personal deletion | every assessment table empty for the owner incl. generation counter; receipt idempotent; request reaches `purged` after reconciler; another actor untouched | none |
+| Failing port / retry | purge throws once | access stays denied; reconciler completes on retry; one tracked effect | logged pending, retried |
+| Duplicate lifecycle commands | same delete command twice | identical receipt replay, one tracked effect, purge idempotent | `CONFLICT` on a different key |
+| Owner export | owner with full assessment chain | artifact includes `assessment-evidence` rows with attempt/score/recovery/award/dispute history; preview counts honest; generation-use skip line present | none |
+| Deleted-root export scope | one root deleted, another live | export entries exclude the deleted root's rows only | none |
+| Cross-owner download | actor B requests/downloads A's export | denied at request and stream-chunk level | `FORBIDDEN_OR_NOT_FOUND`, no leak |
+| Content-free journal | any deletion preview | no prompt/answer/plan text in the preview journal | none |
+
+</intent-contract>
+
+## Code Map
+
+- `src/modules/lifecycle-platform/derivatives.ts` — EXTEND (surgical add, the instructor-courses 5.1 precedent): `assessmentProgressPort` registered at the bottom — `preview` returns eight content-free categories (`assessment-attempts`, `assessment-retests`, `assessment-recovery-ledger`, `assessment-awards` incl. parent-path rows, `assessment-flags`, `assessment-disputes`, `assessment-replacements`, `assessment-release-pointers`) counted by `root_id` in root scope and `owner_id` in personal scope, each behind a `tableReady` absence guard; `deny` documents the fence ride (no write); `purge` deletes FK-safely by `root_id` (root scope: disputes → replacements → retests → attempts → targets → flags → awards → pointers; generation counter deliberately survives) and by `owner_id` (personal scope: the same eight plus `assessment_generation_use`).
+- `src/contracts/export.ts` — EXTEND: `assessment-evidence` (captured class, label "Scored assessment history") and `assessment-generation-use` (deliberate-skip class) join `exportCategories`/`exportCategoryLabels`; `lifecycleCategories` untouched (asserted by unit test).
+- `src/modules/setup-export/manifest.ts` — EXTEND: `captureAssessmentDerivatives` (the `captureCourseDerivatives` shape) — snapshot-scoped queries over the eight assessment tables (root tombstone join; course-object invalidation guard on every course-linked table; flags join their attempt's course), one manifest entry per row (category `assessment-evidence`, `parents` = course id where carried) plus per-table payloads under `assessments/*.json`; the exported `ASSESSMENT_GENERATION_USE_SKIP` reason constant records the deliberate counter exclusion; `activeCounts` gains a snapshot-scoped assessment count; a small pure `jsonSafe` date-mapping helper (unit-covered).
+- `src/modules/setup-export/service.ts` — EXTEND (surgical): `listExports` maps the two new categories — `assessment-evidence` to the live owner count, `assessment-generation-use` to the deliberate-skip note branch (the ai-drafts/supplements pattern).
+- Tests — NEW files only: `tests/unit/assessment-lifecycle.test.ts` (the port's registration contract: present in `registeredPorts()`, all three functions, honest label; the export contract surface: both new categories exactly once, labels, NOT lifecycle categories; the skip-reason honesty phrasing; the retention coverage pin: the `deletion-active-purge` class exists with its seven-day clock and reconciler note — the executable record of the no-new-class decision; the pure `jsonSafe` mapping); `tests/integration/assessment-lifecycle.test.ts` (AUTHORED to the assessment.test.ts conventions — owner/actor/grant/confirmedStudy/generateCourse/readyStudyWithRequiredDone helpers, real verbs — covering the ticket's verify scenarios; NOT RUN this phase: the shared DB cluster is reserved for the serialized full gate; the orchestrator merges and executes it later).
+- `docs/project-structure.md` — EXTEND: the assessment-progress entry records the 3.9 lifecycle registration; the setup-export entry records the assessment-evidence class.
+
+## Tasks & Acceptance
+
+**Execution:**
+- [ ] `src/modules/lifecycle-platform/derivatives.ts` — assessmentProgressPort (preview/deny/purge, both scopes).
+- [ ] `src/contracts/export.ts` — the two new categories + labels.
+- [ ] `src/modules/setup-export/manifest.ts` — captureAssessmentDerivatives + activeCounts + skip constant + `jsonSafe`.
+- [ ] `src/modules/setup-export/service.ts` — preview mapping for the new categories.
+- [ ] `tests/unit/assessment-lifecycle.test.ts` — registration/contract/phrasing/retention-pin coverage.
+- [ ] `tests/integration/assessment-lifecycle.test.ts` — authored-pending-execution verify scenarios.
+- [ ] `docs/project-structure.md` — same-change update.
+
+**Acceptance Criteria:**
+- Given an owner with the full assessment chain, a root or personal deletion preview counts every assessment derivative category honestly and the journal stays content-free.
+- Given root deletion racing attempt grading, retest and replacement generation: no late-recommitted result survives (denied submits, denied replays, lineage fence rejects a synthetic late commit), the next read on every path (assessment, disputes, handoff, roadmap) denies immediately, and the reconciler purges every assessment row — including parent-path awards and pointers that never cascade — inside the deadline, with duplicate lifecycle commands yielding one tracked effect and a failed purge retrying without ever restoring access.
+- Given a whole-personal deletion, every assessment table (generation counter included) is empty for the owner while another actor's rows are untouched.
+- Given an owner export, the artifact contains their attempt/score/recovery/award/dispute history under `assessment-evidence` with the deleted-root scope honored and the generation-counter skip recorded; another actor's request and download are denied with no leak.
+- Retention coverage: the seven-day deletion clock's registry row covers the roots holding assessment derivatives and the reconciler drives their purge — recorded as the executable no-new-class decision.
+- Full unit suite green; lint/typecheck/typecheck:worker/boundaries green; integration suite authored and convention-conformant, execution deferred to the orchestrator's serialized phase.
+
+## Design Notes
+
+Latitude taken (recorded per the house rule): (1) **No migration** — the port needs no schema (it enumerates and deletes rows in tables 021–026 already define), the export is read-time, and the retention question resolves the way epic-2's entry 8 resolved it: table-resident derivatives ride the seven-day deletion deadlines through the registered ports; per-row registry copies were never the epic-1/2 shape for table derivatives (only physical artifacts, journals and deadline requests are registry rows), so adding a class member would be ceremony, not coverage — 027 (3.8's record) and 028 both stay unused, flagged to the orchestrator. (2) **Deny is a fence ride, not a state write** — every assessment verb/read already re-authorizes inside its AD-2 transaction (`scopedRoot` + `assertObjects`), and the root-row lock serializes in-flight grading against deletion (both orders proven by the suite); inventing a cancellation state column would add stored shape and a new write path to a module this story must not touch. (3) **The generation counter follows the `ai_dispatch_ledger` precedent** — content-free owner accounting: not previewed (it is not study content), never exported (deliberate skip with reason), survives root purge (a root deletion must not under-count a budget already consumed), purged owner-wide by personal removal. (4) **One export category, eight payloads** — the diagnostic-evidence precedent (one category, per-table payload files) rather than eight manifest categories: the manifest stays readable and the pre-request preview stays one honest line for assessment history plus one skip line. (5) **Answer keys ship in the export** — the stored snapshot is owner-specific derivative content and the owner can reveal any answer by submitting (the epic-2 S8 recall-answer reasoning verbatim); the diagnostic answer-key exclusion never applied to owner-specific rows. (6) **Preview categories are per-table** (eight) rather than one lump count — the deletion preview's whole job is honest per-kind counts, and parent-path awards/studied pointers would hide inside a lump. (7) Guidance records have no stored copy to register — guidance is a pure derivation over the registered rows (3.5's design); the plan records this so the ticket's "guidance records" line is answered honestly rather than by inventing a table.
+
+## Verification
+
+**Commands (this phase):**
+- `nvm use && NPM_CONFIG_USERCONFIG=/dev/null NEXT_TELEMETRY_DISABLED=1 npm run lint` — expected: green, covered-rule count unchanged.
+- `npm run typecheck` / `npm run typecheck:worker` — expected: green (Next generated types are provided; no dev server is booted this phase).
+- `npm run boundaries` — expected: green (contracts import nothing new; the port adds no import outside lifecycle-platform's existing set).
+- `npm run test` — expected: full unit suite green including the new `tests/unit/assessment-lifecycle.test.ts`.
+- `tests/integration/assessment-lifecycle.test.ts` — AUTHORED ONLY this phase (the shared DB cluster is reserved for the serialized full gate); the orchestrator merges, runs migrations (unchanged set) and executes it. Unit coverage pins the registration/contract/phrasing surface to de-risk that run.
