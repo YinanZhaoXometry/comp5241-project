@@ -776,7 +776,7 @@ export async function insertReplacement(
     `INSERT INTO app.assessment_replacement(id,dispute_id,root_attempt_id,root_id,owner_id,course_id,course_version,plan_revision_id,status,objective_index,snapshot)
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,'active',$9,$10)
      ON CONFLICT (owner_id, root_id) WHERE status='active' DO NOTHING`,
-    [row.id, row.disputeId, row.rootAttemptId, row.ownerId, row.rootId, row.courseId, row.courseVersion, row.planRevisionId, row.objectiveIndex, row.snapshot],
+    [row.id, row.disputeId, row.rootAttemptId, row.rootId, row.ownerId, row.courseId, row.courseVersion, row.planRevisionId, row.objectiveIndex, row.snapshot],
   );
   return inserted.rowCount === 1;
 }

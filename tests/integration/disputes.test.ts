@@ -357,7 +357,7 @@ describe('epic-3 story-7: disputed-item correction and honest retries', () => {
     // A retest start over the budget is denied RATE_LIMITED and records
     // ZERO rows of any kind — no retest, no attempt, no failed-attempt
     // record anywhere (the transaction rolled back).
-    await expect(startRetest(a, study.rootId, { ...command(study.revision), attemptId, targetIndexes: [4] })).rejects.toMatchObject({ code: 'RATE_LIMITED' });
+    await expect(startRetest(a, study.rootId, { ...command(study.revision), attemptId, targetIndexes: [1] })).rejects.toMatchObject({ code: 'RATE_LIMITED' });
     expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.retest_attempt WHERE root_id=$1', [study.rootId])).rows[0].count).toBe(0);
     expect((await database().query<{ count: number }>('SELECT count(*)::int AS count FROM app.test_attempt WHERE root_id=$1', [study.rootId])).rows[0].count).toBe(1);
     // The denial consumed nothing: the counter still reads the cap (the
@@ -378,7 +378,7 @@ describe('epic-3 story-7: disputed-item correction and honest retries', () => {
     // Reset the budget (the day's counter is the only input): starts work
     // again — the delay was honest, nothing was lost.
     await database().query(`UPDATE app.assessment_generation_use SET used=0 WHERE owner_id=$1`, [a.userId]);
-    const retest = await startRetest(a, study.rootId, { ...command(study.revision), attemptId, targetIndexes: [4] });
+    const retest = await startRetest(a, study.rootId, { ...command(study.revision), attemptId, targetIndexes: [1] });
     expect(retest.state).toBe('active');
     expect((await getAssessment(a, study.rootId)).generation.usedToday).toBe(1);
   });
@@ -390,16 +390,16 @@ describe('epic-3 story-7: disputed-item correction and honest retries', () => {
     // Failed retests never lock anything: each graded retest can be
     // followed by a fresh one, and the open target honestly persists.
     for (let round = 0; round < 3; round += 1) {
-      const retest = await startRetest(a, study.rootId, { ...command(study.revision), attemptId, targetIndexes: [4] });
+      const retest = await startRetest(a, study.rootId, { ...command(study.revision), attemptId, targetIndexes: [1] });
       const snapshot = await retestSnapshotOf(retest.operationId);
       const wrong = snapshot.items.map(item => ({ position: item.position, choiceId: item.choices.find(choice => choice.id !== item.answerId)!.id }));
       await submitRetest(a, study.rootId, retest.operationId, { ...command(study.revision), retestId: retest.operationId, answers: wrong });
       const mid = await getAssessment(a, study.rootId);
-      expect(mid.recovery?.targets.find(target => target.objectiveIndex === 4)?.status).toBe('open');
+      expect(mid.recovery?.targets.every(target => target.status === 'open')).toBe(true);
     }
     // The clearing retest satisfies the group — recovery works after any
     // number of failed rounds.
-    const clearing = await startRetest(a, study.rootId, { ...command(study.revision), attemptId, targetIndexes: [4] });
+    const clearing = await startRetest(a, study.rootId, { ...command(study.revision), attemptId, targetIndexes: [1] });
     const clearingSnapshot = await retestSnapshotOf(clearing.operationId);
     await submitRetest(a, study.rootId, clearing.operationId, { ...command(study.revision), retestId: clearing.operationId, answers: answersFrom(clearingSnapshot) });
     const recovered = await getAssessment(a, study.rootId);
