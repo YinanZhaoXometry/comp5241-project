@@ -1,9 +1,9 @@
 ---
 title: 'Background and goal adaptation'
 type: 'feature'
-ticket: '2.4'
+ticket: 4
 created: '2026-10-27'
-status: 'built'
+status: done
 baseline_revision: 'cfe0447'
 route: 'full'
 route_source: 'auto'

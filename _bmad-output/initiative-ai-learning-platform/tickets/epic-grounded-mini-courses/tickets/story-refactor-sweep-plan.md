@@ -1,9 +1,9 @@
 ---
 title: 'Refactor sweep'
 type: 'refactor'
-ticket: '2.9'
+ticket: 9
 created: '2026-10-27'
-status: 'built'
+status: done
 baseline_revision: '9baeec1'
 route: 'full'
 route_source: 'auto'

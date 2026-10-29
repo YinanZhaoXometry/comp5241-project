@@ -1,9 +1,9 @@
 ---
 title: 'Confirmed-plan-to-generated-course tracer'
 type: 'feature'
-ticket: '2.1'
+ticket: 1
 created: '2026-10-26'
-status: 'built'
+status: done
 baseline_revision: '552fffc'
 route: 'full'
 route_source: 'auto'

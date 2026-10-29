@@ -5,6 +5,12 @@ import { test, expect } from '@playwright/test';
 // silent (no API/external/failed requests, no console errors), hold every
 // tested width without horizontal overflow, and honor the shell keyboard
 // contract (skip link first, main focusable).
+//
+// 2026-10-29 (epic-5 entry 1): /instructor/courses and /instructor/approvals
+// LEFT this list — their static prototypes were ported to LIVE authenticated
+// routes over /api/v1/instructor/*. Their rendering, width, honesty-label and
+// denial behavior moved to instructor.spec.ts; students/participation stay
+// static here (later epic-5 entries port them).
 
 const learnerPages = [
   { path: '/library', nav: 'Library', h1: 'Saved studies' },
@@ -20,8 +26,6 @@ const learnerPages = [
   { path: '/data', nav: 'Privacy & data', h1: 'Your data' },
 ];
 const instructorPages = [
-  { path: '/instructor/courses', nav: 'Courses', h1: 'Courses' },
-  { path: '/instructor/approvals', nav: 'Approvals', h1: 'Approvals' },
   { path: '/instructor/students', nav: 'Students', h1: 'Students' },
   { path: '/instructor/participation', nav: 'Participation', h1: 'Participation' },
 ];

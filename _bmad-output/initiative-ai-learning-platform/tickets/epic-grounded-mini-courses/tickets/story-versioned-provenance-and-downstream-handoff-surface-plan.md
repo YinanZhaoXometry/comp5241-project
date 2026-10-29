@@ -1,9 +1,9 @@
 ---
 title: 'Versioned provenance and downstream handoff surface'
 type: 'feature'
-ticket: '2.7'
+ticket: 7
 created: '2026-10-27'
-status: 'built'
+status: done
 baseline_revision: '40946fe'
 route: 'full'
 route_source: 'auto'

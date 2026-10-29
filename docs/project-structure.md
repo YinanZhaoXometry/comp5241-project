@@ -33,10 +33,23 @@ project-new/
 │   │   │                                                                 sources, always-visible keyboard stop
 │   │   │                                                                 control, honest exhaustion past the stored
 │   │   │                                                                 evidence (zero dispatch) and no unlock
+│   │   │   assessment-stage.tsx                                          epic-3 story-1 scored-attempt panel:
+│   │   │                                                                 pre-start disclosure (80% mark, 10000
+│   │   │                                                                 points, scoring criteria) → single-choice
+│   │   │                                                                 items → one submission → honest boundary
+│   │   │                                                                 verdict with per-item reveal and attempt
+│   │   │                                                                 history → derived roadmap line
 │   │   ├── shell/          product + instructor page shells (sidebar/topnav, honesty label)
-│   │   ├── screens/        static styled screen content (library, course, practice, …)
-│   │   └── library·course·practice·progress·recovery·roadmap·review·why·       static product pages
-│   │       starting-check·plan-ai·data·instructor/*                            (no business logic)
+│   │   ├── screens/        static styled screen content (library, course, practice, …) plus
+│   │   │                   the LIVE epic-5 screens: instructor-courses/approvals (ported
+│   │   │                   from their static prototypes), dialog-frame, enrolled-list/course,
+│   │   │                   live-session (shared client session gate)
+│   │   ├── library·course·practice·progress·recovery·roadmap·review·why·       static product pages
+│   │   │   starting-check·plan-ai·data·instructor/{students,participation}     (no business logic)
+│   │   ├── instructor/{courses,approvals}/    LIVE instructor routes (epic-5 5.1): authenticated
+│   │   │                                       studio over /api/v1/instructor/*, honesty label kept
+│   │   └── enrolled/ + enrolled/[courseId]/   LIVE learner routes (epic-5 5.1): enrolled index and
+│   │                                           the approved-only study view behind the enrollment fence
 │   ├── contracts/          domain contracts; import no adapters/modules/platform/next/pg
 │   │   ├── setup.ts        tracer setup/plan contracts
 │   │   ├── documents.ts    bounded document/extraction contracts
@@ -46,6 +59,11 @@ project-new/
 │   │   │                       handoff document contract (immutable-per-version
 │   │   │                       block + monotonic derivatives block;
 │   │   │                       attempt-independent by construction)
+│   │   ├── assessment.ts   epic-3 story-1 scored-attempt contracts: command
+│   │   │                       schemas, the server-side snapshot schema
+│   │   │                       (answer key never in a pre-grade view) and the
+│   │   │                       none/offered/active/graded state union with the
+│   │   │                       derived roadmap node
 │   │   ├── ai-provider.ts  provider-neutral text-completion port (dormant)
 │   │   └── courses.ts      epic-2 S1–S6 generated-course + supplement +
 │   │                         player + why contracts (content v4 = v3
@@ -106,7 +124,29 @@ project-new/
 │   │   │                       lineage; S7 getProvenance — the read-only, owner-
 │   │   │                       scoped, lineage-fenced provenance handoff document
 │   │   │                       (pinned reads byte-stable across supersession)
-│   │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
+│   │   ├── assessment-progress/  epic-3 story-1 scored-attempt tracer: one
+│   │   │                       required objective-linked test from the manually
+│   │   │                       checked synthetic bank, snapshotted at start
+│   │   │                       (blueprint/questions/answer key/answer rules/
+│   │   │                       rubric/point scale/80% default mark) into 021
+│   │   │                       app.test_attempt, submitted exactly once and
+│   │   │                       graded by unrounded scaled-integer
+│   │   │                       cross-product (79.96% does not pass 80%),
+│   │   │                       attempts listed never overwritten, derived
+│   │   │                       roadmap node (required items done + passed
+│   │   │                       attempt on the current version — no award
+│   │   │                       rows, no recovery/partial credit)
+│   │   ├── instructor-courses/  epic-5 entry-1 manual-course approval-
+│   │   │                       enrollment tracer: instructor-owned courses
+│   │   │                       with immutable manual version rows (030),
+│   │   │                       exact-version approvals (approver/time/
+│   │   │                       digest), course-anchored command receipts,
+│   │   │                       server-side verified-account enrollment
+│   │   │                       (preview/confirm) and the learner-side
+│   │   │                       approved-only study reads; registered in the
+│   │   │                       epic-1 lifecycle inventory through the
+│   │   │                       instructor-courses derivative port
+│   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
 │   │                           derivative ports, dependencies preview (S9),
 │   │                           retention registry/scheduler + archive contract (S10)
 │   ├── adapters/           infrastructure; may not be reached from client components
@@ -153,10 +193,20 @@ project-new/
 │   │                       deletion races, consent-denial/ineligibility,
 │   │                       four-family idempotency, the 120-second honesty
 │   │                       set and post-deletion read denials), provenance
-│   │                       (the epic-2 S7 synthetic consumer)
+│   │                       (the epic-2 S7 synthetic consumer), assessment
+│   │                       (the epic-3 scored-attempt tracer: snapshot
+│   │                       pinning, exactly-once, denial sweep, answer
+│   │                       withholding, supersession stability), instructor-
+│   │                       courses (the epic-5 5.1 tracer: approval
+│   │                       idempotency/immutability, enrollment preview/
+│   │                       confirm, approved-only learner visibility, the
+│   │                       no-leak denial sweep and lifecycle-inventory
+│   │                       registration)
 │   ├── browser/            Playwright: tracer, pages (static product pages), batches,
 │   │                       consent, preferences, handoff, check, export, lifecycle,
-│   │                       course, journey (epic-2 S10 integrated study suite) —
+│   │                       course, journey (epic-2 S10 integrated study suite),
+│   │                       attempt (epic-3 boundary honesty + roadmap line),
+│   │                       instructor (epic-5 5.1 live studio + learner path) —
 │   │                       production build
 │   └── fixtures/           original synthetic documents only
 ├── docs/                   guides: ai-provider-adapter, bounded-document-extraction,
@@ -165,7 +215,12 @@ project-new/
 ├── _bmad/                  the installed BMad Method tooling itself — do not edit casually
 ├── _bmad-output/           BMad-generated planning artifacts for this initiative (below)
 ├── .local/                 ignored local runtime state (below)
-└── test-results/           ignored Playwright output
+├── test-results/           ignored Playwright output
+└── spikes/g4-feasibility/  epic-6 G4 feasibility spike harness (isolated-runner
+                            probe battery + offline narration trials, with the
+                            g4-* dossiers in the epic folder) — committed spike
+                            evidence only: outside every lint/typecheck/build
+                            surface, no product path, selects/activates nothing
 ```
 
 ## `_bmad/` vs `_bmad-output/`

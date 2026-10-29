@@ -1,9 +1,9 @@
 ---
-title: 'Integrated study suite and authorized release verification'
+title: 'Integrated local study suite (re-sliced local half of S10)'
 type: 'feature'
-ticket: '2.10'
+ticket: 10
 created: '2026-10-27'
-status: 'built'
+status: done
 baseline_revision: '871a45a'
 route: 'full'
 route_source: 'auto'
@@ -101,6 +101,8 @@ No F-gate admission, no deployment, no provisioning, no external accounts, no li
 - **F-C — Deployment authorization: OPEN, unattempted.** Required evidence before the deployed smoke check: actual provisioning/deployment scope, region/plan/budget, operator responsibilities and managed copy/backup retention evidence, separately approved and verified. Nothing was deployed; the local gate green is synthetic local evidence, not deployment, provider or retention approval — and per the S10 contract a blocked release cannot be recorded Done.
 
 ## Plan Change Log
+
+- 2026-10-28 — Re-sliced under the owner-approved 1.12/1.14 pattern (entry authored as "Integrated study suite and authorized release verification"): the LOCAL integrated suite is this entry's closable scope and the live/deployment half moved to new entry 11 ("Authorized release verification (deferred deployment half of S10)", dropped-deferred). The frozen intent above already scoped the local suite as closable with the live halves unattempted, so no built work is rewritten; the open-gates record below stays verbatim. File renamed to match the new title slug.
 
 - 2026-10-27: Added `tests/browser/journey.spec.ts` (integrated journey + denied/error set; zero skips) and the integrated-lifecycle `it` extending the S8 describe in `tests/integration/course-generation.test.ts`; `docs/project-structure.md` browser-suite line updated in the same change. No product code, migration, dependency or configuration change — the suite composes existing behavior and found no defect requiring a patch. Terminal status recorded `built` with the F-A/F-B/F-C open-gates record above; live halves explicitly unattempted.
 
