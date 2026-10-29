@@ -7,10 +7,14 @@ import {
   submitRetestSchema,
   switchCourseVersionSchema,
   flagAssessmentItemSchema,
+  startReplacementSchema,
+  submitReplacementSchema,
   passMarkOverrideOf,
   pointsScaleOf,
   type ActiveAttemptView,
+  type ActiveReplacementView,
   type ActiveRetestView,
+  type AssessmentDisputeView,
   type AssessmentFlag,
   type AssessmentFlagView,
   type AssessmentState,
@@ -18,15 +22,19 @@ import {
   type CompletionAwardView,
   type GradeDecision,
   type GradedItemView,
+  type GradedReplacementView,
   type GradedRetestView,
   type RecoveryState,
   type RecoveryTargetView,
+  type ReplacementSummary,
   type RetestSummary,
   type RetestGroupResult,
   type SnapshotItem,
   type StartedAttempt,
+  type StartedReplacement,
   type StartedRetest,
   type SubmittedAttempt,
+  type SubmittedReplacement,
   type SubmittedRetest,
   type SwitchDisclosure,
   type SwitchedCourseVersion,
@@ -43,13 +51,14 @@ import { getCourse } from "../course-generation/service";
 import * as courseRepository from "../course-generation/repository";
 import { parse, requestHash } from "../../platform/commands";
 import { fail } from "../../platform/errors";
-import { buildSnapshot, buildRetestSnapshot } from "./bank";
-import { completionEarned, deriveRoadmapNode, displayPercentOf, earnedOfItem, gradeAwardsCompletion, groupCleared, groupResultsOf, groupViewOf, parentEarned, recoverySatisfied, scoreAttempt, verdictLine } from "./scoring";
+import { buildSnapshot, buildRetestSnapshot, buildReplacementSnapshot } from "./bank";
+import { completionEarned, deriveRoadmapNode, displayPercentOf, earnedOfItem, gradeAwardsCompletion, groupCleared, groupResultsOf, groupViewOf, parentEarned, scoreAttempt, verdictLine } from "./scoring";
 import { deriveGuidance } from "./guidance";
+import { deriveCompletionPause, generationAllows, generationUseView, recoverySatisfiedWithCorrections } from "./disputes";
 import { deriveRoadmapView, type RoadmapCourseFact, type RoadmapRootFact } from "./roadmap";
 import { queryReviewState, reviewStatePortBound } from "./review-port";
 import * as repository from "./repository";
-import type { AttemptRow, AwardRow, FlagRow, RecoveryTargetRow, RetestRow } from "./repository";
+import type { AttemptRow, AwardRow, DisputeRow, FlagRow, RecoveryTargetRow, ReplacementRow, RetestRow } from "./repository";
 
 // Epic-3 story-1 tracer verbs plus the story-2 targeted-recovery chain and
 // the story-4 monotonic completion-award layer. Every verb runs identify ->
@@ -312,10 +321,17 @@ async function studiedCourse(identity: Identity, rootId: string): Promise<Course
 // evidence, consumed READ-ONLY through its scoped repository reads) plus
 // this module's attempts and ledgers on THAT release. Nothing else awards —
 // no dwell, no engagement, no self-report; a provisional-typed grade can
-// never arrive here as a pass (the gradeAwardsCompletion fence). When the
-// release's award exists (freshly inserted or already earned — duplicate
-// triggers are idempotent), every parent manifest that pins this release as
-// a REQUIRED child is re-evaluated the same way.
+// never arrive here as a pass (the gradeAwardsCompletion fence). Story 7
+// (D3/C6): the test requirement also accepts a dispute-CORRECTED group (a
+// clearing corrected replacement on a dispute of that (root attempt,
+// group)), and the award INSERT is gated by the pause predicate — while an
+// open dispute could affect this release's would-be satisfaction paths, the
+// pending/unearned decision pauses. Earned awards are never revoked by any
+// of this: the gate only skips an insert (023 has no update/delete path,
+// and none is added). When the release's award exists (freshly inserted or
+// already earned — duplicate triggers are idempotent), every parent
+// manifest that pins this release as a REQUIRED child is re-evaluated the
+// same way.
 async function evaluateAwardOnCourse(client: PoolClient, ownerId: string, rootId: string, courseId: string): Promise<boolean> {
   const course = await courseRepository.readyCourseById(client, ownerId, rootId, courseId);
   if (!course?.content) return false;
@@ -325,10 +341,12 @@ async function evaluateAwardOnCourse(client: PoolClient, ownerId: string, rootId
   const done = new Set((await courseRepository.itemStates(client, ownerId, courseId)).map(state => state.item_id));
   const attempts = (await repository.attemptsForRoot(client, ownerId, rootId)).filter(row => row.course_id === courseId);
   const targets = await repository.targetsForRoot(client, ownerId, rootId);
+  const disputes = await repository.disputesForRoot(client, ownerId, rootId);
+  const corrected = disputes.filter(row => row.status === "corrected");
   const ledgerOf = (attemptId: string) => targets.filter(target => target.root_attempt_id === attemptId);
   // The provisional-grade fence rides both satisfaction paths: only a FINAL
-  // graded pass (or a FINAL failed grade with every ledgered target cleared)
-  // can complete a release (D3/AD-8).
+  // graded pass (or a FINAL failed grade with every ledgered target cleared
+  // or dispute-corrected) can complete a release (D3/AD-8).
   const testSatisfied =
     attempts.some(row => {
       const decision = gradeDecisionOf(row);
@@ -336,9 +354,16 @@ async function evaluateAwardOnCourse(client: PoolClient, ownerId: string, rootId
     }) ||
     attempts.some(row => {
       const decision = gradeDecisionOf(row);
-      return decision !== null && decision.gradeKind === "final" && !decision.passed && recoverySatisfied(ledgerOf(row.id));
+      return decision !== null && decision.gradeKind === "final" && !decision.passed && recoverySatisfiedWithCorrections(ledgerOf(row.id), corrected);
     });
+  // Story 7 — the pause gate: while an open dispute could affect this
+  // release's would-be satisfaction paths, the unearned award INSERT is
+  // skipped (the pending decision pauses). An already-earned award is
+  // untouched: the insert is conflict-no-op anyway, and nothing below ever
+  // regresses an existing row.
+  const paused = deriveCompletionPause({ courseId, attempts, targets, disputes });
   if (
+    !paused &&
     completionEarned({
       requiredItems: { total: required.length, done: required.filter(item => done.has(item.id)).length },
       testSatisfied,
@@ -508,6 +533,90 @@ function flagViewOf(row: FlagRow): AssessmentFlagView {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Story 7 — dispute/replacement view builders (pure, over rows already
+// fetched in getAssessment's transaction).
+// ---------------------------------------------------------------------------
+
+function replacementSummaryOf(row: ReplacementRow): ReplacementSummary {
+  return {
+    replacementId: row.id,
+    disputeId: row.dispute_id,
+    status: row.status,
+    startedAt: row.created_at.toISOString(),
+    gradedAt: row.graded_at?.toISOString() ?? null,
+    group:
+      row.group_result && row.status === "graded"
+        ? {
+            objectiveIndex: row.group_result.objectiveIndex,
+            earned: row.group_result.earned,
+            total: row.group_result.total,
+            cleared: row.group_result.cleared,
+            displayPercent: displayPercentOf(row.group_result.earned, row.group_result.total, row.snapshot.passMarkPercent, row.group_result.cleared),
+          }
+        : null,
+  };
+}
+
+function activeReplacementOf(row: ReplacementRow): ActiveReplacementView {
+  return {
+    replacementId: row.id,
+    disputeId: row.dispute_id,
+    rootAttemptId: row.root_attempt_id,
+    courseId: row.course_id,
+    courseVersion: row.course_version,
+    planRevisionId: row.plan_revision_id,
+    objectiveIndex: row.objective_index,
+    pointsScale: pointsScaleOf(row.snapshot),
+    startedAt: row.created_at.toISOString(),
+    items: itemViewsOf(row),
+  };
+}
+
+// The graded replacement view is its sole reveal path (chosen/correct/earned
+// per item exist only after its own submission), with the single group
+// verdict recomputed by the same cross-product the grade used.
+function gradedReplacementOf(row: ReplacementRow): GradedReplacementView {
+  if (row.status !== "graded" || row.answers === null || row.group_result === null || row.graded_at === null) fail("RETRYABLE_FAILURE");
+  return {
+    replacementId: row.id,
+    disputeId: row.dispute_id,
+    rootAttemptId: row.root_attempt_id,
+    courseId: row.course_id,
+    courseVersion: row.course_version,
+    planRevisionId: row.plan_revision_id,
+    objectiveIndex: row.objective_index,
+    pointsScale: pointsScaleOf(row.snapshot),
+    startedAt: row.created_at.toISOString(),
+    gradedAt: row.graded_at.toISOString(),
+    group: {
+      objectiveIndex: row.group_result.objectiveIndex,
+      earned: row.group_result.earned,
+      total: row.group_result.total,
+      cleared: row.group_result.cleared,
+      displayPercent: displayPercentOf(row.group_result.earned, row.group_result.total, row.snapshot.passMarkPercent, row.group_result.cleared),
+    },
+    items: gradedItemsOf(row),
+  };
+}
+
+function disputeViewOf(row: DisputeRow, replacements: ReplacementRow[]): AssessmentDisputeView {
+  return {
+    disputeId: row.id,
+    evidenceKind: row.retest_id ? "retest" : "attempt",
+    evidenceId: row.retest_id ?? row.attempt_id,
+    position: row.position,
+    objectiveIndex: row.objective_index,
+    objective: row.objective,
+    courseVersion: row.course_version,
+    status: row.status,
+    openedAt: row.opened_at.toISOString(),
+    resolvedAt: row.resolved_at?.toISOString() ?? null,
+    resolvedByReplacement: row.resolved_by_replacement,
+    replacements: replacements.filter(replacement => replacement.dispute_id === row.id).map(replacementSummaryOf),
+  };
+}
+
 // Owner-scoped assessment state. Story 4: the roadmap node derives FROM
 // AWARD ROWS — completed exists only when an earned version-scoped award
 // pins the STUDIED release (explicitly switched, else the current default
@@ -550,8 +659,23 @@ export async function getAssessment(identity: Identity, rawId: string): Promise<
       ? deriveGuidance({ objectives: ready.objectives, studiedCourseId: ready.courseId, attempts, targets, retests, practiceSummaries, practiceLatestIncorrect })
       : null;
     const flags = (await repository.flagsForRoot(client, identity.userId, rootId)).map(flagViewOf);
+    // Story 7 — the dispute machine's served state: every dispute of the
+    // root with its replacement history, the root's open-or-latest
+    // replacement, whether the STUDIED release's completion decision is
+    // paused by an open dispute (false once that release's award is earned
+    // — earned completion is never revoked), and the named daily
+    // fresh-generation budget. The recovery chain's satisfaction predicate
+    // is the SAME additive predicate the award evaluation uses (cleared or
+    // dispute-corrected), so panel, award and roadmap can never disagree.
+    const disputes = await repository.disputesForRoot(client, identity.userId, rootId);
+    const replacements = await repository.replacementsForRoot(client, identity.userId, rootId);
+    const disputeViews = disputes.map(dispute => disputeViewOf(dispute, replacements));
+    const openReplacement = replacements.find(replacement => replacement.status === "active") ?? null;
+    const replacement = openReplacement ? activeReplacementOf(openReplacement) : replacements[0] && replacements[0].status === "graded" ? gradedReplacementOf(replacements[0]) : null;
+    const correctedRows = disputes.filter(row => row.status === "corrected");
     const required = ready ? ready.items.filter(item => item.required) : [];
     const currentAwardRow = ready ? awards.find(row => row.kind === "mini-course" && row.course_id === ready.courseId) ?? null : null;
+    const completionPaused = ready !== null && !currentAwardRow && deriveCompletionPause({ courseId: ready.courseId, attempts, targets, disputes });
     const node = deriveRoadmapNode({
       awardOnCurrentVersion: !!currentAwardRow,
       requiredItems: { total: required.length, done: required.filter(item => item.done).length },
@@ -571,7 +695,7 @@ export async function getAssessment(identity: Identity, rawId: string): Promise<
           targets: chainTargets.map(target => targetViewOf(target, recoveryRoot.snapshot.passMarkPercent, pointsScaleOf(recoveryRoot.snapshot))),
           retest: openChainRetest ? activeRetestOf(openChainRetest) : latestGradedChainRetest ? gradedRetestOf(latestGradedChainRetest) : null,
           retests: chainRetests.map(retestSummaryOf),
-          requirementSatisfied: recoverySatisfied(chainTargets),
+          requirementSatisfied: recoverySatisfiedWithCorrections(chainTargets, correctedRows),
         }
       : null;
     const base = {
@@ -588,6 +712,10 @@ export async function getAssessment(identity: Identity, rawId: string): Promise<
       versions,
       guidance,
       flags,
+      disputes: disputeViews,
+      replacement,
+      completionPaused,
+      generation: generationUseView(await repository.generationUseFor(client, identity.userId)),
     };
     const open = attempts.find(row => row.status === "active");
     if (open)
@@ -809,6 +937,14 @@ export async function startRetest(identity: Identity, rawId: string, raw: unknow
     // retest keeps ITS OWN declaration — never the fresh command's).
     let targetIndexes: number[] = existing?.target_objective_indexes ?? [];
     if (!existing) {
+      // Story 7 — the honest daily fresh-generation budget (D3 retries): a
+      // NEW retest draws fresh questions, so it consumes one unit — checked
+      // and consumed BEFORE the insert. Over-budget fails HERE, this
+      // transaction rolls back, and zero rows land: no retest, no attempt,
+      // no failed-attempt record anywhere. A replayed command returned above
+      // before this point, so replays never double-count.
+      const used = await repository.bumpGenerationUse(client, identity.userId);
+      if (!generationAllows(used)) fail("RATE_LIMITED");
       const inserted = await repository.insertRetest(client, {
         id: retestId,
         rootAttemptId: rootAttempt.id,
@@ -907,13 +1043,18 @@ export async function submitRetest(identity: Identity, rawId: string, rawRetestI
 // ---------------------------------------------------------------------------
 
 // The thinnest honest flag: the command names one GRADED attempt or retest
-// item of this owner and root. The flag records WITH the evidence and changes
-// no outcome — scores, ledgers, awards and every served view are
+// item of this owner and root. The flag records WITH the evidence and
+// changes no outcome — scores, ledgers, awards and every served view are
 // byte-identical after flagging; it is one-way (never unset) and exactly-once
 // (the row-level partial uniques plus command-envelope replay). The receipt
-// is content-free. Under-review state, pending-decision pauses and corrected
-// replacements are entry 7's machinery, deliberately absent here: this verb
-// only records the learner's dispute for that flow to consume later.
+// is content-free. Story 7 (D3 quality/correction): the SAME transaction
+// opens the dispute — the flagged item enters Under review, one dispute per
+// flag row (insert-once, conflict-no-op), pinned to the disputed container's
+// release and objective group. The flag's own result and receipt keep their
+// story-5 shape; the dispute's pause gates only FUTURE award INSERTS on
+// that release, so the "changes no outcome" contract still holds for every
+// existing row. The corrected replacement that can resolve the dispute is
+// startReplacement's, below.
 export async function flagAssessmentItem(identity: Identity, rawId: string, raw: unknown): Promise<AssessmentFlag> {
   const rootId = parse(uuid, rawId);
   const command = parse(flagAssessmentItemSchema, raw);
@@ -949,17 +1090,38 @@ export async function flagAssessmentItem(identity: Identity, rawId: string, raw:
     // outside its snapshot's items never existed.
     const container: AttemptRow | RetestRow = retest ?? attempt;
     if (container.status !== "graded") fail("CONFLICT");
-    if (!container.snapshot.items.some(item => item.position === command.position)) fail("INVALID_INPUT");
+    const disputedItem = container.snapshot.items.find(item => item.position === command.position);
+    if (!disputedItem) fail("INVALID_INPUT");
     // Insert-once: a raced or repeated flag (replay miss, new commandKey)
-    // inserts nothing and the first row stands — the result is the same
-    // either way, so the return value needs no branching.
-    await repository.insertFlag(client, {
+    // inserts nothing and the first row stands — whichever row exists (the
+    // fresh insert or the raced winner) keys the dispute.
+    const flagId =
+      (await repository.insertFlag(client, {
+        id: crypto.randomUUID(),
+        ownerId: identity.userId,
+        rootId,
+        attemptId: attempt.id,
+        retestId: retest?.id ?? null,
+        position: command.position,
+      })) ?? (await repository.flagForItem(client, identity.userId, attempt.id, retest?.id ?? null, command.position))?.id;
+    if (!flagId) fail("RETRYABLE_FAILURE");
+    // Story 7 — open the dispute for that flag row in the SAME transaction:
+    // the flagged item enters Under review (one row per flag, conflict-no-op
+    // on repeats). The dispute pins the container's release and the item's
+    // objective group so the pause predicate and the correction path never
+    // trust client input for scope.
+    await repository.insertDispute(client, {
       id: crypto.randomUUID(),
+      flagId,
       ownerId: identity.userId,
       rootId,
       attemptId: attempt.id,
       retestId: retest?.id ?? null,
       position: command.position,
+      courseId: container.course_id,
+      courseVersion: container.course_version,
+      objectiveIndex: disputedItem.objectiveIndex,
+      objective: disputedItem.objective,
     });
     const result: AssessmentFlag = {
       rootId,
@@ -1073,4 +1235,164 @@ export async function getRoadmap(identity: Identity): Promise<RoadmapView> {
       if (state) reviewStates.set(course.courseId, state);
     }
   return deriveRoadmapView({ ...gathered, reviewStates, reviewPortBound: reviewStatePortBound() });
+}
+// ---------------------------------------------------------------------------
+// Story 7 — the corrected-replacement verbs (D3 correction: a dispute-scoped
+// fresh assessment that can resolve a dispute WITHOUT counting it as
+// another failure).
+// ---------------------------------------------------------------------------
+
+// Start (or re-offer) the corrected replacement of one OPEN dispute. The
+// command names only the dispute — the group, release and pins derive
+// server-side from the dispute's own evidence. The snapshot mirrors the
+// ROOT attempt's blueprint for the disputed item's whole objective group
+// one-for-one (same per-item points, root pass mark/rubric pinned — the
+// retest comparability rules) with fresh questions from the manually
+// checked replacement pool. One open replacement per (owner, root): a
+// repeat start returns the pinned open replacement; a fresh replacement
+// follows a graded one. Unlimited retries — no pedagogical limit (D3); the
+// only limit is the honest daily fresh-generation budget, checked and
+// consumed HERE (a denied start fails inside this transaction, so zero
+// rows are recorded anywhere — no failed attempt, nothing).
+export async function startReplacement(identity: Identity, rawId: string, raw: unknown): Promise<StartedReplacement> {
+  const rootId = parse(uuid, rawId);
+  const command = parse(startReplacementSchema, raw);
+  return transaction(async client => {
+    await authorize(client, identity);
+    await lifecycle.scopedRoot(client, identity.userId, rootId);
+    const batch = await batchRow(client, rootId);
+    if (batch.revision !== command.expectedRevision) fail("CONFLICT");
+    const hash = requestHash({ rootId, command });
+    const repeated = await lifecycle.replay(client, identity.userId, command, "start-replacement", hash);
+    if (repeated) return repeated as unknown as StartedReplacement;
+    // Only an UNDER-REVIEW dispute of this owner and root offers a
+    // correction; a corrected (resolved) dispute never re-opens.
+    const dispute = await repository.disputeById(client, identity.userId, command.disputeId);
+    if (!dispute || dispute.root_id !== rootId) fail("FORBIDDEN_OR_NOT_FOUND");
+    const rootAttempt = await repository.attemptById(client, identity.userId, dispute.attempt_id);
+    if (!rootAttempt) fail("FORBIDDEN_OR_NOT_FOUND");
+    await lifecycle.assertObjects(client, identity.userId, [rootAttempt.plan_revision_id]);
+    if (dispute.status !== "under-review") fail("CONFLICT");
+    const existing = await repository.openReplacementForRoot(client, identity.userId, rootId);
+    let replacementId = existing?.id ?? crypto.randomUUID();
+    let planRevisionId = existing?.plan_revision_id ?? rootAttempt.plan_revision_id;
+    let objectiveIndex = existing?.objective_index ?? dispute.objective_index;
+    // The result must describe the replacement actually returned (the
+    // returned-attempt's-own-pin rule): an existing open replacement — or a
+    // raced winner — keeps ITS OWN dispute pin, never the fresh command's.
+    let returnedDisputeId = existing?.dispute_id ?? dispute.id;
+    if (!existing) {
+      // The honest resource limit, checked and consumed BEFORE the insert:
+      // over-budget fails HERE, the transaction rolls back and zero rows
+      // land (no replacement row, no attempt row, no failed-attempt record
+      // anywhere — the rollback IS the guarantee).
+      const used = await repository.bumpGenerationUse(client, identity.userId);
+      if (!generationAllows(used)) fail("RATE_LIMITED");
+      const inserted = await repository.insertReplacement(client, {
+        id: replacementId,
+        disputeId: dispute.id,
+        rootAttemptId: rootAttempt.id,
+        ownerId: identity.userId,
+        rootId,
+        courseId: rootAttempt.course_id,
+        courseVersion: rootAttempt.course_version,
+        planRevisionId: rootAttempt.plan_revision_id,
+        objectiveIndex: dispute.objective_index,
+        snapshot: buildReplacementSnapshot(rootAttempt.snapshot, dispute.objective_index),
+      });
+      if (!inserted) {
+        // A concurrent start committed first: its open replacement is the
+        // correction (even if it serves a different dispute — one open
+        // replacement per owner+root is the rule).
+        const winner = await repository.openReplacementForRoot(client, identity.userId, rootId);
+        if (!winner) fail("RETRYABLE_FAILURE");
+        replacementId = winner.id;
+        planRevisionId = winner.plan_revision_id;
+        objectiveIndex = winner.objective_index;
+        returnedDisputeId = winner.dispute_id;
+      }
+    }
+    const result: StartedReplacement = { rootId, operationId: replacementId, planRevisionId, disputeId: returnedDisputeId, objectiveIndex, revision: batch.revision, state: "active" };
+    await lifecycle.receipt(client, identity, command, "start-replacement", hash, result);
+    return result;
+  });
+}
+
+// Submit the open replacement exactly once. One tracked result per submit
+// command (same commandKey replays the identical graded view; a NEW
+// commandKey on a graded replacement is CONFLICT). Grading computes the
+// disputed group's earned/total under the replacement's own snapshot —
+// which mirrors the ROOT attempt's blueprint one-for-one — and the group
+// CLEARS only when it independently reaches the ROOT attempt's snapshotted
+// pass mark by the same integer cross-product. A CLEARING submission is
+// the single dispute resolution: the status-guarded transition marks the
+// dispute corrected (the defect annotation records WHICH replacement
+// resolved it), the version-scoped award evaluation re-runs in THIS
+// transaction (the contributing-verb pattern), and nothing anywhere counts
+// the dispute as another failure — no ordinary attempt row exists for it.
+// A NON-CLEARING submission grades honestly, records no failed attempt
+// (the replacement is its own row kind), leaves the dispute under review,
+// and the learner may retry without limit.
+export async function submitReplacement(identity: Identity, rawId: string, rawReplacementId: string, raw: unknown): Promise<SubmittedReplacement> {
+  const rootId = parse(uuid, rawId);
+  const replacementId = parse(uuid, rawReplacementId);
+  const command = parse(submitReplacementSchema, raw);
+  return transaction(async client => {
+    await authorize(client, identity);
+    await lifecycle.scopedRoot(client, identity.userId, rootId);
+    const batch = await batchRow(client, rootId);
+    if (batch.revision !== command.expectedRevision) fail("CONFLICT");
+    const hash = requestHash({ rootId, replacementId, command });
+    const repeated = await lifecycle.replay(client, identity.userId, command, "submit-replacement", hash);
+    if (repeated) {
+      const recorded = repeated as { operationId?: string };
+      const prior = await repository.replacementById(client, identity.userId, recorded.operationId ?? replacementId);
+      if (prior && prior.status === "graded") return { ...gradedReplacementOf(prior), rootId, revision: batch.revision, state: "graded" as const };
+      return repeated as unknown as SubmittedReplacement; // row no longer readable: reduced receipt shape only
+    }
+    const replacement = await repository.replacementById(client, identity.userId, replacementId);
+    if (!replacement || replacement.root_id !== rootId) fail("FORBIDDEN_OR_NOT_FOUND");
+    // The replacement rides the ROOT attempt's plan-revision lifecycle
+    // object; a broken lineage denies before anything is graded.
+    const rootAttempt = await repository.attemptById(client, identity.userId, replacement.root_attempt_id);
+    if (!rootAttempt) fail("FORBIDDEN_OR_NOT_FOUND");
+    await lifecycle.assertObjects(client, identity.userId, [rootAttempt.plan_revision_id]);
+    if (replacement.status === "graded") fail("CONFLICT"); // one submission per replacement
+    // The replacement snapshot is the sole grading basis: answers validate
+    // against ITS items; anything unmatched is INVALID_INPUT, never repaired.
+    if (new Set(command.answers.map(answer => answer.position)).size !== command.answers.length) fail("INVALID_INPUT");
+    for (const answer of command.answers) {
+      const item = replacement.snapshot.items.find(candidate => candidate.position === answer.position);
+      if (!item) fail("INVALID_INPUT");
+      if (!item.choices.some(choice => choice.id === answer.choiceId)) fail("INVALID_INPUT");
+    }
+    // Root policy fixed through the correction: the replacement snapshot
+    // carries the ROOT attempt's snapshotted pass mark (the builder pinned
+    // it), and the single group clears only at that mark.
+    const mark = replacement.snapshot.passMarkPercent;
+    const groups = groupResultsOf(replacement.snapshot, command.answers);
+    const group = groups.find(candidate => candidate.objectiveIndex === replacement.objective_index);
+    if (!group) fail("RETRYABLE_FAILURE");
+    const cleared = groupCleared(group, mark);
+    const claimed = await repository.gradeReplacement(client, replacementId, {
+      answers: command.answers,
+      groupResult: { objectiveIndex: group.objectiveIndex, earned: group.earned, total: group.total, cleared },
+    });
+    if (!claimed) fail("CONFLICT"); // a duplicate delivery graded it first; the same-command replay owns retries
+    // A clearing submission is the single dispute resolution — status-
+    // guarded, inside THIS replacement's grade transaction.
+    if (cleared) await repository.resolveDispute(client, replacement.dispute_id, replacementId);
+    const graded = await repository.replacementById(client, identity.userId, replacementId);
+    if (!graded) fail("RETRYABLE_FAILURE");
+    // Story 7: a final correction is a contributing verb — the version-
+    // scoped award evaluation re-runs in THIS transaction on the ROOT
+    // attempt's release (the correction pins it), atomically with the
+    // resolution. The pause predicate sees the dispute resolved, so a
+    // fully-satisfied release awards NOW (through the corrected coverage —
+    // no extra ordinary attempt, no failed attempt anywhere).
+    await evaluateAwardOnCourse(client, identity.userId, rootId, replacement.course_id);
+    const receiptResult: Receipt = { rootId, operationId: replacementId, planRevisionId: replacement.plan_revision_id, revision: batch.revision, state: "graded" };
+    await lifecycle.receipt(client, identity, command, "submit-replacement", hash, receiptResult);
+    return { ...gradedReplacementOf(graded), rootId, revision: batch.revision, state: "graded" as const };
+  });
 }

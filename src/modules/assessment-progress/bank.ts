@@ -2,9 +2,11 @@ import {
   REQUIRED_TEST_ID,
   RETEST_TEST_ID,
   PARTIAL_CREDIT_TEST_ID,
+  REPLACEMENT_TEST_ID,
   attemptSnapshotSchema,
   retestSnapshotSchema,
   partialCreditSnapshotSchema,
+  replacementSnapshotSchema,
   DEFAULT_PASS_MARK_OVERRIDE,
   passMarkOverrideOf,
   pointsScaleOf,
@@ -12,6 +14,7 @@ import {
   type AttemptSnapshot,
   type RetestSnapshot,
   type PartialCreditSnapshot,
+  type ReplacementSnapshot,
   type PassMarkOverride,
 } from "../../contracts/assessment";
 import { fail } from "../../platform/errors";
@@ -248,6 +251,109 @@ export function buildRetestSnapshot(rootSnapshot: AttemptSnapshot | PartialCredi
     schemaVersion: 1,
     testId: RETEST_TEST_ID,
     title: `Targeted retest — ${rootSnapshot.title}`,
+    source: "manual-synthetic",
+    passMarkPercent: rootSnapshot.passMarkPercent,
+    pointsScale: pointsScaleOf(rootSnapshot),
+    passMarkOverride: passMarkOverrideOf(rootSnapshot),
+    answerRule: rootSnapshot.answerRule,
+    rubric: rootSnapshot.rubric,
+    totalPoints: items.reduce((sum, item) => sum + item.points, 0),
+    items,
+  });
+}
+
+// Story 7 adds the CORRECTED-REPLACEMENT pool: exactly one fresh item per
+// bank position, manually checked like the root and retest pools (the
+// per-item verification list is recorded in the story plan's Implementation
+// Notes), targeting D3's correction/dispute policy itself so the correct
+// choice is trivially true and each wrong choice self-evidently false.
+// Every prompt is NEW relative to BOTH earlier pools — a learner who has
+// taken the root test and any retests never meets a repeat question in a
+// corrected replacement.
+const replacementItems: BankItem[] = [
+  {
+    prompt: `You flag a scored item about "${objectiveSlot}" as unclear. What happens to that item?`,
+    choices: [
+      { id: "a", text: "It is deleted from the test and your attempt is regraded without it." },
+      { id: "b", text: "It is marked Under review while its validity is checked; your recorded result stays as it is." },
+      { id: "c", text: "Your attempt is automatically marked passed because you flagged it." },
+      { id: "d", text: "Nothing happens — flags are discarded at the end of the session." },
+    ],
+    answerId: "b",
+  },
+  {
+    prompt: `For "${objectiveSlot}", a mini-course completion decision is still pending when one of its test items is disputed. What does the platform do while the item is Under review?`,
+    choices: [
+      { id: "a", text: "It revokes the completion and deletes the attempt history." },
+      { id: "b", text: "It pauses that pending decision, keeps all prior evidence, and offers a corrected replacement — the dispute never counts as another failure." },
+      { id: "c", text: "It awards the completion immediately to apologize for the flawed item." },
+      { id: "d", text: "It averages your score with the disputed item removed and records that instead." },
+    ],
+    answerId: "b",
+  },
+  {
+    prompt: `A pass you ALREADY earned on "${objectiveSlot}" is later found to rest on an invalid item. What happens to that earned pass?`,
+    choices: [
+      { id: "a", text: "It is revoked and you must retake the whole test." },
+      { id: "b", text: "It stands — history is preserved, the defect is annotated on the evidence, and corrected practice is optional." },
+      { id: "c", text: "It is converted to a provisional grade pending a regrade." },
+      { id: "d", text: "The pass is halved until you complete a correction." },
+    ],
+    answerId: "b",
+  },
+  {
+    prompt: `For "${objectiveSlot}", what must a corrected replacement do to resolve a disputed item?`,
+    choices: [
+      { id: "a", text: "Re-assess the disputed coverage with fresh comparable questions at the same intended demand and pass mark — without counting the dispute as another failure." },
+      { id: "b", text: "Record one more failed attempt against your history, then offer the real test." },
+      { id: "c", text: "Apply a lower pass mark so the correction is easier to pass." },
+      { id: "d", text: "Accept your explanation of the answer and award the points without questions." },
+    ],
+    answerId: "a",
+  },
+  {
+    prompt: `The daily generation budget for fresh questions about "${objectiveSlot}" is exhausted. What is the honest behavior?`,
+    choices: [
+      { id: "a", text: "Record a failed attempt so you remember to come back tomorrow." },
+      { id: "b", text: "Show a clear delay message with your work saved, record no failed attempt, and state the limit — free generation is not unlimited." },
+      { id: "c", text: "Promise unlimited free generation once the service recovers." },
+      { id: "d", text: "Silently reuse the exact questions you already answered." },
+    ],
+    answerId: "b",
+  },
+];
+
+// Build one corrected replacement's snapshot from the ROOT attempt's own
+// pinned snapshot and the disputed item's objective group. Pure and
+// deterministic, mirroring buildRetestSnapshot's comparability rules
+// one-for-one: every root item whose objectiveIndex is the disputed group is
+// MIRRORED (same objective slot, same per-item points) by a FRESH question
+// from the REPLACEMENT pool position matching the root item's own bank
+// position; positions renumber 1..n within the replacement; the ROOT
+// attempt's pinned pass mark, answer rule and rubric ride unchanged. The
+// same unmirrorable-root-item rule applies (e.g. a partial-credit fixture
+// item whose points match no pool slot): INVALID_INPUT, never repaired.
+export function buildReplacementSnapshot(rootSnapshot: AttemptSnapshot | PartialCreditSnapshot, objectiveIndex: number): ReplacementSnapshot {
+  if (replacementItems.length !== TEST_ITEM_POINTS.length) fail("RETRYABLE_FAILURE");
+  const selected = rootSnapshot.items.filter(item => item.objectiveIndex === objectiveIndex);
+  if (!selected.length) fail("INVALID_INPUT");
+  const items = selected.map((rootItem, index) => {
+    const fresh = replacementItems[rootItem.position - 1];
+    if (!fresh || TEST_ITEM_POINTS[rootItem.position - 1] !== rootItem.points) fail("INVALID_INPUT");
+    return {
+      position: index + 1,
+      objectiveIndex: rootItem.objectiveIndex,
+      objective: rootItem.objective,
+      prompt: fresh.prompt.split(objectiveSlot).join(rootItem.objective),
+      choices: fresh.choices,
+      answerId: fresh.answerId,
+      points: rootItem.points,
+    };
+  });
+  return buildParsed(replacementSnapshotSchema, {
+    schemaVersion: 1,
+    testId: REPLACEMENT_TEST_ID,
+    title: `Corrected replacement — ${rootSnapshot.title}`,
     source: "manual-synthetic",
     passMarkPercent: rootSnapshot.passMarkPercent,
     pointsScale: pointsScaleOf(rootSnapshot),

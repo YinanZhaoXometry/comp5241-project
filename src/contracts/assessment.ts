@@ -646,6 +646,130 @@ export type AssessmentFlag = {
 // flag is one-way: it exists or does not; nothing unsets it.
 export type AssessmentFlagView = { evidenceKind: "attempt" | "retest"; evidenceId: string; position: number; flaggedAt: string };
 
+// ---------------------------------------------------------------------------
+// Story 7 — disputed-item correction and honest retries (D3 quality/
+// correction + retries). The story-5 flag extends into a two-state dispute
+// machine: one dispute per flag, opening UNDER REVIEW; a clearing corrected
+// replacement resolves it CORRECTED. There is deliberately no third state —
+// personal study has no adjudicator, so nothing auto-upholds a dispute.
+// ---------------------------------------------------------------------------
+
+export const disputeStatuses = ["under-review", "corrected"] as const;
+export type DisputeStatus = (typeof disputeStatuses)[number];
+
+// The corrected/replacement assessment's testId (a distinct id keeps
+// replacement snapshots distinguishable from ordinary attempts and retests
+// while reusing the same item shape and grading arithmetic).
+export const REPLACEMENT_TEST_ID = "corrected-replacement-1";
+
+// The honest daily budget for FRESH QUESTION GENERATION (retest and
+// replacement starts — ordinary attempt starts reuse the fixed root bank,
+// are never limited and never counted). A deliberately bounded module
+// constant, not config machinery: it is a local synthetic-derivation
+// budget, and every surface that names it states the limit and its reset —
+// the product never promises unlimited free generation (D3).
+export const DAILY_GENERATION_LIMIT = 20;
+
+// Story 7 — the at-start snapshot of one corrected replacement. It reuses
+// the shared core under its own testId and mirrors the ROOT attempt's
+// blueprint for the disputed item's WHOLE objective group one-for-one (same
+// per-item points, root pass mark/answer rule/rubric/override pinned — the
+// retest comparability rules) with questions from the manually checked
+// replacement pool only.
+export const replacementSnapshotSchema = snapshotCoreSchema
+  .extend({ testId: z.literal(REPLACEMENT_TEST_ID) })
+  .refine(snapshot => snapshot.items.every((_, index) => sequentialPositions(snapshot, index)), {
+    message: "Items must be numbered sequentially from 1.",
+  })
+  .refine(pointsSumToTotal, {
+    message: "Per-item points must sum to the declared total.",
+  })
+  .refine(overrideAgrees, {
+    message: "The carried pass-mark override must equal the snapshot's applicable mark.",
+  })
+  .refine(noRubrics, {
+    message: "A corrected replacement is full credit only; only the partial-credit fixture schema carries rubrics.",
+  });
+export type ReplacementSnapshot = z.infer<typeof replacementSnapshotSchema>;
+
+// Story 7 commands. A replacement start names the OPEN dispute (the group,
+// release and pin derive server-side from the dispute's own evidence —
+// nothing client-supplied to tamper with); the submit carries the
+// replacement id and one chosen answer per answered item, same rules as the
+// ordinary/retest submits (unanswered earns zero; anything unmatched is
+// INVALID_INPUT).
+export const startReplacementSchema = commandSchema.extend({ disputeId: uuid });
+export const submitReplacementSchema = commandSchema.extend({
+  replacementId: uuid,
+  answers: z.array(attemptAnswerSchema).min(0).max(5),
+});
+export type StartReplacement = z.infer<typeof startReplacementSchema>;
+export type SubmitReplacement = z.infer<typeof submitReplacementSchema>;
+
+// Served dispute view: which graded container item is disputed, its
+// objective group, its status and (once corrected) which replacement
+// resolved it and when. The dispute row IS the defect annotation — the
+// attempt/retest evidence itself never changes.
+export type AssessmentDisputeView = {
+  disputeId: string;
+  evidenceKind: "attempt" | "retest";
+  evidenceId: string;
+  position: number;
+  objectiveIndex: number;
+  objective: string;
+  courseVersion: number;
+  status: DisputeStatus;
+  openedAt: string;
+  resolvedAt: string | null;
+  resolvedByReplacement: string | null;
+  replacements: ReplacementSummary[];
+};
+
+// One replacement's history entry (the active/graded views below carry the
+// interactive surface; this is the listed history that is never
+// overwritten).
+export type ReplacementSummary = {
+  replacementId: string;
+  disputeId: string;
+  status: "active" | "graded";
+  startedAt: string;
+  gradedAt: string | null;
+  group: { objectiveIndex: number; earned: number; total: number; cleared: boolean; displayPercent: string } | null;
+};
+
+export type ActiveReplacementView = {
+  replacementId: string;
+  disputeId: string;
+  rootAttemptId: string;
+  courseId: string;
+  courseVersion: number;
+  planRevisionId: string;
+  objectiveIndex: number;
+  pointsScale: 1 | 100;
+  startedAt: string;
+  items: AssessmentItemView[];
+};
+
+export type GradedReplacementView = {
+  replacementId: string;
+  disputeId: string;
+  rootAttemptId: string;
+  courseId: string;
+  courseVersion: number;
+  planRevisionId: string;
+  objectiveIndex: number;
+  pointsScale: 1 | 100;
+  startedAt: string;
+  gradedAt: string;
+  group: { objectiveIndex: number; earned: number; total: number; cleared: boolean; displayPercent: string };
+  items: GradedItemView[];
+};
+
+// The honest quota-delay surface: the named daily fresh-generation budget
+// and today's use. Served so surfaces state the limit plainly — never an
+// "unlimited" promise — and the denial message can name the reset.
+export type GenerationUseView = { dailyLimit: number; usedToday: number };
+
 // Owner-scoped assessment state. `none` is the honest empty state (no
 // studyable course yet — unconfirmed or not generated; prior attempts, if a
 // regeneration is in flight, stay listed on their pinned versions);
@@ -667,6 +791,15 @@ export type AssessmentFlagView = { evidenceKind: "attempt" | "retest"; evidenceI
 // evidence-linked gap view of the STUDIED release (null with no evidence to
 // cite or nothing needing attention); `flags` lists this root's one-way
 // unclear-item flags so surfaces hide already-flagged buttons.
+//
+// Story 7: `disputes` lists this root's item disputes (each flag's Under-
+// review/Corrected state, its pinned release and its replacement history);
+// `replacement` is the root's open-or-latest corrected replacement (null
+// with none); `completionPaused` states whether the STUDIED release's
+// completion decision is paused by an open dispute (false whenever the
+// studied release's award is already earned — earned completion is never
+// revoked, and only pending/unearned decisions ever pause); `generation`
+// states the named daily fresh-generation budget and today's use.
 export type AssessmentState = {
   state: "none" | "offered" | "active" | "graded";
   rootId: string;
@@ -684,6 +817,10 @@ export type AssessmentState = {
   versions: number[];
   guidance: GuidanceView | null;
   flags: AssessmentFlagView[];
+  disputes: AssessmentDisputeView[];
+  replacement: ActiveReplacementView | GradedReplacementView | null;
+  completionPaused: boolean;
+  generation: GenerationUseView;
 };
 
 // Command results. The submit receipt recorded in command_receipt is
@@ -802,4 +939,22 @@ export type ReviewDueState = {
   courseId: string;
   courseVersion: number;
   due: boolean;
+};
+
+// Story 7 receipts follow the same content-free rule: a replacement's
+// replayable receipt records ids and state only — the graded view rebuilds
+// deterministically from the stored snapshot row.
+export type StartedReplacement = {
+  rootId: string;
+  operationId: string;
+  planRevisionId: string;
+  disputeId: string;
+  objectiveIndex: number;
+  revision: number;
+  state: "active";
+};
+export type SubmittedReplacement = GradedReplacementView & {
+  rootId: string;
+  revision: number;
+  state: "graded";
 };

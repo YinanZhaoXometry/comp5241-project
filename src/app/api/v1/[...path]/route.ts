@@ -12,7 +12,7 @@ import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finish
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
 import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState, getProvenance } from "../../../../modules/course-generation/service";
-import { getAssessment, startTest, submitAttempt, startRetest, submitRetest, getSwitchDisclosure, switchCourseVersion, flagAssessmentItem, getRoadmap } from "../../../../modules/assessment-progress/service";
+import { getAssessment, startTest, submitAttempt, startRetest, submitRetest, getSwitchDisclosure, switchCourseVersion, flagAssessmentItem, startReplacement, submitReplacement, getRoadmap } from "../../../../modules/assessment-progress/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -172,6 +172,19 @@ async function handle(request: Request, context: Context) {
     if (path[0] === "studies" && path[2] === "assessment" && path[3] === "flag" && path.length === 4) {
       const rootId = path[1];
       if (request.method === "POST") return Response.json(await flagAssessmentItem(identity, rootId, await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-3 story-7 disputed-item correction: the flag above now opens the
+    // dispute (Under review) in its own transaction; the corrected
+    // replacement verbs mirror the retest verbs — POST starts (or re-offers)
+    // the dispute-scoped fresh assessment of the disputed item's group (the
+    // body names the dispute), and the submit grades the open replacement
+    // exactly once, resolving the dispute only on an independent clear at
+    // the root pass mark. The dispute/pause/quota states ride the
+    // assessment GET above; no route of their own.
+    if (path[0] === "studies" && path[2] === "assessment" && path[3] === "replacement" && (path.length === 4 || (path.length === 6 && path[5] === "submit"))) {
+      const rootId = path[1];
+      if (path.length === 4 && request.method === "POST") return Response.json(await startReplacement(identity, rootId, await jsonBody(request)), { headers: privateHeaders });
+      if (request.method === "POST") return Response.json(await submitReplacement(identity, rootId, path[4], await jsonBody(request)), { headers: privateHeaders });
     }
     if (path[0] === "studies" && path.length === 3 && path[2] === "dependencies" && request.method === "POST") {
       return Response.json(await dependenciesPreview(identity, path[1], await jsonBody(request)), { headers: privateHeaders });
