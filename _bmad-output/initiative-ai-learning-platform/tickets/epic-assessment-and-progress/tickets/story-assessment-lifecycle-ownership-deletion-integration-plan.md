@@ -3,7 +3,7 @@ title: 'Assessment lifecycle, ownership and deletion integration (3.9)'
 type: 'feature'
 ticket: 9
 created: '2026-10-29'
-status: built
+status: 'done'
 baseline_revision: '1b274f8'
 route: 'full'
 route_source: 'auto'

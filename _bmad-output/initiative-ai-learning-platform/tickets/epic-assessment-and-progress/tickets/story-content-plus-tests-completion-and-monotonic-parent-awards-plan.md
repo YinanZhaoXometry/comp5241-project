@@ -3,7 +3,7 @@ title: 'Content-plus-tests completion and monotonic parent awards (3.4)'
 type: 'feature'
 ticket: 4
 created: '2026-10-29'
-status: built
+status: 'done'
 baseline_revision: 'bd0dbc2d9a94f4b8a6c13eb39e54d3ecf26ab819'
 route: 'full'
 route_source: 'auto'

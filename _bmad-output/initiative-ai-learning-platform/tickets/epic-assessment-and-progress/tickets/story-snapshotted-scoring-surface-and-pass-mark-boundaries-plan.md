@@ -3,7 +3,7 @@ title: 'Snapshotted scoring surface and pass-mark boundaries (3.3)'
 type: 'feature'
 ticket: 3
 created: '2026-10-28'
-status: 'built'
+status: 'done'
 baseline_revision: '4869a44dea9c2234dd465258d717d4d8f2d0d598'
 route: 'full'
 route_source: 'auto'

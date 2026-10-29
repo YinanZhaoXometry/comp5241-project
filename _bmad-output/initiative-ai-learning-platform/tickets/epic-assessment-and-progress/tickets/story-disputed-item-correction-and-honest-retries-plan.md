@@ -3,7 +3,7 @@ title: 'Disputed-item correction and honest retries (3.7)'
 type: 'feature'
 ticket: 7
 created: '2026-10-29'
-status: built
+status: 'done'
 baseline_revision: '6b0398f2898ab92c3517bf240faec4b0d21c2015'
 route: 'full'
 route_source: 'auto'

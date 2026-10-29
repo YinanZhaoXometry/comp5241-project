@@ -3,7 +3,7 @@ title: 'Versioned completion and evidence handoff surface (3.8)'
 type: 'feature'
 ticket: 8
 created: '2026-10-29'
-status: 'built'
+status: 'done'
 baseline_revision: 'c0f0fb89e938be37ad5da1dfd81edc20e760e724'
 route: 'full'
 route_source: 'auto'

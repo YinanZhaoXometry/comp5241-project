@@ -3,7 +3,7 @@ title: 'Evidence-linked gap guidance with Unknown separation (3.5)'
 type: 'feature'
 ticket: 5
 created: '2026-10-29'
-status: built
+status: 'done'
 baseline_revision: '5809ccfc01f1cde24e87effb39d29c8f2bf27c99'
 route: 'full'
 route_source: 'auto'
