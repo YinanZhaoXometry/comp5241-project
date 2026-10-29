@@ -447,6 +447,19 @@ export async function switchCourseVersion(identity: Identity, rawId: string, raw
     const hash = requestHash({ rootId, command });
     const repeated = await lifecycle.replay(client, identity.userId, command, "switch-course", hash);
     if (repeated) return repeated as unknown as SwitchedCourseVersion;
+    // The disclosed diff was computed against a studied release read OUTSIDE
+    // this transaction, and a switch does not advance batch.revision — so the
+    // revision fence cannot detect an interleaved switch. Re-resolve the
+    // CURRENT studied release inside the fenced transaction (pointer, else
+    // the same default resolution getCourse applies) and refuse with CONFLICT
+    // when it moved: the learner confirmed a disclosure computed against a
+    // superseded release and must re-disclose — never a silent re-target.
+    const pointerNow = await repository.studiedRelease(client, identity.userId, rootId);
+    const fromRowNow = pointerNow
+      ? await courseRepository.readyCourseById(client, identity.userId, rootId, pointerNow.course_id)
+      : await courseRepository.courseForPlan(client, rootId, batch.confirmed_id ?? "") ?? await courseRepository.latestReadyCourse(client, identity.userId, rootId);
+    const fromCourseIdThen = from.state === "ready" ? from.course.courseId : null;
+    if ((fromRowNow?.id ?? null) !== fromCourseIdThen) fail("CONFLICT");
     // Lineage fence on BOTH releases' objects inside THIS transaction (the
     // two reads happened outside it).
     await lifecycle.assertObjects(client, identity.userId, [...from.objectIds, ...to.objectIds].filter((id, index, all) => all.indexOf(id) === index));

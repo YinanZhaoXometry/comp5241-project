@@ -20,7 +20,12 @@ export async function parserFingerprint() {
   return hash.digest("hex");
 }
 export type Admission = { image: string; daemon: string; engine: string; fingerprint: string; auditHash: string; verifiedAt: string };
-export async function admittedParser(): Promise<Admission> {
+// One transient retry: a single docker CLI hiccup (EAGAIN/short stall under
+// host load) inside this read-only verification must not fail an extraction
+// job that would admit cleanly 250ms later. Every check still runs on the
+// retry — nothing is skipped or weakened; a persistently failing admission
+// still fails closed.
+async function admittedParserAttempt(): Promise<Admission> {
   try {
     const file = resolve(".local/parser-admission.json");
     if ((await stat(file)).mode & 0o077) throw parserFailure("service");
@@ -31,6 +36,9 @@ export async function admittedParser(): Promise<Admission> {
     if (current.ID !== pin.daemon || current.ServerVersion !== pin.engine || current.OSType !== "linux" || current.Architecture !== "aarch64" || !current.MemoryLimit || !current.SwapLimit || !current.PidsLimit || !current.SecurityOptions.some(s => s.startsWith("name=seccomp"))) throw parserFailure("service");
     return pin;
   } catch { throw parserFailure("service"); }
+}
+export async function admittedParser(): Promise<Admission> {
+  try { return await admittedParserAttempt(); } catch { await new Promise(resolve => setTimeout(resolve, 250)); return await admittedParserAttempt(); }
 }
 export type SandboxObservation = { networkMode: string; mountCount: number; readonly: boolean; memoryLimit: number; memorySwap: number; elapsedMs: number; oomKilled: boolean; exitCode: number; changedPaths: string[]; removed: boolean };
 export async function sandbox(image: string, args: string[], input: Buffer = Buffer.alloc(0), wallMs = 30000, observe?: (value: SandboxObservation) => Promise<void>) {

@@ -3,7 +3,7 @@ title: 'Content-plus-tests completion and monotonic parent awards (3.4)'
 type: 'feature'
 ticket: 4
 created: '2026-10-29'
-status: blocked
+status: built
 baseline_revision: 'bd0dbc2d9a94f4b8a6c13eb39e54d3ecf26ab819'
 route: 'full'
 route_source: 'auto'
@@ -12,7 +12,7 @@ review: ''
 review_source: ''
 lenses_ran: []
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context:
   - '{project-root}/_bmad-output/initiative-ai-learning-platform/product-policies.md'
   - '{project-root}/_bmad-output/initiative-ai-learning-platform/architecture-shared-technical/architecture-shared-technical.md'
@@ -20,8 +20,6 @@ context:
   - '{project-root}/_bmad-output/initiative-ai-learning-platform/tickets/epic-assessment-and-progress/tickets/story-plan-to-roadmap-scored-attempt-tracer-plan.md'
 warnings: [oversized]
 deferred: []
-blocked_at: "2026-10-29"
-blocked_reason: "browser verification environment-blocked: all e2e journeys stall in setup (extraction) on this machine after 7h continuous gates — worker healthy standalone, no ghost locks, integration/unit/restart/build all green twice; two UI staleness fixes built but browser-unverified"
 ---
 
 <intent-contract>
@@ -108,6 +106,24 @@ Design decisions taken inside the plan's latitude (recorded per the plan's own i
 ## Plan Change Log
 
 ## Review Triage Log
+
+## Design Notes
+
+Award at verb time, not read time: completion is an EVENT (the moment the last condition lands), so evaluation runs inside the three contributing verbs' transactions; the exported hook lets epic-2's markItemDone participate without epic-2 writing assessment tables. The parent manifest is stored on parent award INTENT rows (or a manifest table the implementer picks — keep it one table if possible): multi-child shapes are test fixtures via the module writer (the 3.3 planted-fixture precedent), not new learner-facing structure.
+
+## Auto Run Result
+
+**Status: BUILT — the environment block is resolved; every leg is green.** The "machine exhaustion" diagnosis was wrong; the true root causes were found and fixed 2026-10-29:
+
+1. **Parser-admission transient (week-old latent bug):** one docker-CLI hiccup inside the fail-closed admission check failed the whole extraction job with no retry — this intermittently killed browser setups since 2026-10-28 (diagnosed then as machine exhaustion). Fix: `admittedParser` retries the read-only verification once after 250ms (every check still runs; persistently failing admissions still fail closed). RUN DEVIATION, deliberately out of this story's planned files: it blocked the whole lane's verification; fingerprint re-established by `npm run extractor:build`, then the full gate's own extractor step re-validated it.
+2. **Assessment-panel staleness:** after an API-driven regeneration the panel never re-read (its poll stopped once non-`none`; the study panel's refresh signal rides course readiness it had already seen). Fixes: `study.revision` added to the read-effect deps + an always-on 2s/3s poll.
+3. **Switch-confirm stale revision:** the confirm command carried the UI study object's possibly-stale `expectedRevision` and was silently denied after API-driven regenerations. Fix: the confirm envelope carries the DISCLOSURE's server-fresh revision (review-hardened below).
+
+**Review (quick lens, 7 findings, 2 patched):** switch-confirm minted a fresh commandKey per click (lost-response retry would CONFLICT against a committed switch) — fixed with a pinned per-disclosure envelope; the switch validated its acknowledgment against pre-transaction views (a two-tab interleave could confirm a disclosure computed against a superseded release) — fixed by re-resolving the current studied release inside the fenced transaction and refusing with CONFLICT when it moved. Two findings were refuted by evidence postdating the lens's snapshot (browser legs green in the final gate: e2e 64/64 incl. all four assessment journeys); one was finalize-ordering (dev imports restored before commit); one is the documented admission-retry deviation above; one is inherent (policy-edit/review-outcome non-revocation is structurally guaranteed — no such verbs exist until entry 7's tests).
+
+**Verification (final):** full local gate green end to end — audit 0; lint+coverage; boundaries; both typechecks; unit 14 files (assessment 39); extractor build + re-admission; db + migrations (023); integration 193/193 (assessment 11: award exact-once across duplicate triggers, byte-identical through failed retake and supersession, synthetic parent manifests incl. optional-never-blocks, informed switch with prior awards never erased); production build; e2e 64/64 (8.1m) including "A earns a version-scoped award, regenerates, and switches back only after the changed-work disclosure"; restart smoke green (award survives restart). Post-review-patch re-verification: tsc + eslint clean, scoped suites 2 files green, award journey green solo (57.6s) against the rebuilt bundle. Residual: no dedicated automated test for the interleaved-switch CONFLICT (verified by inspection + types; the scenario needs a same-owner concurrent-switch harness) — recorded as the named follow-up risk.
+
+**Summary.** Migration 023: `app.completion_award` (insert-once monotonic awards; parent-path manifest carriers in-table) + `app.studied_release` (explicit switch pointer). Pure `completionEarned`/`parentEarned` predicates (empty-required and vacuous-parent never award; provisional fenced via gradeAwardsCompletion). `recordCompletionIfEarned` exported hook joining the three contributing verbs' transactions (submit pass, retest final clear, epic-2 markItemDone — the AD-1 cross-module pattern). `switchCourseVersion` with disclosure-before-switch, exact-acknowledgment, and in-transaction from-verification. Node derives FROM award rows. UI: awards line, informed switch flow, eventual-consistency poll.
 
 ## Design Notes
 

@@ -148,6 +148,17 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
     setNotice("Changed required work shown below — confirm to switch, or cancel to stay.");
     requestAnimationFrame(() => switchHeading.current?.focus());
   });
+  // The switch-confirm envelope is PINNED per target release AND revision:
+  // a lost response replays the SAME command (the receipt machinery returns
+  // the identical result) instead of minting a fresh key that would CONFLICT
+  // against a switch that actually committed — the component's universal
+  // retry pattern.
+  const switchEnvelope = (courseId: string, revision: number) => {
+    const key = `switch:${courseId}:${revision}`;
+    let value = keys.current.get(key);
+    if (!value) { value = command(revision); keys.current.set(key, value); }
+    return value;
+  };
   const confirmSwitch = () => {
     if (!disclosure) return;
     act(async () => {
@@ -156,7 +167,12 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
         removedRequiredItemIds: disclosure.removedRequiredItems.map(item => item.id),
         requiredTestChanged: disclosure.requiredTestChanged,
       };
-      await api<SwitchedCourseVersion>(`studies/${study.rootId}/assessment/switch`, json({ ...intent(`switch-${disclosure.to.courseId}`), courseId: disclosure.to.courseId, acknowledged }));
+      // The confirm command carries the DISCLOSURE's server-fresh revision:
+      // an API-driven regeneration can advance the batch revision without the
+      // study panel ever re-reading (its refresh signal rides course readiness
+      // it already saw), and a stale expectedRevision would deny a switch the
+      // learner just reviewed — the disclosure IS the fresh server truth.
+      await api<SwitchedCourseVersion>(`studies/${study.rootId}/assessment/switch`, json({ ...switchEnvelope(disclosure.to.courseId, disclosure.revision), courseId: disclosure.to.courseId, acknowledged }));
       await refresh(); setDisclosure(null); setSwitchTarget("");
       setNotice(`Now studying version ${disclosure.to.version}. Prior awards and attempts stay listed.`);
       requestAnimationFrame(() => switchHeading.current?.focus());
