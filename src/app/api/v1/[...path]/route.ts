@@ -12,7 +12,7 @@ import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finish
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
 import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState, getProvenance } from "../../../../modules/course-generation/service";
-import { getAssessment, startTest, submitAttempt, startRetest, submitRetest, getSwitchDisclosure, switchCourseVersion, flagAssessmentItem } from "../../../../modules/assessment-progress/service";
+import { getAssessment, startTest, submitAttempt, startRetest, submitRetest, getSwitchDisclosure, switchCourseVersion, flagAssessmentItem, getRoadmap } from "../../../../modules/assessment-progress/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -175,6 +175,14 @@ async function handle(request: Request, context: Context) {
     }
     if (path[0] === "studies" && path.length === 3 && path[2] === "dependencies" && request.method === "POST") {
       return Response.json(await dependenciesPreview(identity, path[1], await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-3 story-6 whole-mini-course roadmap surface: an owner-scoped GET
+    // (the preferences precedent — no rootId; every read inside is
+    // owner_id-scoped, so cross-owner denial is structural). Read-only: the
+    // roadmap derives from awards/attempts/ledgers/manifests and the stubbed
+    // versioned review-state query port; nothing writes.
+    if (path[0] === "roadmap" && path.length === 1 && request.method === "GET") {
+      return Response.json(await getRoadmap(identity), { headers: privateHeaders });
     }
     if (path[0] === "studies" && path.length >= 2 && path.length <= 3) {
       const rootId = path[1]; const action = path[2];
