@@ -60,9 +60,16 @@ export function deriveGuidance(input: GuidanceInput): GuidanceView | null {
   for (const row of gradedStudied) for (const item of row.snapshot.items) covered.add(item.objectiveIndex);
   for (const row of studiedRetests) for (const item of row.snapshot.items) covered.add(item.objectiveIndex);
 
-  // The served chain's own rule (getAssessment): the NEWEST graded-failed
-  // attempt with a ledger — restricted to the studied release so guidance and
-  // the recovery panel agree by construction.
+  // The guidance chain follows the STUDIED release's own newest graded-failed
+  // attempt with a ledger (getAssessment's served recovery chain is the
+  // newest such attempt across ALL releases): the two coincide whenever the
+  // served chain pins the studied release — the normal case — and under an
+  // explicit switch to an older release each surface stays individually
+  // version-honest (the panel serves the root's chain; guidance names the
+  // studied release's still-failed groups). Review note 2026-10-29: this
+  // divergence edge is real and accepted — suppressing the studied release's
+  // open groups because a newer release's chain is served would hide honest
+  // Needs-practice state, which is the worse lie.
   const ledgerOf = (attemptId: string) => input.targets.filter(target => target.root_attempt_id === attemptId);
   const chain = studiedAttempts.find(row => row.status === "graded" && row.passed === false && ledgerOf(row.id).length > 0) ?? null;
   // Recovered normally: a graded passing attempt NEWER than the chain root
