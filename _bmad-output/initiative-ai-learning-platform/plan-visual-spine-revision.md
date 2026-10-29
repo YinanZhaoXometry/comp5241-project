@@ -114,6 +114,15 @@ Recorded decisions:
 - The "zero tracer behavior changes" claims in this plan's §7/§8 and in AGENTS.md are corrected as of 2026-10-24 to record `33bcccb` as the one behavior-adjacent commit in the range, now email-only.
 - Everything else the review checked (static-page constraints, single `:root` hex block, narrow loader exclusion, CSP/headers untouched, per-shell skip links, no new dependencies, no skipped tests) passed.
 
+## 12. Amendment — 2026-10-29 owner direction: tracer sign-in password prefill restored
+
+The owner reported being unable to sign in to the tracer at `/` and directed that both the email and the password be prefilled. Diagnosis confirmed the cause of the lockout: §11's email-only correction left the operator with no way to learn the random 32-byte provisioned password (it lives only in the git-ignored `.local/synthetic-credentials.json`), so the form could never be completed from the UI alone.
+
+Recorded decision:
+
+- **Owner-directed supersession of §11's email-only rule (2026-10-29):** the sign-in form is prefilled with the local synthetic learner account's email AND password from `.local/synthetic-credentials.json`. The §11 P2 concern (password serialized into served HTML) is knowingly re-accepted by the owner for this strictly local, loopback-only, synthetic-credential prototype; the deviation is scoped exactly to the tracer sign-in reading the git-ignored local credentials file and must not be extended to real accounts, non-local serving, or the static product pages.
+- Applied 2026-10-29 in `src/app/page.tsx` / `src/app/study-app.tsx`. Verified: stored credentials sign in via the live API (HTTP 200 + session cookie) and both fields arrive prefilled in the served form.
+
 ## 9. Governance cross-references
 
 - Spine revision record: `DESIGN.md` §8 changelog, §9 memlog stubs (6 entries — file them in the ux folder when this plan is approved).
