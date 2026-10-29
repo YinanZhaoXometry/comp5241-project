@@ -6,6 +6,7 @@ import {
   type ParentManifestChild,
   type PartialCreditSnapshot,
   type RecoveryTargetView,
+  type ReplacementSnapshot,
   type RetestGroupResult,
   type RetestSnapshot,
   type RoadmapNode,
@@ -121,7 +122,7 @@ export type GroupResult = {
   total: number;
 };
 export function groupResultsOf(
-  snapshot: AttemptSnapshot | RetestSnapshot | PartialCreditSnapshot,
+  snapshot: AttemptSnapshot | RetestSnapshot | PartialCreditSnapshot | ReplacementSnapshot,
   answers: AttemptAnswer[],
 ): GroupResult[] {
   const chosen = new Map(answers.map(answer => [answer.position, answer.choiceId]));
