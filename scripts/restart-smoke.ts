@@ -182,6 +182,14 @@ try {
   const failedResult = await failedResponse.json() as { passed: boolean; verdict: string };
   assert.equal(failedResult.passed, false);
   assert.equal(failedResult.verdict, "79.96% — Not passed (mark is 80%)");
+  // Epic-3 story-5: the failed grade serves the evidence-linked guidance —
+  // exactly one Needs-practice entry citing the wrong 2004-point item, with
+  // the fixed uncertainty note riding the view.
+  const guidanceOpen = ((await (await client.get(`${coursePath}/assessment`)).json()) as { guidance: { entries: Array<{ status: string; scored: unknown[]; note?: string }>; note: string } | null }).guidance;
+  assert.equal(guidanceOpen!.entries.length, 1);
+  assert.equal(guidanceOpen!.entries[0].status, "needs-practice");
+  assert.equal(guidanceOpen!.entries[0].scored.length, 1);
+  assert.ok(guidanceOpen!.note.includes("does not claim a cause"));
   const ledgerBefore = (await database().query<{ objective_index: number; initial_earned: number; initial_total: number; status: string }>("SELECT objective_index,initial_earned,initial_total,status FROM app.recovery_target WHERE root_attempt_id=$1", [recoveryAttempt.operationId])).rows;
   assert.equal(ledgerBefore.length, 1);
   assert.deepEqual(ledgerBefore[0], { objective_index: 0, initial_earned: 7996, initial_total: 10000, status: "open" });
@@ -233,6 +241,26 @@ try {
   assert.deepEqual(await (await client.get(`${coursePath}/assessment`)).json(), awardedState);
   assert.deepEqual(await (await client.post(`${coursePath}/course/track`, { headers: { Origin: origin }, data: trackCommand })).json(), tracked); // identical receipt, no second effect
   assert.equal((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.completion_award WHERE root_id=$1", [courseReceipt.rootId])).rows[0].count, 1);
+  // Epic-3 story-5 beat: flag the graded failed attempt's boundary item —
+  // the one-way flag records WITH the evidence and changes no outcome. A
+  // full web+worker restart must leave the flag and every served view
+  // unchanged, a replayed flag command yields the identical receipt, and a
+  // NEW command key on the same item inserts nothing (still one flag row).
+  const flagCommand = command(assessmentRevision);
+  const flagResponse = await client.post(`${coursePath}/assessment/flag`, { headers: { Origin: origin }, data: { ...flagCommand, evidenceKind: "attempt", evidenceId: recoveryAttempt.operationId, position: 5 } });
+  assert.equal(flagResponse.status(), 200);
+  const flagResult = await flagResponse.json() as { flagged: boolean; state: string };
+  assert.equal(flagResult.flagged, true);
+  assert.equal(flagResult.state, "flagged");
+  const flaggedState = await (await client.get(`${coursePath}/assessment`)).json();
+  await stop(); await start();
+  assert.deepEqual(await (await client.get(`${coursePath}/assessment`)).json(), flaggedState);
+  const replayedFlag = await client.post(`${coursePath}/assessment/flag`, { headers: { Origin: origin }, data: { ...flagCommand, evidenceKind: "attempt", evidenceId: recoveryAttempt.operationId, position: 5 } });
+  assert.equal(replayedFlag.status(), 200);
+  assert.deepEqual(await replayedFlag.json(), flagResult);
+  const freshFlag = await client.post(`${coursePath}/assessment/flag`, { headers: { Origin: origin }, data: { ...command(assessmentRevision), evidenceKind: "attempt", evidenceId: recoveryAttempt.operationId, position: 5 } });
+  assert.equal(((await freshFlag.json()) as { flagged: boolean }).flagged, true);
+  assert.equal((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.assessment_flag WHERE root_id=$1", [courseReceipt.rootId])).rows[0].count, 1);
   // Epic-2 S2 beat: queue the supplement pass while NO worker runs, then a
   // full web+worker restart must complete the persisted job exactly once with
   // a verified attributed supplement and one 'supplement' lifecycle object.
@@ -261,5 +289,5 @@ try {
   assert.equal((await client.post(`${coursePath}/removal`, { headers: { Origin: origin }, data: command(courseStudy.revision) })).status(), 200);
   assert.equal((await database().query("SELECT count(*)::int AS count FROM app.course_supplement WHERE course_id=$1", [courseId])).rows[0].count, 0);
   for (const secret of [text, courseText, owner.email, owner.password, other.email, other.password]) assert.ok(!output.join("").includes(secret), "Private data reached process output");
-  console.log("Restart smoke passed: exact plan/session persisted, B denied, queued PDF recovered with the same original and one extraction, duplicate receipt replayed, course generation queued without a worker completed exactly once across restart with an identical replayed receipt and one ready course, recall answer released only on submission, required-test attempt and graded result survived the restart unchanged with a replayed submit yielding the identical result and one graded row, the failed-attempt recovery ledger opened at grade time and its cleared target, retest and graded retest result survived the restart unchanged with a replayed retest submit yielding the identical result and one graded retest row, the completing mark-done awarded exactly one version-scoped completion whose award and Completed node survived the restart with a replayed mark yielding the identical receipt and still one award row, supplement pass queued without a worker completed exactly once with a verified attributed supplement and purged with its root; process output content-free.");
+  console.log("Restart smoke passed: exact plan/session persisted, B denied, queued PDF recovered with the same original and one extraction, duplicate receipt replayed, course generation queued without a worker completed exactly once across restart with an identical replayed receipt and one ready course, recall answer released only on submission, required-test attempt and graded result survived the restart unchanged with a replayed submit yielding the identical result and one graded row, the failed-attempt recovery ledger opened at grade time and its cleared target, retest and graded retest result survived the restart unchanged with a replayed retest submit yielding the identical result and one graded retest row, the completing mark-done awarded exactly one version-scoped completion whose award and Completed node survived the restart with a replayed mark yielding the identical receipt and still one award row, the one-way unclear-item flag survived the restart unchanged with an identical replayed receipt and still one flag row, supplement pass queued without a worker completed exactly once with a verified attributed supplement and purged with its root; process output content-free.");
 } finally { await stop(); await client.dispose(); await denied.dispose(); await closeDatabase(); }

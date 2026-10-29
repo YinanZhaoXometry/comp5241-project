@@ -12,7 +12,7 @@ import { getCheckState, getBundleState, takeCheck, skipCheck, submitItem, finish
 import { listExports, requestExport, downloadExport } from "../../../../modules/setup-export/service";
 import { requestAiDraft, getAiDraft, requestAiCheck } from "../../../../modules/ai-setup/service";
 import { requestCourseGeneration, getCourse, submitRecall, submitPracticeCard, markItemDone, requestSupplements, getSupplements, requestWhyStep, getWhyState, getProvenance } from "../../../../modules/course-generation/service";
-import { getAssessment, startTest, submitAttempt, startRetest, submitRetest, getSwitchDisclosure, switchCourseVersion } from "../../../../modules/assessment-progress/service";
+import { getAssessment, startTest, submitAttempt, startRetest, submitRetest, getSwitchDisclosure, switchCourseVersion, flagAssessmentItem } from "../../../../modules/assessment-progress/service";
 import type { InputsCommand, SelectionCommand, ControlCommand } from "../../../../contracts/batches";
 import type { SavePlan, Confirm, Command } from "../../../../contracts/setup";
 import type { Decide, Withdraw } from "../../../../contracts/consent";
@@ -164,6 +164,14 @@ async function handle(request: Request, context: Context) {
         return protectedResponse(identity, rootId, disclosure, request.signal, false, disclosure.objectIds);
       }
       if (request.method === "POST") return Response.json(await switchCourseVersion(identity, rootId, await jsonBody(request)), { headers: privateHeaders });
+    }
+    // Epic-3 story-5 evidence-linked guidance rides the assessment GET above
+    // (no route of its own); the one-way unclear-item flag is the story's only
+    // write: it records WITH the evidence and changes no outcome — Under-
+    // review, pauses and corrections are entry 7's, not this verb's.
+    if (path[0] === "studies" && path[2] === "assessment" && path[3] === "flag" && path.length === 4) {
+      const rootId = path[1];
+      if (request.method === "POST") return Response.json(await flagAssessmentItem(identity, rootId, await jsonBody(request)), { headers: privateHeaders });
     }
     if (path[0] === "studies" && path.length === 3 && path[2] === "dependencies" && request.method === "POST") {
       return Response.json(await dependenciesPreview(identity, path[1], await jsonBody(request)), { headers: privateHeaders });

@@ -220,7 +220,23 @@ project-new/
 │   │   │                       disclosure GET) moves the studied-release
 │   │   │                       pointer only after the changed required work
 │   │   │                       is disclosed and exactly acknowledged —
-│   │   │                       prior awards never erased
+│   │   │                       prior awards never erased — plus story 5's
+│   │   │                       evidence-linked gap guidance (guidance.ts,
+│   │   │                       pure read-time derivation, no tables): open
+│   │   │                       chain targets on the studied release read
+│   │   │                       Needs practice (cause unnamed) with lean
+│   │   │                       per-item scored citations, uncovered release
+│   │   │                       objectives read Unknown (never flipped by
+│   │   │                       practice), and epic-2 practice rows render
+│   │   │                       as their own labeled lane through course-
+│   │   │                       generation's first serving reads of 019
+│   │   │                       app.practice_attempt (bounded aggregates)
+│   │   │                       — while 024 app.assessment_flag carries the
+│   │   │                       one-way unclear-item flag (insert-once per
+│   │   │                       graded attempt/retest item, records with
+│   │   │                       the evidence and changes no outcome; the
+│   │   │                       flagAssessmentItem verb, Under-review
+│   │   │                       mechanics stay entry 7's)
 │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
 │   │                           derivative ports, dependencies preview (S9),
 │   │                           retention registry/scheduler + archive contract (S10)

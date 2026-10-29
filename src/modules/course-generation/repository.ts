@@ -185,6 +185,39 @@ export async function insertPracticeAttempt(
     [crypto.randomUUID(), row.ownerId, row.courseId, row.cardId, row.attempted, row.outcome, row.evidenceKind],
   );
 }
+
+// ---------------------------------------------------------------------------
+// Epic-3 story-5 READ-ONLY practice consumption (the itemStates precedent):
+// app.practice_attempt stays epic-2-owned and is never written here. Guidance
+// needs bounded aggregates only — per (card, kind, outcome) counts and the
+// latest incorrect response per card as the citable practice text — so the
+// reads aggregate in-database and return at most (cards × kinds × outcomes)
+// and (cards) rows respectively, never the raw attempt history. Card ids are
+// `practice:<objectiveIndex>` (generation.ts), so the card key IS the
+// objective-group key; a malformed id maps to -1, which matches no objective.
+// ---------------------------------------------------------------------------
+
+function practiceIndexOf(cardId: string): number {
+  const index = Number(cardId.slice("practice:".length));
+  return Number.isInteger(index) && index >= 0 ? index : -1;
+}
+export type PracticeSummaryRow = { objectiveIndex: number; evidenceKind: "unaided" | "assisted"; outcome: "correct" | "incorrect"; count: number };
+export async function practiceSummariesForCourse(client: PoolClient, ownerId: string, courseId: string): Promise<PracticeSummaryRow[]> {
+  const result = await client.query<{ card_id: string; evidence_kind: "unaided" | "assisted"; outcome: "correct" | "incorrect"; n: number }>(
+    "SELECT card_id,evidence_kind,outcome,count(*)::int AS n FROM app.practice_attempt WHERE owner_id=$1 AND course_id=$2 GROUP BY card_id,evidence_kind,outcome ORDER BY card_id,evidence_kind,outcome",
+    [ownerId, courseId],
+  );
+  return result.rows.map(row => ({ objectiveIndex: practiceIndexOf(row.card_id), evidenceKind: row.evidence_kind, outcome: row.outcome, count: row.n }));
+}
+export type PracticeLatestRow = { objectiveIndex: number; attempted: string; evidenceKind: "unaided" | "assisted"; submittedAt: Date };
+export async function practiceLatestIncorrectForCourse(client: PoolClient, ownerId: string, courseId: string): Promise<PracticeLatestRow[]> {
+  const result = await client.query<{ card_id: string; attempted: string; evidence_kind: "unaided" | "assisted"; submitted_at: Date }>(
+    "SELECT DISTINCT ON (card_id) card_id,attempted,evidence_kind,submitted_at FROM app.practice_attempt WHERE owner_id=$1 AND course_id=$2 AND outcome='incorrect' ORDER BY card_id,submitted_at DESC",
+    [ownerId, courseId],
+  );
+  return result.rows.map(row => ({ objectiveIndex: practiceIndexOf(row.card_id), attempted: row.attempted, evidenceKind: row.evidence_kind, submittedAt: row.submitted_at }));
+}
+
 // Terminal, single-direction transitions from pending; a settled row never
 // changes again. claimReady runs FIRST inside the persist transaction and
 // returns the claimed id — a delivery whose row already reached a terminal

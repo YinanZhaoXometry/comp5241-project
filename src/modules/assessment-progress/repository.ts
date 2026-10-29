@@ -443,3 +443,49 @@ export async function upsertStudiedRelease(
     [row.id, row.ownerId, row.rootId, row.courseId],
   );
 }
+
+// ---------------------------------------------------------------------------
+// Story 5 — the one-way unclear-item flag. Attempt/retest rows are immutable
+// (AD-5), so unlike the diagnostic's in-row markUnclear the flag lives in its
+// own insert-once table: one row per (owner, graded container item), never
+// updated, never unset — recording WITH the evidence while changing no
+// outcome. attempt_id is the graded ordinary attempt (for a retest flag, the
+// retest's own root attempt); retest_id is null except on retest-item flags.
+// ---------------------------------------------------------------------------
+
+export type FlagRow = {
+  id: string;
+  root_id: string;
+  owner_id: string;
+  attempt_id: string;
+  retest_id: string | null;
+  position: number;
+  flagged_at: Date;
+};
+
+// Insert one flag. The partial UNIQUE indexes (owner, attempt, position)
+// WHERE retest_id IS NULL and (owner, retest, position) WHERE retest_id IS
+// NOT NULL make "one flag per graded container item" structural: a raced or
+// repeated flag (replay miss, new commandKey) inserts nothing (false) and the
+// first row stands forever.
+export async function insertFlag(
+  client: PoolClient,
+  row: { id: string; ownerId: string; rootId: string; attemptId: string; retestId: string | null; position: number },
+): Promise<boolean> {
+  const inserted = await client.query(
+    `INSERT INTO app.assessment_flag(id,root_id,owner_id,attempt_id,retest_id,position,flagged_at)
+     VALUES($1,$2,$3,$4,$5,$6,clock_timestamp())
+     ON CONFLICT DO NOTHING`,
+    [row.id, row.rootId, row.ownerId, row.attemptId, row.retestId, row.position],
+  );
+  return inserted.rowCount === 1;
+}
+
+// Every flag of an owner and root, oldest first for stable serving.
+export async function flagsForRoot(client: PoolClient, ownerId: string, rootId: string): Promise<FlagRow[]> {
+  const result = await client.query<FlagRow>(
+    "SELECT id,root_id,owner_id,attempt_id,retest_id,position,flagged_at FROM app.assessment_flag WHERE owner_id=$1 AND root_id=$2 ORDER BY flagged_at,id",
+    [ownerId, rootId],
+  );
+  return result.rows;
+}

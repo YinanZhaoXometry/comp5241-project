@@ -6,10 +6,13 @@ import {
   startRetestSchema,
   submitRetestSchema,
   switchCourseVersionSchema,
+  flagAssessmentItemSchema,
   passMarkOverrideOf,
   pointsScaleOf,
   type ActiveAttemptView,
   type ActiveRetestView,
+  type AssessmentFlag,
+  type AssessmentFlagView,
   type AssessmentState,
   type AttemptSummary,
   type CompletionAwardView,
@@ -40,8 +43,9 @@ import { parse, requestHash } from "../../platform/commands";
 import { fail } from "../../platform/errors";
 import { buildSnapshot, buildRetestSnapshot } from "./bank";
 import { completionEarned, deriveRoadmapNode, displayPercentOf, earnedOfItem, gradeAwardsCompletion, groupCleared, groupResultsOf, groupViewOf, parentEarned, recoverySatisfied, scoreAttempt, verdictLine } from "./scoring";
+import { deriveGuidance } from "./guidance";
 import * as repository from "./repository";
-import type { AttemptRow, AwardRow, RecoveryTargetRow, RetestRow } from "./repository";
+import type { AttemptRow, AwardRow, FlagRow, RecoveryTargetRow, RetestRow } from "./repository";
 
 // Epic-3 story-1 tracer verbs plus the story-2 targeted-recovery chain and
 // the story-4 monotonic completion-award layer. Every verb runs identify ->
@@ -488,6 +492,18 @@ export async function switchCourseVersion(identity: Identity, rawId: string, raw
   });
 }
 
+// Story 5 — the served one-way flag view: which graded container item the
+// flag pins (a retest flag names the retest, an attempt flag the attempt),
+// when it was recorded. One-way: it exists or does not; nothing unsets it.
+function flagViewOf(row: FlagRow): AssessmentFlagView {
+  return {
+    evidenceKind: row.retest_id ? "retest" : "attempt",
+    evidenceId: row.retest_id ?? row.attempt_id,
+    position: row.position,
+    flaggedAt: row.flagged_at.toISOString(),
+  };
+}
+
 // Owner-scoped assessment state. Story 4: the roadmap node derives FROM
 // AWARD ROWS — completed exists only when an earned version-scoped award
 // pins the STUDIED release (explicitly switched, else the current default
@@ -517,6 +533,19 @@ export async function getAssessment(identity: Identity, rawId: string): Promise<
     const versions = await courseRepository.readyCourseVersions(client, identity.userId, rootId);
     const ledgerOf = (attemptId: string) => targets.filter(target => target.root_attempt_id === attemptId);
     const ready = course.state === "ready" ? course.course : null;
+    // Story 5 — the deterministic evidence-linked guidance of the STUDIED
+    // release: practice aggregates are epic-2 rows consumed READ-ONLY through
+    // course-generation's scoped reads (the itemStates precedent); scored
+    // evidence is the attempts/targets/retests already fetched above. The
+    // derivation is pure (guidance.ts) — Unknown stays distinct from Needs
+    // practice, practice renders labeled and never merges with scored
+    // citations, and a release with no evidence to cite serves no guidance.
+    const practiceSummaries = ready ? await courseRepository.practiceSummariesForCourse(client, identity.userId, ready.courseId) : [];
+    const practiceLatestIncorrect = ready ? await courseRepository.practiceLatestIncorrectForCourse(client, identity.userId, ready.courseId) : [];
+    const guidance = ready
+      ? deriveGuidance({ objectives: ready.objectives, studiedCourseId: ready.courseId, attempts, targets, retests, practiceSummaries, practiceLatestIncorrect })
+      : null;
+    const flags = (await repository.flagsForRoot(client, identity.userId, rootId)).map(flagViewOf);
     const required = ready ? ready.items.filter(item => item.required) : [];
     const currentAwardRow = ready ? awards.find(row => row.kind === "mini-course" && row.course_id === ready.courseId) ?? null : null;
     const node = deriveRoadmapNode({
@@ -553,6 +582,8 @@ export async function getAssessment(identity: Identity, rawId: string): Promise<
       awards: awards.map(awardViewOf),
       currentAward: currentAwardRow ? awardViewOf(currentAwardRow) : null,
       versions,
+      guidance,
+      flags,
     };
     const open = attempts.find(row => row.status === "active");
     if (open)
@@ -863,5 +894,80 @@ export async function submitRetest(identity: Identity, rawId: string, rawRetestI
     const receiptResult: Receipt = { rootId, operationId: retestId, planRevisionId: retest.plan_revision_id, revision: batch.revision, state: "graded" };
     await lifecycle.receipt(client, identity, command, "submit-retest", hash, receiptResult);
     return { ...gradedRetestOf(graded), rootId, revision: batch.revision, state: "graded" as const };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Story 5 — flag one graded item unclear (the diagnostic flagUnclear
+// precedent, assessment-shaped).
+// ---------------------------------------------------------------------------
+
+// The thinnest honest flag: the command names one GRADED attempt or retest
+// item of this owner and root. The flag records WITH the evidence and changes
+// no outcome — scores, ledgers, awards and every served view are
+// byte-identical after flagging; it is one-way (never unset) and exactly-once
+// (the row-level partial uniques plus command-envelope replay). The receipt
+// is content-free. Under-review state, pending-decision pauses and corrected
+// replacements are entry 7's machinery, deliberately absent here: this verb
+// only records the learner's dispute for that flow to consume later.
+export async function flagAssessmentItem(identity: Identity, rawId: string, raw: unknown): Promise<AssessmentFlag> {
+  const rootId = parse(uuid, rawId);
+  const command = parse(flagAssessmentItemSchema, raw);
+  return transaction(async client => {
+    await authorize(client, identity);
+    await lifecycle.scopedRoot(client, identity.userId, rootId);
+    const batch = await batchRow(client, rootId);
+    if (batch.revision !== command.expectedRevision) fail("CONFLICT");
+    const hash = requestHash({ rootId, command });
+    const repeated = await lifecycle.replay(client, identity.userId, command, "flag-assessment-item", hash);
+    if (repeated) return repeated as unknown as AssessmentFlag;
+    // Resolve the container by kind: the graded ordinary attempt item itself,
+    // or the graded retest item (which pins its own root attempt row — the
+    // flag's attempt_id always names a real attempt for the lineage fence).
+    // attemptById/retestById are owner-scoped: another owner's evidence (or a
+    // wrong root's) reads as absent — FORBIDDEN_OR_NOT_FOUND, never a leak.
+    let attempt: AttemptRow;
+    let retest: RetestRow | null = null;
+    if (command.evidenceKind === "attempt") {
+      const row = await repository.attemptById(client, identity.userId, command.evidenceId);
+      if (!row || row.root_id !== rootId) fail("FORBIDDEN_OR_NOT_FOUND");
+      attempt = row;
+    } else {
+      retest = await repository.retestById(client, identity.userId, command.evidenceId);
+      if (!retest || retest.root_id !== rootId) fail("FORBIDDEN_OR_NOT_FOUND");
+      const root = await repository.attemptById(client, identity.userId, retest.root_attempt_id);
+      if (!root) fail("FORBIDDEN_OR_NOT_FOUND");
+      attempt = root;
+    }
+    await lifecycle.assertObjects(client, identity.userId, [attempt.plan_revision_id]);
+    // Only a GRADED item can be flagged unclear (the diagnostic rule): an
+    // active container has no submitted answer to dispute, and a position
+    // outside its snapshot's items never existed.
+    const container: AttemptRow | RetestRow = retest ?? attempt;
+    if (container.status !== "graded") fail("CONFLICT");
+    if (!container.snapshot.items.some(item => item.position === command.position)) fail("INVALID_INPUT");
+    // Insert-once: a raced or repeated flag (replay miss, new commandKey)
+    // inserts nothing and the first row stands — the result is the same
+    // either way, so the return value needs no branching.
+    await repository.insertFlag(client, {
+      id: crypto.randomUUID(),
+      ownerId: identity.userId,
+      rootId,
+      attemptId: attempt.id,
+      retestId: retest?.id ?? null,
+      position: command.position,
+    });
+    const result: AssessmentFlag = {
+      rootId,
+      operationId: command.evidenceId,
+      revision: batch.revision,
+      state: "flagged",
+      evidenceKind: command.evidenceKind,
+      evidenceId: command.evidenceId,
+      position: command.position,
+      flagged: true,
+    };
+    await lifecycle.receipt(client, identity, command, "flag-assessment-item", hash, result);
+    return result;
   });
 }

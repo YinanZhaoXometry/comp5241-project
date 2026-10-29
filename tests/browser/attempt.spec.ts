@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { provisionSynthetic } from "../../src/modules/identity-access/provision";
 import { database, closeDatabase } from "../../src/adapters/postgres/database";
 import { insertAttempt } from "../../src/modules/assessment-progress/repository";
+import { insertPracticeAttempt } from "../../src/modules/course-generation/repository";
 import { buildPartialCreditSnapshot } from "../../src/modules/assessment-progress/bank";
 import type { AttemptSnapshot, RetestSnapshot } from "../../src/contracts/assessment";
 import type { Receipt } from "../../src/contracts/setup";
@@ -79,7 +80,7 @@ async function grantConsent(page: Page) {
   expect(decision.status()).toBe(200);
 }
 
-async function uploadAndConfirm(page: Page) {
+async function uploadAndConfirm(page: Page, flowOutcomes: string[] = outcomes) {
   await page.getByLabel("Synthetic study materials").setInputFiles(sources.map(source => ({ name: source.name, mimeType: "text/plain", buffer: Buffer.from(source.text) })));
   const created = page.waitForResponse(response => response.url().endsWith("/api/v1/batches") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Upload materials", exact: true }).click();
@@ -92,7 +93,7 @@ async function uploadAndConfirm(page: Page) {
   }
   await page.getByRole("button", { name: "Continue with acknowledged selection", exact: true }).click();
   await page.getByLabel("Topic", { exact: true }).fill("Synthetic assessment topic");
-  await page.getByLabel("Learning outcomes").fill(outcomes.join("\n"));
+  await page.getByLabel("Learning outcomes").fill(flowOutcomes.join("\n"));
   await page.getByLabel("Source coverage / missing explanations", { exact: false }).fill("Coverage not assessed. No supplementary sources fetched.");
   await page.getByLabel("One mini-course title").fill("Assessment tracer");
   await page.getByLabel("Lessons · one per line").fill(["One generated lesson"].join("\n"));
@@ -294,7 +295,10 @@ test("A fails once, clears the failed group through a targeted retest: node Comp
   await expect(panel.getByRole("strong").filter({ hasText: "79.96% — Not passed (mark is 80%)" })).toBeVisible({ timeout: 15000 });
   // The failed view groups items per objective: the failed group reads
   // "Needs practice" (cause unnamed), the passed group "Passed — preserved".
-  await expect(panel.getByRole("strong").filter({ hasText: "Needs practice" })).toBeVisible();
+  // The story-5 guidance callout renders the same D2 label below the focused
+  // review, so the strong is asserted on its FIRST match — the focused-review
+  // group, which renders before the callout in the graded block.
+  await expect(panel.getByRole("strong").filter({ hasText: "Needs practice" }).first()).toBeVisible();
   await expect(panel.getByRole("strong").filter({ hasText: "Passed — preserved" })).toBeVisible();
   // The recovery ledger: exactly the failed group, open, with its initial
   // result; the failed-test requirement honestly unsatisfied.
@@ -641,3 +645,110 @@ async function versionOneCourseId(rootId: string): Promise<string> {
   if (!row.rows[0]) throw new Error("no version-1 course row");
   return row.rows[0].id;
 }
+
+// Epic-3 story-5 journey: an eight-objective course (the five-item blueprint
+// covers only the first five, so objectives six through eight stay honestly
+// Unknown), planted mixed practice through epic-2's own writer, and the
+// boundary-honest 79.96% failed attempt (wrong only on the 2004-point fifth
+// item — failing exactly objective group five). The guidance callout names
+// the failed group with its cited response and the labeled practice lane
+// beside — never merged — marks the unassessed objectives Unknown rather than
+// Needs practice, states its uncertainty in text, and offers the one-way
+// flag: flagging records the dispute with the evidence and changes no
+// outcome. A second account's flag verb is denied with no leak.
+test("A reads evidence-linked guidance after a failed attempt: Unknown stays distinct, practice stays labeled, the flag records without changing the verdict", async ({ page, playwright }, info) => {
+  test.setTimeout(300000);
+  const errors: string[] = [];
+  const outbound: string[] = [];
+  page.on("pageerror", error => errors.push(error.name));
+  page.on("request", request => { if (!request.url().startsWith(origin)) outbound.push(new URL(request.url()).hostname); });
+  await page.setViewportSize({ width: 360, height: 900 });
+  const account = await login(page, "guidance-browser-a");
+  await grantConsent(page);
+  const eight = ["Recall the first source", "Explain the second source", "Judge coverage reports", "Name the boundary item", "Recover a failed group", "Sixth unassessed objective", "Seventh unassessed objective", "Eighth unassessed objective"];
+  const rootId = await uploadAndConfirm(page, eight);
+  const panel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Assessment & progress", exact: true }) });
+  const coursePanel = page.locator("section").filter({ has: page.getByRole("heading", { name: "Your mini-course", exact: true }) });
+  await coursePanel.getByRole("button", { name: "Generate mini-course (AI)", exact: true }).click();
+  await expect(coursePanel.getByRole("heading", { name: "1. One generated lesson", exact: true })).toBeVisible({ timeout: 60000 });
+  await expect(panel).toBeVisible({ timeout: 15000 });
+  // Mixed practice BEFORE the attempt, planted through epic-2's own writer on
+  // the studied course: the boundary objective's card carries one assisted
+  // incorrect and one unaided correct attempt; an unassessed objective's card
+  // carries one unaided incorrect attempt.
+  const courseRow = (await database().query<{ id: string }>("SELECT id FROM app.generated_course WHERE root_id=$1 AND status='ready'", [rootId])).rows[0];
+  const plant = await database().connect();
+  try {
+    await insertPracticeAttempt(plant, { ownerId: account.userId, courseId: courseRow.id, cardId: "practice:4", attempted: "boundary practice attempt", outcome: "incorrect", evidenceKind: "assisted" });
+    await insertPracticeAttempt(plant, { ownerId: account.userId, courseId: courseRow.id, cardId: "practice:4", attempted: "second boundary practice attempt", outcome: "correct", evidenceKind: "unaided" });
+    await insertPracticeAttempt(plant, { ownerId: account.userId, courseId: courseRow.id, cardId: "practice:6", attempted: "unassessed practice attempt", outcome: "incorrect", evidenceKind: "unaided" });
+  } finally { await plant.release(); }
+  // Pre-test the guidance is served (every objective honestly Unknown — never
+  // "Needs practice" — with the practiced lanes) but renders only on the
+  // result surface, so the panel shows no callout yet.
+  const preGuidance = ((await (await page.request.get(`/api/v1/studies/${rootId}/assessment`)).json()) as { guidance: { entries: Array<{ status: string; practice: { assistedIncorrect: number } | null }> } }).guidance;
+  expect(preGuidance!.entries).toHaveLength(8);
+  expect(preGuidance!.entries.every(entry => entry.status === "unknown")).toBe(true);
+  expect(preGuidance!.entries[4].practice?.assistedIncorrect).toBe(1);
+  await expect(panel.getByRole("heading", { name: "What to study next", exact: true })).toHaveCount(0);
+  // The boundary-honest failed attempt: correct on items 1–4, wrong on the
+  // 2004-point fifth item — failing exactly objective group five.
+  await panel.getByRole("button", { name: "Start the required test", exact: true }).click();
+  await expect(panel.getByText("Attempt open — 0 of 5 answered.", { exact: false })).toBeVisible();
+  const snapshot = await snapshotOf(rootId);
+  for (const item of snapshot.items.slice(0, 4)) await page.getByRole("radio", { name: item.choices.find(choice => choice.id === item.answerId)!.text, exact: true }).check();
+  await page.getByRole("radio", { name: snapshot.items[4].choices.find(choice => choice.id !== snapshot.items[4].answerId)!.text, exact: true }).check();
+  await panel.getByRole("button", { name: "Submit test (5/5 answered)", exact: true }).click();
+  await expect(panel.getByRole("strong").filter({ hasText: "79.96% — Not passed (mark is 80%)" })).toBeVisible({ timeout: 15000 });
+  // The guidance block: a note callout (its opening words are unique to the
+  // note — the focused review's fine print shares only the later phrase) and
+  // one entry row per objective needing attention. One Needs-practice entry
+  // citing the specific wrong response; three Unknown entries (the blueprint
+  // never reached objectives six through eight); practice lanes labeled.
+  // Entry locators scope to the entries wrapper: the focused review above
+  // renders the same D2 phrases.
+  const guidanceEntries = panel.locator(".guidance-entries");
+  await expect(panel.getByRole("heading", { name: "What to study next", exact: true })).toBeVisible();
+  await expect(panel.getByText("Needs practice names observed difficulty", { exact: false })).toBeVisible();
+  await expect(guidanceEntries.getByText(/^Needs practice · /)).toHaveCount(1);
+  await expect(panel.getByText("item 5: 0 of 2004 points", { exact: false })).toBeVisible();
+  await expect(guidanceEntries.getByText(/^Unknown · /)).toHaveCount(3);
+  // The "not weakness" framing rides each Unknown ENTRY (the uncertainty note
+  // carries the same phrase, so the entry form is matched by its em-dash
+  // prefix — three entries, never the note's fourth match).
+  await expect(guidanceEntries.getByText(" — not yet assessed, not weakness", { exact: false })).toHaveCount(3);
+  await expect(panel.getByText("unaided 1 correct / 0 incorrect; assisted 0 correct / 1 incorrect", { exact: false })).toBeVisible();
+  await expect(panel.getByText(/Latest incorrect \(assisted\): “boundary practice attempt”/)).toBeVisible();
+  // The unassessed objective's practice renders in its own labeled lane while
+  // its status stays Unknown — practice never reclassifies.
+  await expect(panel.getByText("unaided 0 correct / 1 incorrect; assisted 0 correct / 0 incorrect", { exact: false })).toBeVisible();
+  // The citation links to its evidence: the focused-review item anchors exist.
+  const attemptId = (await database().query<{ id: string }>("SELECT id FROM app.test_attempt WHERE root_id=$1 ORDER BY created_at DESC LIMIT 1", [rootId])).rows[0].id;
+  await expect(page.locator(`#attempt-item-${attemptId}-5`)).toBeVisible();
+  // The one-way flag: records the dispute with the evidence, changes no
+  // outcome — the verdict, points and recovery panel stay exactly as served.
+  await panel.getByRole("button", { name: "Flag as unclear", exact: true }).click();
+  await expect(panel.getByText("Flagged — the flag is recorded with the evidence; it changes no outcome.", { exact: false })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Flag as unclear", exact: true })).toHaveCount(0);
+  await expect(panel.getByText("Flagged as unclear — recorded with the evidence.", { exact: false })).toBeVisible();
+  await expect(panel.getByRole("strong").filter({ hasText: "79.96% — Not passed (mark is 80%)" })).toBeVisible();
+  expect((await database().query<{ count: number }>("SELECT count(*)::int AS count FROM app.assessment_flag WHERE root_id=$1", [rootId])).rows[0].count).toBe(1);
+  // B (another learner) cannot flag A's graded item — no leak.
+  const stranger = await provisionSynthetic("guidance-browser-b", "learner");
+  const client = await playwright.request.newContext({ baseURL: origin });
+  try {
+    expect((await client.post("/api/v1/auth/sign-in/email", { headers: { Origin: origin }, data: { email: stranger.email, password: stranger.password } })).status()).toBe(200);
+    const denied = await client.post(`/api/v1/studies/${rootId}/assessment/flag`, { headers: { Origin: origin }, data: { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 0, evidenceKind: "attempt", evidenceId: attemptId, position: 5 } });
+    expect(denied.status()).toBe(404);
+    expect(await denied.text()).not.toContain("attempt-0.txt");
+  } finally { await client.dispose(); }
+  // Keyboard-complete and overflow-free at 360px and desktop.
+  for (const width of [360, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(panel.getByRole("heading", { name: "Assessment & progress", exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  expect(outbound).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: info.outputPath("guidance-callout.png"), fullPage: true });
+});

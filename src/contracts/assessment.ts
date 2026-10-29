@@ -564,6 +564,88 @@ export type SwitchedCourseVersion = {
   version: number;
 };
 
+// ---------------------------------------------------------------------------
+// Story 5 — evidence-linked gap guidance and the unclear-item flag.
+// ---------------------------------------------------------------------------
+
+// The two honest guidance statuses (D2): Needs practice is OBSERVED difficulty
+// from graded evidence — its cause is deliberately unnamed; Unknown is an
+// UNASSESSED objective — not weakness. Practice evidence never flips Unknown:
+// practice rows deliberately carry no score (AD-7), so classification is a
+// scored-evidence-only dimension while practice renders as its own labeled
+// lane.
+export const guidanceStatuses = ["needs-practice", "unknown"] as const;
+export type GuidanceStatus = (typeof guidanceStatuses)[number];
+
+// A lean scored citation: WHICH graded container's item (by position) the
+// recommendation draws on and what it earned there. Full item detail (prompt,
+// chosen vs correct) stays on the graded view — the surface links to it,
+// never duplicates it (Flow 2: guidance links each recommendation to its
+// evidence).
+export type GuidanceScoredCitation = {
+  source: "attempt" | "targeted-retest";
+  evidenceId: string;
+  position: number;
+  earned: number;
+  points: number;
+};
+
+// The practice lane — structurally its own field so it can never merge with
+// scored citations (D2/AD-7 evidence separation): counts per declared kind,
+// plus the latest incorrect response as the citable practice evidence.
+export type GuidancePracticeLatest = { attempted: string; evidenceKind: "unaided" | "assisted"; submittedAt: string };
+export type GuidancePracticeLane = {
+  unaidedCorrect: number;
+  unaidedIncorrect: number;
+  assistedCorrect: number;
+  assistedIncorrect: number;
+  latestIncorrect: GuidancePracticeLatest | null;
+};
+
+// One guidance entry per objective needing attention: a still-failed or
+// partially-recovered group (with its cited scored evidence) or an unassessed
+// objective (no scored citations by definition; practice may still render).
+export type GuidanceEntry = {
+  objectiveIndex: number;
+  objective: string;
+  status: GuidanceStatus;
+  scored: GuidanceScoredCitation[];
+  practice: GuidancePracticeLane | null;
+};
+
+// The fixed uncertainty note rides the view so every surface states the same
+// limits in text (the accessibility floor: uncertainty stated, never hidden
+// behind iconography or color alone).
+export const GUIDANCE_UNCERTAINTY_NOTE =
+  "Needs practice names observed difficulty — it does not claim a cause (forgetting, misunderstanding or a flawed question) or mastery. Unknown means not yet assessed, not weakness. Practice evidence is labeled by its kind and never merges with unaided scored evidence.";
+export type GuidanceView = { entries: GuidanceEntry[]; note: string };
+
+// The thinnest honest flag (the diagnostic flagItem/CheckFlag precedent,
+// assessment-shaped): the command names one GRADED attempt or retest item; the
+// flag is one-way, records with the evidence, and changes no outcome.
+// Under-review mechanics, decision pauses and corrections are entry 7's, not
+// this command's.
+export const flagAssessmentItemSchema = commandSchema.extend({
+  evidenceKind: z.enum(["attempt", "retest"]),
+  evidenceId: uuid,
+  position: z.number().int().min(1),
+});
+export type FlagAssessmentItem = z.infer<typeof flagAssessmentItemSchema>;
+export type AssessmentFlag = {
+  rootId: string;
+  operationId: string;
+  revision: number;
+  state: "flagged";
+  evidenceKind: "attempt" | "retest";
+  evidenceId: string;
+  position: number;
+  flagged: true;
+};
+
+// A served flag (the UI hides a flag button once its item is flagged). The
+// flag is one-way: it exists or does not; nothing unsets it.
+export type AssessmentFlagView = { evidenceKind: "attempt" | "retest"; evidenceId: string; position: number; flaggedAt: string };
+
 // Owner-scoped assessment state. `none` is the honest empty state (no
 // studyable course yet — unconfirmed or not generated; prior attempts, if a
 // regeneration is in flight, stay listed on their pinned versions);
@@ -581,7 +663,10 @@ export type SwitchedCourseVersion = {
 // (current confirmed revision, falling back to latest ready). `recovery` is
 // the targeted-recovery chain of the newest graded-failed attempt that has a
 // ledger (null before any failed grade) — served NEXT TO the attempt
-// result, never merged into it.
+// result, never merged into it. Story 5: `guidance` is the deterministic
+// evidence-linked gap view of the STUDIED release (null with no evidence to
+// cite or nothing needing attention); `flags` lists this root's one-way
+// unclear-item flags so surfaces hide already-flagged buttons.
 export type AssessmentState = {
   state: "none" | "offered" | "active" | "graded";
   rootId: string;
@@ -597,6 +682,8 @@ export type AssessmentState = {
   awards: CompletionAwardView[];
   currentAward: CompletionAwardView | null;
   versions: number[];
+  guidance: GuidanceView | null;
+  flags: AssessmentFlagView[];
 };
 
 // Command results. The submit receipt recorded in command_receipt is

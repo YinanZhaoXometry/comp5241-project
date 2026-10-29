@@ -570,3 +570,169 @@ describe('story 3: the provisional-grade contract can never award completion', (
     expect(recoverySatisfied([{ status: 'cleared' }, { status: 'cleared' }])).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Story 5 — evidence-linked gap guidance (pure derivation) and the flag
+// command surface.
+// ---------------------------------------------------------------------------
+
+import { deriveGuidance } from '../../src/modules/assessment-progress/guidance';
+import { GUIDANCE_UNCERTAINTY_NOTE, flagAssessmentItemSchema } from '../../src/contracts/assessment';
+import type { AttemptRow, RecoveryTargetRow, RetestRow } from '../../src/modules/assessment-progress/repository';
+
+const correctOn = (snapshot: { items: Array<{ position: number; answerId: string }> }, positions: number[]) =>
+  snapshot.items.filter(item => positions.includes(item.position)).map(item => ({ position: item.position, choiceId: item.answerId }));
+const wrongOn = (snapshot: { items: Array<{ position: number; answerId: string; choices: Array<{ id: string }> }> }, positions: number[]) =>
+  snapshot.items.filter(item => positions.includes(item.position)).map(item => ({ position: item.position, choiceId: item.choices.find(choice => choice.id !== item.answerId)!.id }));
+const attemptRowOf = (snapshot: AttemptSnapshot, course: string, answers: Array<{ position: number; choiceId: string }>, created: Date): AttemptRow => ({
+  id: crypto.randomUUID(), root_id: crypto.randomUUID(), owner_id: crypto.randomUUID(), course_id: course, course_version: 1,
+  plan_revision_id: crypto.randomUUID(), status: 'graded', snapshot, answers,
+  earned_points: 0, total_points: snapshot.totalPoints, passed: false, created_at: created, graded_at: created,
+});
+const targetRowOf = (attemptId: string, course: string, index: number, total: number): RecoveryTargetRow => ({
+  id: crypto.randomUUID(), root_attempt_id: attemptId, owner_id: crypto.randomUUID(), root_id: crypto.randomUUID(),
+  course_id: course, course_version: 1, objective_index: index, objective: `Synthetic objective ${index + 1}`,
+  initial_earned: 0, initial_total: total, status: 'open', cleared_by: null, cleared_at: null, created_at: new Date('2026-10-29T08:00:00Z'),
+});
+
+describe('story 5: guidance classification — Needs practice vs Unknown', () => {
+  it('cites exactly the failed groups non-perfect items and orders needs-practice before unknown', () => {
+    // objectives(2): items map [0,1,0,1,0] — obj0 items 1/3/5 (6002 pts), obj1 items 2/4 (3998 pts).
+    const snapshot = buildSnapshot(objectives(2));
+    const failed = attemptRowOf(snapshot, 'course-studied', [...correctOn(snapshot, [1, 3, 5]), ...wrongOn(snapshot, [2, 4])], new Date('2026-10-29T08:00:00Z'));
+    const guidance = deriveGuidance({
+      objectives: objectives(2), studiedCourseId: 'course-studied', attempts: [failed],
+      targets: [targetRowOf(failed.id, 'course-studied', 1, 3998)], retests: [], practiceSummaries: [], practiceLatestIncorrect: [],
+    });
+    // Exactly the failed group lists, cause unnamed; no Unknown (both covered).
+    expect(guidance?.entries).toHaveLength(1);
+    const entry = guidance!.entries[0];
+    expect(entry.status).toBe('needs-practice');
+    expect(entry.objectiveIndex).toBe(1);
+    expect(entry.scored.map(citation => ({ source: citation.source, position: citation.position, earned: citation.earned })))
+      .toEqual([{ source: 'attempt', position: 2, earned: 0 }, { source: 'attempt', position: 4, earned: 0 }]);
+    expect(entry.objective).toBe('Synthetic objective 2');
+  });
+
+  it('marks uncovered objectives Unknown, never Needs practice — even with incorrect practice on them', () => {
+    // objectives(8): the 5-item blueprint covers indexes 0..4; 5..7 are unassessed.
+    const snapshot = buildSnapshot(objectives(8));
+    const failed = attemptRowOf(snapshot, 'course-studied', wrongOn(snapshot, [1, 2, 3, 4, 5]), new Date('2026-10-29T08:00:00Z'));
+    const guidance = deriveGuidance({
+      objectives: objectives(8), studiedCourseId: 'course-studied', attempts: [failed],
+      targets: [0, 1, 2, 3, 4].map(index => targetRowOf(failed.id, 'course-studied', index, snapshot.items[index].points)),
+      retests: [], practiceSummaries: [
+        { objectiveIndex: 6, evidenceKind: 'unaided', outcome: 'correct', count: 1 },
+        { objectiveIndex: 6, evidenceKind: 'assisted', outcome: 'incorrect', count: 2 },
+      ],
+      practiceLatestIncorrect: [{ objectiveIndex: 6, attempted: 'fixpoint combinator', evidenceKind: 'assisted', submittedAt: new Date('2026-10-29T09:00:00Z') }],
+    });
+    const statuses = guidance!.entries.map(entry => [entry.objectiveIndex, entry.status]);
+    expect(statuses).toEqual([[0, 'needs-practice'], [1, 'needs-practice'], [2, 'needs-practice'], [3, 'needs-practice'], [4, 'needs-practice'], [5, 'unknown'], [6, 'unknown'], [7, 'unknown']]);
+    // Practice NEVER reclassifies: index 6 stays Unknown with its labeled lane.
+    const practiced = guidance!.entries[6];
+    expect(practiced.status).toBe('unknown');
+    expect(practiced.scored).toEqual([]);
+    expect(practiced.practice).toEqual({
+      unaidedCorrect: 1, unaidedIncorrect: 0, assistedCorrect: 0, assistedIncorrect: 2,
+      latestIncorrect: { attempted: 'fixpoint combinator', evidenceKind: 'assisted', submittedAt: '2026-10-29T09:00:00.000Z' },
+    });
+    // The unpracticed Unknown objective renders no empty lane.
+    expect(guidance!.entries[5].practice).toBeNull();
+    // The uncertainty note states the limits in text.
+    expect(guidance!.note).toBe(GUIDANCE_UNCERTAINTY_NOTE);
+    expect(GUIDANCE_UNCERTAINTY_NOTE).toContain('does not claim a cause');
+    expect(GUIDANCE_UNCERTAINTY_NOTE).toContain('not yet assessed, not weakness');
+  });
+
+  it('suppresses still-failed listings once a NEWER passing attempt covered them (recovered normally)', () => {
+    const snapshot = buildSnapshot(objectives(2));
+    const failed = attemptRowOf(snapshot, 'course-studied', wrongOn(snapshot, [1, 2, 3, 4, 5]), new Date('2026-10-29T08:00:00Z'));
+    const passedLater: AttemptRow = { ...attemptRowOf(snapshot, 'course-studied', correctOn(snapshot, [1, 2, 3, 4, 5]), new Date('2026-10-29T10:00:00Z')), passed: true, earned_points: snapshot.totalPoints };
+    const input = {
+      objectives: objectives(2), studiedCourseId: 'course-studied', attempts: [passedLater, failed],
+      targets: [targetRowOf(failed.id, 'course-studied', 0, 6002), targetRowOf(failed.id, 'course-studied', 1, 3998)], retests: [], practiceSummaries: [], practiceLatestIncorrect: [],
+    };
+    // A pass AFTER the failure satisfies the requirement normally: nothing
+    // needs attention, everything is covered — no guidance renders.
+    expect(deriveGuidance(input)).toBeNull();
+    // A pass BEFORE the failure (the learner failed a later retake) leaves the
+    // failed groups honestly still-failed — order is what matters, not presence.
+    const passedEarlier: AttemptRow = { ...passedLater, created_at: new Date('2026-10-29T07:00:00Z'), graded_at: new Date('2026-10-29T07:00:00Z') };
+    const earlier = deriveGuidance({ ...input, attempts: [failed, passedEarlier] });
+    expect(earlier?.entries.map(entry => [entry.objectiveIndex, entry.status])).toEqual([[0, 'needs-practice'], [1, 'needs-practice']]);
+  });
+
+  it('scopes every derivation to the studied release and renders nothing without evidence', () => {
+    const snapshot = buildSnapshot(objectives(2));
+    const otherRelease = attemptRowOf(snapshot, 'course-other', wrongOn(snapshot, [1, 2, 3, 4, 5]), new Date('2026-10-29T08:00:00Z'));
+    // No evidence on the studied release at all: no guidance.
+    expect(deriveGuidance({ objectives: objectives(2), studiedCourseId: 'course-studied', attempts: [otherRelease], targets: [targetRowOf(otherRelease.id, 'course-other', 1, 3998)], retests: [], practiceSummaries: [], practiceLatestIncorrect: [] })).toBeNull();
+    // Practice-only evidence makes guidance exist — all objectives honestly
+    // Unknown, the practiced one carrying its labeled lane.
+    const practiceOnly = deriveGuidance({
+      objectives: objectives(2), studiedCourseId: 'course-studied', attempts: [otherRelease], targets: [], retests: [],
+      practiceSummaries: [{ objectiveIndex: 0, evidenceKind: 'unaided', outcome: 'incorrect', count: 3 }],
+      practiceLatestIncorrect: [{ objectiveIndex: 0, attempted: 'closure capture', evidenceKind: 'unaided', submittedAt: new Date('2026-10-29T09:30:00Z') }],
+    });
+    expect(practiceOnly?.entries.map(entry => [entry.objectiveIndex, entry.status])).toEqual([[0, 'unknown'], [1, 'unknown']]);
+    expect(practiceOnly?.entries[0].practice?.unaidedIncorrect).toBe(3);
+    // And an empty evidence world is null even with objectives present.
+    expect(deriveGuidance({ objectives: objectives(2), studiedCourseId: 'course-studied', attempts: [], targets: [], retests: [], practiceSummaries: [], practiceLatestIncorrect: [] })).toBeNull();
+  });
+});
+
+describe('story 5: partial-recovery citations and practice-lane separation', () => {
+  it('cites root-attempt and failed-retest items with their sources labeled', () => {
+    const snapshot = buildSnapshot(objectives(2));
+    const failed = attemptRowOf(snapshot, 'course-studied', [...correctOn(snapshot, [1, 3, 5]), ...wrongOn(snapshot, [2, 4])], new Date('2026-10-29T08:00:00Z'));
+    const retestSnapshot = buildRetestSnapshot(snapshot, [1]);
+    const retest: RetestRow = {
+      id: crypto.randomUUID(), root_attempt_id: failed.id, root_id: failed.root_id, owner_id: failed.owner_id,
+      course_id: 'course-studied', course_version: 1, plan_revision_id: failed.plan_revision_id, status: 'graded',
+      target_objective_indexes: [1], snapshot: retestSnapshot, answers: wrongOn(retestSnapshot, retestSnapshot.items.map(item => item.position)),
+      group_results: [{ objectiveIndex: 1, earned: 0, total: 3998, cleared: false }], created_at: new Date('2026-10-29T09:00:00Z'), graded_at: new Date('2026-10-29T09:00:00Z'),
+    };
+    const guidance = deriveGuidance({
+      objectives: objectives(2), studiedCourseId: 'course-studied', attempts: [failed],
+      targets: [targetRowOf(failed.id, 'course-studied', 1, 3998)], retests: [retest], practiceSummaries: [], practiceLatestIncorrect: [],
+    });
+    const citations = guidance!.entries[0].scored;
+    expect(citations.map(citation => `${citation.source}:${citation.position}`)).toEqual(['attempt:2', 'attempt:4', 'targeted-retest:1', 'targeted-retest:2']);
+    expect(citations.every(citation => citation.earned === 0 && citation.points > 0)).toBe(true);
+  });
+
+  it('never folds practice counts into scored citations on a needs-practice group', () => {
+    const snapshot = buildSnapshot(objectives(2));
+    const failed = attemptRowOf(snapshot, 'course-studied', [...correctOn(snapshot, [1, 3, 5]), ...wrongOn(snapshot, [2, 4])], new Date('2026-10-29T08:00:00Z'));
+    const guidance = deriveGuidance({
+      objectives: objectives(2), studiedCourseId: 'course-studied', attempts: [failed],
+      targets: [targetRowOf(failed.id, 'course-studied', 1, 3998)], retests: [],
+      practiceSummaries: [{ objectiveIndex: 1, evidenceKind: 'assisted', outcome: 'correct', count: 2 }, { objectiveIndex: 1, evidenceKind: 'unaided', outcome: 'incorrect', count: 1 }],
+      practiceLatestIncorrect: [{ objectiveIndex: 1, attempted: 'tail recursion', evidenceKind: 'unaided', submittedAt: new Date('2026-10-29T09:10:00Z') }],
+    });
+    const entry = guidance!.entries[0];
+    // The scored citations stay exactly the two failed attempt items — the
+    // practice evidence renders in its own labeled lane, structurally apart.
+    expect(entry.scored).toHaveLength(2);
+    expect(entry.scored.every(citation => citation.source === 'attempt')).toBe(true);
+    expect(entry.practice).toEqual({
+      unaidedCorrect: 0, unaidedIncorrect: 1, assistedCorrect: 2, assistedIncorrect: 0,
+      latestIncorrect: { attempted: 'tail recursion', evidenceKind: 'unaided', submittedAt: '2026-10-29T09:10:00.000Z' },
+    });
+  });
+});
+
+describe('story 5: the one-way flag command surface', () => {
+  it('accepts exactly the graded-container pointer and nothing forged', () => {
+    const command = { schemaVersion: 1, commandKey: crypto.randomUUID(), expectedRevision: 3 };
+    const evidenceId = crypto.randomUUID();
+    expect(flagAssessmentItemSchema.safeParse({ ...command, evidenceKind: 'attempt', evidenceId, position: 2 }).success).toBe(true);
+    expect(flagAssessmentItemSchema.safeParse({ ...command, evidenceKind: 'retest', evidenceId, position: 1 }).success).toBe(true);
+    expect(flagAssessmentItemSchema.safeParse({ ...command, evidenceKind: 'attempt', evidenceId, position: 0 }).success).toBe(false);
+    expect(flagAssessmentItemSchema.safeParse({ ...command, evidenceKind: 'attempt', evidenceId, position: 1.5 }).success).toBe(false);
+    expect(flagAssessmentItemSchema.safeParse({ ...command, evidenceKind: 'diagnostic', evidenceId, position: 1 }).success).toBe(false);
+    expect(flagAssessmentItemSchema.safeParse({ ...command, evidenceKind: 'attempt', evidenceId, position: 1, unclear: true }).success).toBe(false);
+    expect(flagAssessmentItemSchema.safeParse({ ...command, evidenceKind: 'attempt', position: 1 }).success).toBe(false);
+  });
+});

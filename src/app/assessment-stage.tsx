@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, command, json } from "./client";
-import type { AssessmentState, GradedItemView, StartedAttempt, StartedRetest, SubmittedAttempt, SubmittedRetest, SwitchDisclosure, SwitchedCourseVersion } from "../contracts/assessment";
+import type { AssessmentFlag, AssessmentState, GradedItemView, GuidanceScoredCitation, StartedAttempt, StartedRetest, SubmittedAttempt, SubmittedRetest, SwitchDisclosure, SwitchedCourseVersion } from "../contracts/assessment";
 import { displayPointsOf } from "../modules/assessment-progress/scoring";
 import type { Study } from "../modules/materials-setup/service";
 
@@ -178,6 +178,16 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
       requestAnimationFrame(() => switchHeading.current?.focus());
     });
   };
+  // Story 5 — flag one graded item unclear from the guidance/result surface:
+  // a stable per-item-and-revision command envelope replays idempotently (the
+  // component's universal retry pattern), and the flag records WITH the
+  // evidence while changing no outcome — the notice states exactly that (the
+  // diagnostic's words). Under-review handling is entry 7's, not this panel's.
+  const flagItem = (evidenceKind: "attempt" | "retest", evidenceId: string, position: number) => act(async () => {
+    await api<AssessmentFlag>(`studies/${study.rootId}/assessment/flag`, json({ ...intent(`flag-${evidenceKind}-${evidenceId}-${position}`), evidenceKind, evidenceId, position }));
+    await refresh();
+    setNotice("Flagged — the flag is recorded with the evidence; it changes no outcome.");
+  });
   if (!state || state.state === "none") return null;
   const test = state.test;
   const active = state.state === "active" && state.attempt && !("gradedAt" in state.attempt) ? state.attempt : null;
@@ -206,6 +216,20 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
   const gradedRetest = recovery?.retest && "gradedAt" in recovery.retest ? recovery.retest : null;
   const selectedTargets = recoveryOpen.filter(target => targetSelection[target.objectiveIndex] !== false);
   const retestAnswered = activeRetest ? activeRetest.items.filter(item => retestChoices[item.position]).length : 0;
+  // Story 5 — hide-once-flagged and the citation links. A citation links to
+  // its item only when that container's items are actually rendered on this
+  // page (the focused review shows the LATEST graded attempt; the recovery
+  // panel shows the served retest); otherwise it names the earlier container
+  // honestly instead of pointing at nothing.
+  const flaggedKeys = new Set(state.flags.map(flag => `${flag.evidenceKind}:${flag.evidenceId}:${flag.position}`));
+  const isFlagged = (evidenceKind: "attempt" | "retest", evidenceId: string, position: number) => flaggedKeys.has(`${evidenceKind}:${evidenceId}:${position}`);
+  const citationLink = (citation: GuidanceScoredCitation) => {
+    if (citation.source === "attempt" && graded?.attemptId === citation.evidenceId)
+      return <a href={`#attempt-item-${citation.evidenceId}-${citation.position}`}>item {citation.position}</a>;
+    if (citation.source === "targeted-retest" && gradedRetest?.retestId === citation.evidenceId)
+      return <a href={`#retest-item-${citation.evidenceId}-${citation.position}`}>item {citation.position}</a>;
+    return <span>item {citation.position} of an earlier {citation.source === "attempt" ? "attempt" : "retest"} (listed in the histories)</span>;
+  };
   // Story 3: the snapshot's declared scale renders every point amount, and an
   // item's disclosed partial-credit rubric (if its snapshot carries one — the
   // served root test never does) names each credited choice's exact credit
@@ -260,15 +284,44 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
       <p className="fine">Items grouped per objective. “Needs practice” names observed difficulty only — it does not claim a cause. Passed groups are preserved and never re-tested.</p>
       {gradedGroups.map(group => <div className="tracker-row" key={group.objectiveIndex}>
         <p><strong>{group.failed ? "Needs practice" : "Passed — preserved"}</strong> · {group.objective} · {displayPointsOf(group.earned, graded.pointsScale)}/{displayPointsOf(group.total, graded.pointsScale)} on the original attempt{group.failed ? "" : " — never re-tested"}</p>
-        {group.items.map(item => <fieldset key={item.position}>
+        {group.items.map(item => <fieldset key={item.position} id={`attempt-item-${graded.attemptId}-${item.position}`}>
           <legend>Item {item.position} · {item.earned === item.points ? `correct · ${displayPointsOf(item.points, graded.pointsScale)} points` : item.earned > 0 ? `partly correct · ${displayPointsOf(item.earned, graded.pointsScale)} of ${displayPointsOf(item.points, graded.pointsScale)} points` : item.chosenChoiceId === null ? "unanswered · 0 points" : "not correct · 0 points"}</legend>
           <p>{item.prompt}</p>
           <p><strong>Correct answer:</strong> {item.choices.find(choice => choice.id === item.correctChoiceId)?.text ?? item.correctChoiceId}{item.chosenChoiceId !== null && item.chosenChoiceId !== item.correctChoiceId && <> — your answer: {item.choices.find(choice => choice.id === item.chosenChoiceId)?.text ?? item.chosenChoiceId}</>}</p>
           <p className="fine">Objective: {item.objective} · {displayPointsOf(item.points, graded.pointsScale)} points.</p>
         </fieldset>)}
       </div>)}
+      {/* Story 5 — the evidence-linked gap guidance (spine: guidance
+          {components.callout} inside the result/recovery path): the note
+          callout states the limits, then every entry names its objective,
+          cites the specific scored responses it draws on (linked to the
+          focused review/retest items above), renders practice evidence as
+          its own labeled lane (never merged with the unaided attempt), and
+          marks unassessed objectives Unknown — visibly distinct from Needs
+          practice. Each cited item carries the quiet one-way flag. */}
+      {state.guidance && <>
+        <h4>What to study next</h4>
+        <div className="notice"><p className="fine">{state.guidance.note}</p></div>
+        <div className="guidance-entries">
+          {state.guidance.entries.map(entry => <div className="tracker-row" key={entry.objectiveIndex}>
+            <p><strong>{entry.status === "needs-practice" ? "Needs practice" : "Unknown"}</strong> · {entry.objective}{entry.status === "unknown" ? " — not yet assessed, not weakness" : ""}</p>
+            {entry.scored.length > 0 && <ul className="fine">
+              {entry.scored.map(citation => {
+                const kind = citation.source === "attempt" ? "attempt" : "retest";
+                return <li key={`${citation.source}-${citation.evidenceId}-${citation.position}`}>
+                  Scored evidence ({citation.source === "attempt" ? "unaided attempt" : "targeted retest"}) — {citationLink(citation)}: {displayPointsOf(citation.earned, graded.pointsScale)} of {displayPointsOf(citation.points, graded.pointsScale)} points.
+                  {isFlagged(kind, citation.evidenceId, citation.position)
+                    ? <span className="fine"> Flagged as unclear — recorded with the evidence.</span>
+                    : <button className="quiet" disabled={busy} onClick={() => { void flagItem(kind, citation.evidenceId, citation.position); }}>Flag as unclear</button>}
+                </li>;
+              })}
+            </ul>}
+            {entry.practice && <p className="fine">Practice evidence (separate from the scored attempt, labeled by kind): unaided {entry.practice.unaidedCorrect} correct / {entry.practice.unaidedIncorrect} incorrect; assisted {entry.practice.assistedCorrect} correct / {entry.practice.assistedIncorrect} incorrect.{entry.practice.latestIncorrect && <> Latest incorrect ({entry.practice.latestIncorrect.evidenceKind}): “{entry.practice.latestIncorrect.attempted}” — {new Date(entry.practice.latestIncorrect.submittedAt).toLocaleString()}.</>}</p>}
+          </div>)}
+        </div>
+      </>}
       <div className="actions"><button disabled={busy} onClick={() => { void start(); }}>Start a new attempt</button></div>
-      <p className="fine">No pedagogical attempt limit — a fresh attempt is always offered, never forced. This tracer has no gap guidance; that belongs to a later entry.</p>
+      <p className="fine">No pedagogical attempt limit — a fresh attempt is always offered, never forced. Flagging a question records the dispute with the evidence; it changes no outcome here.</p>
     </>}
     {/* The recovery panel mounts whenever a chain exists in any served state —
         the component's `none` early return above already excludes the honest
@@ -303,7 +356,7 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
         <ul>{gradedRetest.groups.map(group => <li key={group.objectiveIndex} className="fine">
           {group.objective} — {displayPointsOf(group.earned, group.pointsScale)}/{displayPointsOf(group.total, group.pointsScale)} ({group.displayPercent}) · {group.cleared ? "cleared" : "still open — the requirement stays unsatisfied"}
         </li>)}</ul>
-        {gradedRetest.items.map(item => <fieldset key={item.position}>
+        {gradedRetest.items.map(item => <fieldset key={item.position} id={`retest-item-${gradedRetest.retestId}-${item.position}`}>
           <legend>Retest item {item.position} · {item.earned === item.points ? `correct · ${displayPointsOf(item.points, gradedRetest.pointsScale)} points` : item.earned > 0 ? `partly correct · ${displayPointsOf(item.earned, gradedRetest.pointsScale)} of ${displayPointsOf(item.points, gradedRetest.pointsScale)} points` : item.chosenChoiceId === null ? "unanswered · 0 points" : "not correct · 0 points"}</legend>
           <p>{item.prompt}</p>
           <p><strong>Correct answer:</strong> {item.choices.find(choice => choice.id === item.correctChoiceId)?.text ?? item.correctChoiceId}{item.chosenChoiceId !== null && item.chosenChoiceId !== item.correctChoiceId && <> — your answer: {item.choices.find(choice => choice.id === item.chosenChoiceId)?.text ?? item.chosenChoiceId}</>}</p>

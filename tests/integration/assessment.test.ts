@@ -8,8 +8,9 @@ import { savePlan, confirmPlan } from '../../src/modules/materials-setup/service
 import { removeRoot } from '../../src/modules/lifecycle-platform/service';
 import { requestCourseGeneration, getCourse, markItemDone } from '../../src/modules/course-generation/service';
 import { runCourseGeneration } from '../../src/modules/course-generation/worker';
-import { getAssessment, startTest, submitAttempt, startRetest, submitRetest, getSwitchDisclosure, switchCourseVersion, recordCompletionIfEarned } from '../../src/modules/assessment-progress/service';
+import { getAssessment, startTest, submitAttempt, startRetest, submitRetest, getSwitchDisclosure, switchCourseVersion, recordCompletionIfEarned, flagAssessmentItem } from '../../src/modules/assessment-progress/service';
 import { insertAttempt, insertParentManifest } from '../../src/modules/assessment-progress/repository';
+import { insertPracticeAttempt } from '../../src/modules/course-generation/repository';
 import { buildSnapshot, buildPartialCreditSnapshot } from '../../src/modules/assessment-progress/bank';
 import { database, closeDatabase } from '../../src/adapters/postgres/database';
 import { closeQueue } from '../../src/adapters/queue';
@@ -1055,5 +1056,159 @@ describe('epic-3 story-4: monotonic completion awards', () => {
     const pinnedToStudied = await startTest(a, study.rootId, { ...command(confirmed.revision) });
     const pinnedAttempt = await database().query<{ course_version: number }>('SELECT course_version FROM app.test_attempt WHERE id=$1', [pinnedToStudied.operationId]);
     expect(pinnedAttempt.rows[0].course_version).toBe(2); // the pointer steers new attempts to the studied release
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Story 5 — evidence-linked gap guidance and the one-way unclear-item flag.
+// ---------------------------------------------------------------------------
+
+async function plantPractice(identity: Identity, courseId: string, cardId: string, attempted: string, outcome: 'correct' | 'incorrect', evidenceKind: 'unaided' | 'assisted') {
+  const client = await database().connect();
+  try {
+    await insertPracticeAttempt(client, { ownerId: identity.userId, courseId, cardId, attempted, outcome, evidenceKind });
+  } finally {
+    await client.release();
+  }
+}
+
+describe('epic-3 story-5: guidance cites evidence, separates Unknown and labels practice', () => {
+  it('lists exactly the failed groups with cited responses, marks uncovered objectives Unknown and labels practice lanes', async () => {
+    const a = await actor('guidance-journey');
+    await grant(a);
+    // Eight objectives: the five-item blueprint covers at most five, so the
+    // rest are honestly Unknown even after a graded attempt.
+    const widePlan: Plan = {
+      ...plan, topic: 'Gap guidance fundamentals',
+      outcomes: ['Explain objectives one through eight', 'Map failed groups to evidence', 'Read practice lanes apart from scores', 'Name unknown objectives honestly', 'Flag unclear items', 'Keep kinds separate', 'Cite the response', 'State the uncertainty'],
+    };
+    const study = await confirmedStudy(a, widePlan);
+    const course = await generateCourse(a, study.rootId, study.revision);
+    const courseId = course.course.courseId;
+    const objectives = course.course.objectives;
+
+    // Mixed practice BEFORE any attempt: assisted and unaided rows on studied
+    // cards only (D7: original synthetic fixture text, planted through epic-2's
+    // own writer — never an assessment-side write). The practice lanes land on
+    // the objective the attempt will fail (objective 4 — see below) and on an
+    // objective that stays unassessed (objective 6).
+    await plantPractice(a, courseId, `practice:${objectives[4].index}`, 'first practice attempt on objective five', 'incorrect', 'assisted');
+    await plantPractice(a, courseId, `practice:${objectives[4].index}`, 'second practice attempt on objective five', 'correct', 'unaided');
+    await plantPractice(a, courseId, `practice:${objectives[6].index}`, 'practice on an unassessed objective', 'incorrect', 'unaided');
+
+    // Pre-test: guidance exists (practice is evidence) and every objective is
+    // honestly Unknown — never "Needs practice" — with the practiced lanes.
+    const pre = await getAssessment(a, study.rootId);
+    expect(pre.guidance?.entries.map(entry => entry.status)).toEqual(objectives.map(() => 'unknown'));
+    expect(pre.guidance?.entries[4].practice).toMatchObject({ assistedIncorrect: 1, unaidedCorrect: 1 });
+    expect(pre.guidance?.note).toContain('does not claim a cause');
+
+    // Fail exactly ONE group and the attempt: with eight objectives the
+    // blueprint's five items cover indexes 0..4 one item each, so the only
+    // single group whose failure also fails the attempt is the 2004-point
+    // fifth item (the honest 79.96% boundary) — every other covered group
+    // passes at 100% and indexes 5..7 stay honestly Unknown.
+    const started = await startTest(a, study.rootId, { ...command(study.revision) });
+    const snapshot = await snapshotOf(started.operationId);
+    const boundaryItem = snapshot.items.reduce((largest, item) => (item.points > largest.points ? item : largest));
+    const failedPositions = [boundaryItem.position];
+    await submitAttempt(a, study.rootId, started.operationId, { ...command(study.revision), attemptId: started.operationId, answers: answersFrom(snapshot, failedPositions) });
+
+    const failed = await getAssessment(a, study.rootId);
+    const covered = new Set(snapshot.items.map(item => item.objectiveIndex));
+    const unknownIndexes = objectives.filter(objective => !covered.has(objective.index)).map(objective => objective.index);
+    const needsPractice = failed.guidance!.entries.filter(entry => entry.status === 'needs-practice');
+    const unknownEntries = failed.guidance!.entries.filter(entry => entry.status === 'unknown');
+    // Exactly the failed group lists, with its cited response (the specific
+    // wrong item of THIS attempt, earned 0, source labeled unaided attempt).
+    expect(needsPractice).toHaveLength(1);
+    expect(needsPractice[0].objectiveIndex).toBe(boundaryItem.objectiveIndex);
+    expect(needsPractice[0].scored.map(citation => ({ source: citation.source, position: citation.position, earned: citation.earned, points: citation.points })))
+      .toEqual([{ source: 'attempt', position: boundaryItem.position, earned: 0, points: 2004 }]);
+    // Practice renders labeled beside — never inside — the scored citations.
+    expect(needsPractice[0].practice).toMatchObject({ assistedIncorrect: 1, unaidedCorrect: 1, assistedCorrect: 0, unaidedIncorrect: 0 });
+    expect(needsPractice[0].practice!.latestIncorrect).toMatchObject({ attempted: 'first practice attempt on objective five', evidenceKind: 'assisted' });
+    // Uncovered objectives read Unknown, not Needs practice — including the
+    // practiced one (practice never reclassifies and never scores).
+    expect(unknownEntries.map(entry => entry.objectiveIndex)).toEqual(unknownIndexes);
+    expect(unknownEntries.every(entry => entry.scored.length === 0)).toBe(true);
+    const practicedUnknown = unknownEntries.find(entry => entry.objectiveIndex === objectives[6].index)!;
+    expect(practicedUnknown.status).toBe('unknown');
+    expect(practicedUnknown.scored).toEqual([]);
+    expect(practicedUnknown.practice).toMatchObject({ unaidedIncorrect: 1 });
+    expect(failed.guidance!.entries[0].status).toBe('needs-practice'); // needs-practice entries order first
+
+    // A passing retake recovers the requirement normally: no still-failed
+    // listing remains (the ledger chain stays as history), and the Unknown set
+    // is unchanged — coverage is what it is.
+    const retake = await startTest(a, study.rootId, { ...command(study.revision) });
+    await submitAttempt(a, study.rootId, retake.operationId, { ...command(study.revision), attemptId: retake.operationId, answers: answersFrom(snapshot) });
+    const recovered = await getAssessment(a, study.rootId);
+    expect(recovered.guidance?.entries.filter(entry => entry.status === 'needs-practice')).toEqual([]);
+    expect(recovered.guidance?.entries.filter(entry => entry.status === 'unknown').map(entry => entry.objectiveIndex)).toEqual(unknownIndexes);
+    expect(recovered.recovery?.rootAttemptId).toBe(started.operationId); // the chain stays listed as history
+    expect(recovered.flags).toEqual([]);
+  });
+});
+
+describe('epic-3 story-5: the one-way flag records with the evidence and changes no outcome', () => {
+  it('flags a graded attempt item and a graded retest item exactly once with byte-identical views', async () => {
+    const a = await actor('flag-journey');
+    await grant(a);
+    const study = await confirmedStudy(a);
+    const course = await generateCourse(a, study.rootId, study.revision);
+    const started = await startTest(a, study.rootId, { ...command(study.revision) });
+    const snapshot = await snapshotOf(started.operationId);
+    const failedPositions = snapshot.items.filter(item => item.objectiveIndex === course.course.objectives[1].index).map(item => item.position);
+    await submitAttempt(a, study.rootId, started.operationId, { ...command(study.revision), attemptId: started.operationId, answers: answersFrom(snapshot, failedPositions) });
+    const before = await getAssessment(a, study.rootId);
+    const attemptBefore = JSON.stringify(before.attempt);
+    const recoveryBefore = JSON.stringify(before.recovery);
+
+    // Flag the first failed item of the graded attempt.
+    const flaggedPosition = failedPositions[0];
+    const flagCommand = { ...command(study.revision), evidenceKind: 'attempt' as const, evidenceId: started.operationId, position: flaggedPosition };
+    const flagged = await flagAssessmentItem(a, study.rootId, flagCommand);
+    expect(flagged).toMatchObject({ state: 'flagged', evidenceKind: 'attempt', evidenceId: started.operationId, position: flaggedPosition, flagged: true });
+    // Same command replays the identical result; one row, one receipt.
+    expect(await flagAssessmentItem(a, study.rootId, flagCommand)).toEqual(flagged);
+    // A NEW commandKey on the same item is idempotent at the row: same result,
+    // still exactly one flag row (the row-level unique), and scores, ledger
+    // and every served view stay byte-identical.
+    const freshKey = await flagAssessmentItem(a, study.rootId, { ...command(study.revision), evidenceKind: 'attempt', evidenceId: started.operationId, position: flaggedPosition });
+    expect(freshKey.flagged).toBe(true);
+    const after = await getAssessment(a, study.rootId);
+    expect(JSON.stringify(after.attempt)).toBe(attemptBefore);
+    expect(JSON.stringify(after.recovery)).toBe(recoveryBefore);
+    expect(after.flags).toHaveLength(1);
+    expect(after.flags[0]).toMatchObject({ evidenceKind: 'attempt', evidenceId: started.operationId, position: flaggedPosition });
+    expect((await database().query("SELECT count(*)::int AS count FROM app.assessment_flag WHERE root_id=$1", [study.rootId])).rows[0].count).toBe(1);
+    expect((await database().query("SELECT count(*)::int AS count FROM app.command_receipt WHERE root_id=$1 AND action='flag-assessment-item'", [study.rootId])).rows[0].count).toBe(2); // one per distinct commandKey
+
+    // Flag a graded RETEST item the same way: the flag names the retest, and
+    // the retest's graded view is untouched.
+    const openIndex = after.recovery!.targets.find(target => target.status === 'open')!.objectiveIndex;
+    const retestStart = await startRetest(a, study.rootId, { ...command(study.revision), attemptId: started.operationId, targetIndexes: [openIndex] });
+    const retestSnapshot = await retestSnapshotOf(retestStart.operationId);
+    await submitRetest(a, study.rootId, retestStart.operationId, { ...command(study.revision), retestId: retestStart.operationId, answers: answersFrom(retestSnapshot, [retestSnapshot.items[0].position]) });
+    const beforeRetestFlag = await getAssessment(a, study.rootId);
+    const retestFlagged = await flagAssessmentItem(a, study.rootId, { ...command(study.revision), evidenceKind: 'retest', evidenceId: retestStart.operationId, position: retestSnapshot.items[0].position });
+    expect(retestFlagged).toMatchObject({ state: 'flagged', evidenceKind: 'retest', flagged: true });
+    const afterRetestFlag = await getAssessment(a, study.rootId);
+    expect(afterRetestFlag.flags).toHaveLength(2);
+    expect(afterRetestFlag.flags[1]).toMatchObject({ evidenceKind: 'retest', evidenceId: retestStart.operationId });
+    expect(JSON.stringify(afterRetestFlag.recovery)).toBe(JSON.stringify(beforeRetestFlag.recovery));
+
+    // Denial taxonomy: an ACTIVE attempt has no submitted answer to dispute;
+    // foreign owners, unknown evidence, out-of-range positions, stale
+    // revisions and malformed kinds deny per the standard codes, no leak.
+    const active = await startTest(a, study.rootId, { ...command(study.revision) });
+    await expect(flagAssessmentItem(a, study.rootId, { ...command(study.revision), evidenceKind: 'attempt', evidenceId: active.operationId, position: 1 })).rejects.toMatchObject({ code: 'CONFLICT' });
+    const b = await actor('flag-foreign');
+    await expect(flagAssessmentItem(b, study.rootId, { ...command(study.revision), evidenceKind: 'attempt', evidenceId: started.operationId, position: flaggedPosition })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    await expect(flagAssessmentItem(a, study.rootId, { ...command(study.revision), evidenceKind: 'attempt', evidenceId: crypto.randomUUID(), position: 1 })).rejects.toMatchObject({ code: 'FORBIDDEN_OR_NOT_FOUND' });
+    await expect(flagAssessmentItem(a, study.rootId, { ...command(study.revision), evidenceKind: 'attempt', evidenceId: started.operationId, position: 99 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+    await expect(flagAssessmentItem(a, study.rootId, { ...command(study.revision + 5), evidenceKind: 'attempt', evidenceId: started.operationId, position: flaggedPosition })).rejects.toMatchObject({ code: 'CONFLICT' });
+    await expect(flagAssessmentItem(a, study.rootId, { ...command(study.revision), evidenceKind: 'diagnostic', evidenceId: started.operationId, position: 1 })).rejects.toMatchObject({ code: 'INVALID_INPUT' });
   });
 });
