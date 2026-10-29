@@ -213,6 +213,15 @@ describe('story-6 roadmap derivation: the versioned review-state port', () => {
       expect(node.reviewDue).toBe(false);
     }
   });
+  it('ignores a due state carrying an unexpected port schema version (review disposition 2026-10-29 — the version check is load-bearing)', () => {
+    // The contract type pins schemaVersion to the current port version; only
+    // a future binding can produce a different value, so this case must
+    // bypass the type to prove the derivation still refuses it.
+    const futureState = { schemaVersion: REVIEW_STATE_PORT_VERSION + 1, courseId: 'course-a', courseVersion: 1, due: true } as unknown as ReviewDueState;
+    const node = completedNode({ reviewStates: new Map([['course-a', futureState]]), bound: true });
+    expect(node.reviewDue).toBe(false);
+    expect(node.state).toBe('completed');
+  });
 });
 
 describe('story-6 roadmap derivation: recommended order and honesty states', () => {

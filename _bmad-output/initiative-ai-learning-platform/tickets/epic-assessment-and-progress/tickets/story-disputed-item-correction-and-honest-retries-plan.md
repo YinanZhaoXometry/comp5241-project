@@ -137,3 +137,14 @@ Every replacement item's correct choice is trivially, self-evidently true agains
 
 **Manual checks (if no CLI):**
 - D7 fixture-claim check: the five replacement-pool items against the per-item verification list above.
+
+## Review Triage Log (2026-10-29, independent lens — PASS-WITH-NOTES)
+
+Contract fidelity, pause-predicate soundness (both directions), transaction fencing/replay, migration-vs-writers, UI honesty and the integration-phase fixes all verified clean; no P0/P1/P2 findings. Four P3s dispositioned:
+
+1. **Quota off-by-one (patched in code):** the gate `< LIMIT` on the post-increment counter enforced 19 starts/day while every surface named 20. Now `<= LIMIT` — exactly 20 commit, the 21st denies; the unit boundary test flips (20→true, 21→false). The integration quota journey is unaffected (seeded 20 → bump 21 → denied; rollback keeps 20; reset path unchanged).
+2. **Raced duplicate fresh-start over-consumes budget (documented):** a raced loser of the one-open insert still commits its own counter increment — over-count only, never over-grant, replays never double-count. Recorded as a conservative latitude in the `generationAllows` comment.
+3. **Tautological group assertion (patched in test):** journey 1's `objectiveIndex >= 0` replaced with the pinned mapping — this fixture's position-5 boundary item belongs to objective group 1 (positions 2+5 = 1999/4003).
+4. **Quota-denial focus target (patched in code):** `guardedStart` now takes the focus target; retest denials keep focusing the recovery ledger, replacement denials focus the Disputed items panel.
+
+Post-review integration note: the plan text above still says the integration suite is deferred; it ran and passed 6/6 (combined with roadmap/assessment 24/24, later 29/29 with handoff) — see commit 2ce4afa and the lane gate record.

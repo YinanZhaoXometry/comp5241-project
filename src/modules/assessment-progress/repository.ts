@@ -554,12 +554,22 @@ export async function studiedReleasesForOwner(client: PoolClient, ownerId: strin
   return result.rows;
 }
 
-// The DEFAULT course resolution per root, mirroring getCourse's own order:
-// the current confirmed revision's latest course row (ANY status — a pending
-// or failed generation of the confirmed plan is the honest resolution), else
-// the latest READY row (any plan revision). DISTINCT ON takes the first row
-// per root under that priority; the confirmed pointer reads app.study_batch
-// (the batchRow precedent).
+// The DEFAULT course resolution per root, modeled on getCourse's order with
+// one extra fallback tier (review disposition 2026-10-29 — the original
+// comment claimed an exact mirror; it is not): tier 0, the current confirmed
+// revision's latest course row (ANY status — a pending or failed generation
+// of the confirmed plan is the honest resolution); tier 1, the latest READY
+// row (any plan revision); tier 2, ANY latest row at all. getCourse stops at
+// two tiers and renders state:"none" when neither hits, so in the narrow
+// window where a study was re-confirmed to a new revision that has no course
+// row yet and no READY row exists but an older revision's generation FAILED,
+// this tier-2 read resolves that failed row — the roadmap then names
+// "failed" where the course surface names "not generated". Both are honest
+// (the node claims NO progress state either way — state is null on
+// non-ready resolutions); the divergence is recorded here and in the story-6
+// plan's review log rather than silently papered over. DISTINCT ON takes the
+// first row per root under that priority; the confirmed pointer reads
+// app.study_batch (the batchRow precedent).
 export type ResolvedCourseRow = { root_id: string; course_id: string; version: number | null; status: "pending" | "ready" | "failed"; content: unknown };
 export async function resolvedCoursesForRoots(client: PoolClient, ownerId: string, rootIds: string[]): Promise<Map<string, ResolvedCourseRow>> {
   if (!rootIds.length) return new Map();

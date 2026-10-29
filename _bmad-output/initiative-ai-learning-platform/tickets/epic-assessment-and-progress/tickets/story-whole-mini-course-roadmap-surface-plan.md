@@ -133,3 +133,11 @@ Latitude taken (recorded per the house rule): (1) **No migration** — the roadm
 - `nvm use && NPM_CONFIG_USERCONFIG=/dev/null NEXT_TELEMETRY_DISABLED=1 npm run lint && npm run typecheck && npm run typecheck:worker && npm run boundaries && npm run test` -- expected: all green.
 - `npm run db:start && npm run migrate` then `NPM_CONFIG_USERCONFIG=/dev/null npx vitest run tests/integration/roadmap.test.ts tests/integration/assessment.test.ts --no-file-parallelism` -- expected: pass, new roadmap journeys included, existing assessment suite untouched and green.
 - With the dev server on 127.0.0.1:3000: `npx playwright test tests/browser/roadmap.spec.ts` -- expected: pass.
+
+## Review Triage Log (2026-10-29, independent lens — PASS-WITH-NOTES)
+
+All verify clauses, the D6 structural fence, read-only purity, cross-owner denial, the no-migration latitude and the flagged edge decisions (multi-manifest roots, pointer fallback, LIMIT 100) verified clean; no P0/P1/P2 findings. Three P3s dispositioned:
+
+1. **Resolution fallback tier divergence (patched as documentation):** the SQL resolution has a third tier ("any row at all") that `getCourse` lacks, so in a narrow re-confirm window the roadmap can name "failed" where the course surface names "not generated" — honesty-preserving (no progress state is claimed either way) but the comment/plan claimed an exact mirror. Disposition: the `resolvedCoursesForRoots` comment now states the three-tier behavior and the divergence window verbatim; behavior unchanged (an alignment would change served reads post-review without browser re-proof; recorded instead).
+2. **Review-port schemaVersion unchecked (patched in code):** the pill acceptance now requires `schemaVersion === REVIEW_STATE_PORT_VERSION`, with a unit test bypassing the pinned type to prove a future-version state renders no pill.
+3. **Keyboard proof is focus+Enter, not a full Tab traversal (noted):** the browser journey proves keyboard activation of native buttons on both viewports; full Tab-order reachability leans on the tracer's app-wide keyboard coverage. Recorded as the proof's honest extent.

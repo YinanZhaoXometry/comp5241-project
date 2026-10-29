@@ -274,11 +274,11 @@ describe('strict command schemas', () => {
 });
 
 describe('honest quota-delay contract (D3 retries)', () => {
-  it('the budget is a named constant: allows below, denies at the cap', () => {
+  it('the budget is a named constant: inclusive cap — exactly 20 starts commit, the 21st denies (review disposition 2026-10-29)', () => {
     expect(DAILY_GENERATION_LIMIT).toBe(20);
     expect(generationAllows(0)).toBe(true);
     expect(generationAllows(19)).toBe(true);
-    expect(generationAllows(20)).toBe(false);
+    expect(generationAllows(20)).toBe(true);
     expect(generationAllows(21)).toBe(false);
   });
   it('the served generation view states the limit and today’s use', () => {

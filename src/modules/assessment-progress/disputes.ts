@@ -103,10 +103,18 @@ export function generationUseView(usedToday: number): GenerationUseView {
   return { dailyLimit: DAILY_GENERATION_LIMIT, usedToday };
 }
 
-// Whether a start may proceed under the budget. Pure over the counter
-// value; the repository's atomic upsert-increment supplies it, and a denied
+// Whether a start may proceed under the budget. Pure over the counter's
+// POST-INCREMENT value (the repository's atomic upsert-increment supplies
+// it), so the limit is inclusive: exactly DAILY_GENERATION_LIMIT fresh
+// starts commit per day and the (limit+1)-th is denied — the named number
+// and the enforced number agree (review disposition 2026-10-29; the
+// original `<` form enforced 19 while every surface named 20). A denied
 // start fails INSIDE the verb's transaction so the rollback leaves zero
 // rows — the structural "a quota delay never records a failed attempt".
+// Known conservative latitude (same review, documented): a raced duplicate
+// fresh start that loses the one-open insert still commits its own counter
+// increment, so a race can over-consume budget — over-count only, never
+// over-grant; AD-9 replays never double-count.
 export function generationAllows(usedToday: number): boolean {
-  return usedToday < DAILY_GENERATION_LIMIT;
+  return usedToday <= DAILY_GENERATION_LIMIT;
 }

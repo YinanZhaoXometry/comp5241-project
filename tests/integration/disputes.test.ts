@@ -177,7 +177,10 @@ describe('epic-3 story-7: disputed-item correction and honest retries', () => {
     const after = await getAssessment(a, study.rootId);
     expect(after.disputes).toHaveLength(1);
     expect(after.disputes[0]).toMatchObject({ evidenceKind: 'attempt', evidenceId: attemptId, position: 5, status: 'under-review', courseVersion: 1, replacements: [] });
-    expect(after.disputes[0].objectiveIndex).toBeGreaterThanOrEqual(0);
+    // Pin the position→group mapping (review disposition 2026-10-29: the old
+    // >=0 assertion was vacuous): this 3-outcome fixture puts the boundary
+    // item at position 5 in objective group 1 (positions 2+5 = 1999/4003).
+    expect(after.disputes[0].objectiveIndex).toBe(1);
     // The pause: the STUDIED release's pending completion decision pauses;
     // no award row exists and the node stays honestly In progress.
     expect(after.completionPaused).toBe(true);

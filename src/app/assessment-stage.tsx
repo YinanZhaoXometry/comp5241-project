@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { api, command, json } from "./client";
 import type { AssessmentFlag, AssessmentState, GradedItemView, GuidanceScoredCitation, StartedAttempt, StartedRetest, StartedReplacement, SubmittedAttempt, SubmittedRetest, SubmittedReplacement, SwitchDisclosure, SwitchedCourseVersion } from "../contracts/assessment";
 import { displayPointsOf } from "../modules/assessment-progress/scoring";
@@ -134,13 +134,17 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
   // The notice states exactly that: the limit, the reset, the saved work
   // and the zero attempt records — never a generic failure, never an
   // unlimited-generation promise.
-  const guardedStart = async (work: () => Promise<void>) => {
+  // A quota denial focuses the surface the denied start belongs to: the
+  // recovery ledger for retest starts, the dispute panel for corrected
+  // replacements (review disposition 2026-10-29 — the shared handler had
+  // focused the recovery heading for both).
+  const guardedStart = async (work: () => Promise<void>, focus: RefObject<HTMLHeadingElement | null> = recoveryHeading) => {
     try {
       await work();
     } catch (error) {
       if (errorCode(error) !== "RATE_LIMITED") throw error;
       setNotice(GENERATION_DELAY_NOTICE);
-      requestAnimationFrame(() => recoveryHeading.current?.focus());
+      requestAnimationFrame(() => focus.current?.focus());
     }
   };
   const startRetestFlow = (rootAttemptId: string, targetIndexes: number[]) => act(async () => {
@@ -221,7 +225,7 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
       await refresh(); setReplacementChoices({});
       setNotice("Corrected replacement open — fresh comparable questions for the disputed objective group at the original pass mark. It submits exactly once; the dispute never counts as another failure.");
       requestAnimationFrame(() => disputeHeading.current?.focus());
-    });
+    }, disputeHeading);
   });
   const submitReplacementFlow = (replacementId: string) => act(async () => {
     const answers = Object.entries(replacementChoices).map(([position, choiceId]) => ({ position: Number(position), choiceId }));

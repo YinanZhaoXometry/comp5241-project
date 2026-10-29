@@ -1,4 +1,4 @@
-import { ROADMAP_HONESTY_NOTE, type ReviewDueState, type RoadmapNodeView, type RoadmapPathView, type RoadmapView } from "../../contracts/assessment";
+import { ROADMAP_HONESTY_NOTE, REVIEW_STATE_PORT_VERSION, type ReviewDueState, type RoadmapNodeView, type RoadmapPathView, type RoadmapView } from "../../contracts/assessment";
 import type { AttemptRow, AwardRow, RecoveryTargetRow } from "./repository";
 import { deriveRoadmapNode } from "./scoring";
 
@@ -151,9 +151,12 @@ function nodeOf(
     anyAttempt: rootAttempts.length > 0,
   });
   // The review pill accepts ONLY a port result pinned to the exact resolved
-  // release (courseId AND version) with due === true; anything else — unbound
-  // port, no state, a mismatched pin, due false — renders no pill.
-  const reviewDue = reviewState !== undefined && reviewState.courseId === course.courseId && reviewState.courseVersion === version && reviewState.due === true;
+  // release (courseId AND version) at the port's declared schema version,
+  // with due === true; anything else — unbound port, no state, a mismatched
+  // pin, an unexpected schema version (a future epic-4 bump while an older
+  // binding stays loaded), due false — renders no pill (review disposition
+  // 2026-10-29: the version field was decorative; it is load-bearing now).
+  const reviewDue = reviewState !== undefined && reviewState.schemaVersion === REVIEW_STATE_PORT_VERSION && reviewState.courseId === course.courseId && reviewState.courseVersion === version && reviewState.due === true;
   return {
     rootId: root.rootId,
     title: root.title,
