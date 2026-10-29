@@ -235,8 +235,26 @@ project-new/
 │   │   │                       one-way unclear-item flag (insert-once per
 │   │   │                       graded attempt/retest item, records with
 │   │   │                       the evidence and changes no outcome; the
-│   │   │                       flagAssessmentItem verb, Under-review
-│   │   │                       mechanics stay entry 7's)
+│   │   │                       flagAssessmentItem verb) — plus story 7's
+│   │   │                       disputed-item correction and honest retries
+│   │   │                       (disputes.ts, pure pause/satisfaction
+│   │   │                       predicates): the flag now opens a dispute in
+│   │   │                       the same transaction (026 app.item_dispute,
+│   │   │                       under-review -> corrected, one row per
+│   │   │                       flag), the unearned award INSERT pauses
+│   │   │                       while an open dispute could affect the
+│   │   │                       release's would-be satisfaction paths
+│   │   │                       (earned awards are never revoked), and the
+│   │   │                       corrected replacement (026
+│   │   │                       app.assessment_replacement, dispute-scoped
+│   │   │                       fresh assessment of the disputed group from
+│   │   │                       the new replacement bank pool) resolves a
+│   │   │                       dispute on an independent clear without
+│   │   │                       ever recording a failed attempt; 026
+│   │   │                       app.assessment_generation_use carries the
+│   │   │                       honest daily fresh-question budget (retest
+│   │   │                       + replacement starts; a denied start rolls
+│   │   │                       back with zero rows)
 │   └── lifecycle-platform/ deletion fences, cleanup, lifecycle orchestration,
 │   │                           derivative ports, dependencies preview (S9),
 │   │                           retention registry/scheduler + archive contract (S10)

@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, command, json } from "./client";
-import type { AssessmentFlag, AssessmentState, GradedItemView, GuidanceScoredCitation, StartedAttempt, StartedRetest, SubmittedAttempt, SubmittedRetest, SwitchDisclosure, SwitchedCourseVersion } from "../contracts/assessment";
+import type { AssessmentFlag, AssessmentState, GradedItemView, GuidanceScoredCitation, StartedAttempt, StartedRetest, StartedReplacement, SubmittedAttempt, SubmittedRetest, SubmittedReplacement, SwitchDisclosure, SwitchedCourseVersion } from "../contracts/assessment";
 import { displayPointsOf } from "../modules/assessment-progress/scoring";
+import { GENERATION_DELAY_NOTICE } from "../modules/assessment-progress/disputes";
+import { errorCode } from "../platform/errors";
 import type { Study } from "../modules/materials-setup/service";
 
 type Props = { study: Study; busy: boolean; onBusy: (value: boolean) => void; onFailure: (error: unknown) => void };
@@ -51,11 +53,14 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
   // release only after the learner has seen the exact diff.
   const [switchTarget, setSwitchTarget] = useState("");
   const [disclosure, setDisclosure] = useState<SwitchDisclosureResponse | null>(null);
+  // Story 7 — the corrected-replacement flow's answer state and headings.
+  const [replacementChoices, setReplacementChoices] = useState<Record<number, string>>({});
   const heading = useRef<HTMLHeadingElement>(null);
   const resultHeading = useRef<HTMLHeadingElement>(null);
   const recoveryHeading = useRef<HTMLHeadingElement>(null);
   const retestResultHeading = useRef<HTMLHeadingElement>(null);
   const switchHeading = useRef<HTMLHeadingElement>(null);
+  const disputeHeading = useRef<HTMLHeadingElement>(null);
   const failureRef = useRef(onFailure);
   useEffect(() => { failureRef.current = onFailure; }, [onFailure]);
   // The submit command envelope per attempt/retest: a lost response replays
@@ -123,11 +128,28 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
   // (the server returns the pinned open retest while one is open), a stable
   // submit envelope per retest, and focus choreography onto the recovery
   // heading after each step.
+  // Story 7 — the honest resource-delay path (D3 retries): a start over the
+  // daily fresh-generation budget fails RATE_LIMITED BEFORE any row is
+  // written — no failed attempt recorded anywhere, saved work unchanged.
+  // The notice states exactly that: the limit, the reset, the saved work
+  // and the zero attempt records — never a generic failure, never an
+  // unlimited-generation promise.
+  const guardedStart = async (work: () => Promise<void>) => {
+    try {
+      await work();
+    } catch (error) {
+      if (errorCode(error) !== "RATE_LIMITED") throw error;
+      setNotice(GENERATION_DELAY_NOTICE);
+      requestAnimationFrame(() => recoveryHeading.current?.focus());
+    }
+  };
   const startRetestFlow = (rootAttemptId: string, targetIndexes: number[]) => act(async () => {
-    await api<StartedRetest>(`studies/${study.rootId}/assessment/retest`, json({ ...command(study.revision), attemptId: rootAttemptId, targetIndexes }));
-    await refresh(); setRetestChoices({});
-    setNotice(`Targeted retest open — ${targetIndexes.length} objective group${targetIndexes.length === 1 ? "" : "s"}, fresh questions at the same demand. It submits exactly once.`);
-    requestAnimationFrame(() => recoveryHeading.current?.focus());
+    await guardedStart(async () => {
+      await api<StartedRetest>(`studies/${study.rootId}/assessment/retest`, json({ ...command(study.revision), attemptId: rootAttemptId, targetIndexes }));
+      await refresh(); setRetestChoices({});
+      setNotice(`Targeted retest open — ${targetIndexes.length} objective group${targetIndexes.length === 1 ? "" : "s"}, fresh questions at the same demand. It submits exactly once.`);
+      requestAnimationFrame(() => recoveryHeading.current?.focus());
+    });
   });
   const submitRetestFlow = (retestId: string) => act(async () => {
     const answers = Object.entries(retestChoices).map(([position, choiceId]) => ({ position: Number(position), choiceId }));
@@ -188,6 +210,28 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
     await refresh();
     setNotice("Flagged — the flag is recorded with the evidence; it changes no outcome.");
   });
+  // Story 7 — the corrected-replacement flow (the dispute's correction
+  // path): start names only the dispute (the group/pins derive server-side),
+  // the submit envelope is stable per replacement (the component's universal
+  // retry pattern), and a clear resolves the dispute WITHOUT counting it as
+  // another failure — the notices state exactly that.
+  const startReplacementFlow = (disputeId: string) => act(async () => {
+    await guardedStart(async () => {
+      await api<StartedReplacement>(`studies/${study.rootId}/assessment/replacement`, json({ ...command(study.revision), disputeId }));
+      await refresh(); setReplacementChoices({});
+      setNotice("Corrected replacement open — fresh comparable questions for the disputed objective group at the original pass mark. It submits exactly once; the dispute never counts as another failure.");
+      requestAnimationFrame(() => disputeHeading.current?.focus());
+    });
+  });
+  const submitReplacementFlow = (replacementId: string) => act(async () => {
+    const answers = Object.entries(replacementChoices).map(([position, choiceId]) => ({ position: Number(position), choiceId }));
+    const result = await api<SubmittedReplacement>(`studies/${study.rootId}/assessment/replacement/${replacementId}/submit`, json({ ...intent(`replacement-submit-${replacementId}`), replacementId, answers }));
+    await refresh(); setReplacementChoices({});
+    setNotice(result.group.cleared
+      ? "Corrected replacement cleared — the dispute is resolved as corrected, the defect is annotated on the evidence, and no failed attempt was recorded."
+      : "Corrected replacement not cleared — the dispute stays Under review; no failed attempt was recorded, and you may try again without limit.");
+    requestAnimationFrame(() => disputeHeading.current?.focus());
+  });
   if (!state || state.state === "none") return null;
   const test = state.test;
   const active = state.state === "active" && state.attempt && !("gradedAt" in state.attempt) ? state.attempt : null;
@@ -216,6 +260,13 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
   const gradedRetest = recovery?.retest && "gradedAt" in recovery.retest ? recovery.retest : null;
   const selectedTargets = recoveryOpen.filter(target => targetSelection[target.objectiveIndex] !== false);
   const retestAnswered = activeRetest ? activeRetest.items.filter(item => retestChoices[item.position]).length : 0;
+  // Story 7 — dispute/replacement derived values for the panels below: the
+  // open-vs-latest replacement of the root and the pause notice state.
+  const disputes = state.disputes;
+  const activeReplacement = state.replacement && !("gradedAt" in state.replacement) ? state.replacement : null;
+  const gradedReplacement = state.replacement && "gradedAt" in state.replacement ? state.replacement : null;
+  const replacementAnswered = activeReplacement ? activeReplacement.items.filter(item => replacementChoices[item.position]).length : 0;
+  const replacementObjective = (disputeId: string) => disputes.find(dispute => dispute.disputeId === disputeId)?.objective ?? "";
   // Story 5 — hide-once-flagged and the citation links. A citation links to
   // its item only when that container's items are actually rendered on this
   // page (the focused review shows the LATEST graded attempt; the recovery
@@ -240,6 +291,7 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
   return <section className="panel"><p className="eyebrow">REQUIRED TEST · SCORED ATTEMPT TRACER</p><h3 ref={heading} tabIndex={-1}>Assessment &amp; progress</h3>
     <output>{notice}</output>
     <p><strong>Roadmap: {nodeCopy[state.node]}.</strong> <span className="fine">Completed appears only from an earned, version-scoped award — every required course item done and the required test passed or fully recovered. Awards are recorded once and never revoked by later results, edits or review.</span></p>
+    {state.completionPaused && <div className="notice"><p className="fine">Completion decision paused — a disputed test item on this mini-course is Under review. Prior evidence is retained and earned results are never revoked; the pending decision resumes when the dispute is resolved (see Disputed items below).</p></div>}
     {state.awards.length > 0 && <div className="tracker-row">
       <p><strong>Completion awards</strong> <span className="fine">· version-scoped, listed, never overwritten</span></p>
       <ul>{state.awards.map(award => <li key={award.awardId} className="fine">
@@ -378,6 +430,52 @@ export function AssessmentStage({ study, busy, onBusy, onFailure }: Props) {
           {new Date(retest.startedAt).toLocaleString()} · groups {retest.targetIndexes.join(", ")} · {retest.status === "active" ? "open — not yet submitted" : retest.groups ? retest.groups.map(group => `${displayPointsOf(group.earned, group.pointsScale)}/${displayPointsOf(group.total, group.pointsScale)} ${group.cleared ? "cleared" : "not cleared"}`).join(" · ") : "graded"}
         </li>)}</ul>
       </div>}
+    </div>}
+    {/* Story 7 — the disputed-items panel (EXPERIENCE State Patterns "Item
+        under review"): flagging opened the dispute in the same transaction;
+        each dispute shows its Under-review/Corrected state, the correction
+        path (a dispute-scoped fresh replacement of the disputed group),
+        and the honest no-extra-failed-attempt wording. Earned passes and
+        completion are never revoked — only pending decisions pause, and
+        the panel says so in text. */}
+    {disputes.length > 0 && <div className="tracker-row">
+      <h4 ref={disputeHeading} tabIndex={-1}>Disputed items</h4>
+      <p className="fine">Each flagged scored item is Under review while its validity is checked. A pending completion decision that could rest on it pauses; already-earned passes and completion are never revoked. The corrected replacement re-assesses the disputed objective group with fresh comparable questions — the dispute never counts as another failure.</p>
+      {disputes.map(dispute => <div className="tracker-row" key={dispute.disputeId}>
+        <p><strong>{dispute.status === "under-review" ? "Under review" : "Corrected"}</strong> · item {dispute.position} of the {dispute.evidenceKind === "attempt" ? "attempt" : "retest"} {dispute.evidenceId.slice(0, 8)}… · objective: {dispute.objective} · course version {dispute.courseVersion} · opened {new Date(dispute.openedAt).toLocaleString()}.</p>
+        {dispute.status === "corrected"
+          ? <p className="fine">Resolved corrected by replacement {dispute.resolvedByReplacement?.slice(0, 8) ?? ""}… {dispute.resolvedAt ? new Date(dispute.resolvedAt).toLocaleString() : ""} — the defect is annotated on the evidence, history is preserved, and the original row never changed.</p>
+          : <div className="actions">
+            <button disabled={busy || !!activeReplacement} onClick={() => { void startReplacementFlow(dispute.disputeId); }}>Start corrected replacement</button>
+            <span className="fine">Fresh comparable questions for this objective group at the original pass mark; a clear resolves the dispute without an extra failed attempt. Retries are unlimited.</span>
+          </div>}
+        {dispute.replacements.length > 0 && <ul className="fine">
+          {dispute.replacements.map(replacement => <li key={replacement.replacementId}>
+            {new Date(replacement.startedAt).toLocaleString()} · {replacement.status === "active" ? "open — not yet submitted" : replacement.group ? `${replacement.group.displayPercent} — ${replacement.group.cleared ? "cleared" : "not cleared"} (no failed attempt recorded)` : "graded"}
+          </li>)}
+        </ul>}
+      </div>)}
+      {activeReplacement && <>
+        <p><strong>Corrected replacement open</strong> — {activeReplacement.items.length} fresh item{activeReplacement.items.length === 1 ? "" : "s"} for the objective “{replacementObjective(activeReplacement.disputeId)}”, {displayPointsOf(activeReplacement.items.reduce((sum, item) => sum + item.points, 0), activeReplacement.pointsScale)} points at the original pass mark. Pinned to course version {activeReplacement.courseVersion}.</p>
+        <form onSubmit={event => { event.preventDefault(); void submitReplacementFlow(activeReplacement.replacementId); }}>
+          {activeReplacement.items.map(item => <fieldset key={item.position} disabled={busy}>
+            <legend>Replacement item {item.position} of {activeReplacement.items.length} · {displayPointsOf(item.points, activeReplacement.pointsScale)} points · objective: {item.objective}</legend>
+            <p>{item.prompt}</p>
+            {item.choices.map(option => <div className="answer-row" key={option.id}>
+              <input type="radio" id={`replacement-choice-${item.position}-${option.id}`} name={`replacement-choice-${item.position}`} value={option.id} checked={replacementChoices[item.position] === option.id} onChange={() => setReplacementChoices(previous => ({ ...previous, [item.position]: option.id }))} />
+              <label htmlFor={`replacement-choice-${item.position}-${option.id}`}>{option.text}</label>
+            </div>)}
+          </fieldset>)}
+          <div className="actions"><button type="submit" disabled={busy || replacementAnswered < activeReplacement.items.length}>Submit corrected replacement ({replacementAnswered}/{activeReplacement.items.length} answered)</button></div>
+        </form>
+        <p className="fine">The replacement submits exactly once. The group clears only at the original pass mark by the unrounded comparison; a non-clearing result records no failed attempt and leaves the dispute Under review — you may try again without limit.</p>
+      </>}
+      {gradedReplacement && !activeReplacement && gradedReplacement.items.map(item => <fieldset key={item.position} id={`replacement-item-${gradedReplacement.replacementId}-${item.position}`}>
+        <legend>Replacement item {item.position} · {item.earned === item.points ? `correct · ${displayPointsOf(item.points, gradedReplacement.pointsScale)} points` : item.earned > 0 ? `partly correct · ${displayPointsOf(item.earned, gradedReplacement.pointsScale)} of ${displayPointsOf(item.points, gradedReplacement.pointsScale)} points` : item.chosenChoiceId === null ? "unanswered · 0 points" : "not correct · 0 points"}</legend>
+        <p>{item.prompt}</p>
+        <p><strong>Correct answer:</strong> {item.choices.find(choice => choice.id === item.correctChoiceId)?.text ?? item.correctChoiceId}{item.chosenChoiceId !== null && item.chosenChoiceId !== item.correctChoiceId && <> — your answer: {item.choices.find(choice => choice.id === item.chosenChoiceId)?.text ?? item.chosenChoiceId}</>}</p>
+      </fieldset>)}
+      <p className="fine">Fresh-question generation (retests and corrected replacements) has a daily resource limit — {state.generation.usedToday} of {state.generation.dailyLimit} used today, resetting tomorrow. It is a resource limit only: pedagogical retries are unlimited, and a delay never records a failed attempt or promises unlimited free generation.</p>
     </div>}
     {state.attempts.length > 0 && <div className="tracker-row">
       <p><strong>Attempt history</strong> <span className="fine">· listed, never overwritten</span></p>
