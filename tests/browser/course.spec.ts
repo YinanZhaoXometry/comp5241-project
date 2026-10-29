@@ -65,6 +65,25 @@ async function eligibleConfigurationVersion() {
   return version;
 }
 
+// Settle-proof keyboard typing (2026-10-29 hardening of the documented
+// practice-typing flake): a sibling re-render landing mid-type can reset the
+// controlled input — per-keystroke delay narrows but does not close the
+// window, and a gate run caught card 3 submitting the single surviving
+// character "S". Type, then VERIFY the input carries the exact text and
+// retry (clear + retype) if a re-render ate it; the submission assertions
+// are unchanged — this only guarantees the intended text was actually
+// entered, exactly what a keyboard user would see and correct on screen.
+async function typeVerified(page: Page, label: string, text: string) {
+  const field = page.getByLabel(label, { exact: true });
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await field.focus();
+    await page.keyboard.type(text, { delay: 20 });
+    if ((await field.inputValue()) === text) return;
+    await field.fill("");
+  }
+  throw new Error(`typing into "${label}" never settled (got: ${JSON.stringify(await field.inputValue())})`);
+}
+
 async function grantConsent(page: Page) {
   const configurationVersion = await eligibleConfigurationVersion();
   const decision = await page.request.post("/api/v1/processing/decision", {
@@ -149,8 +168,7 @@ test("A generates and studies the labeled course; the recall answer is withheld 
   await expect(panel.getByText("Card 2 of 2", { exact: false })).toBeVisible();
   // Keyboard-operable card 1: focus the field by label, type, Tab past the
   // assisted toggle to submit (keyboard-complete run).
-  await page.getByLabel("Your answer to card 1", { exact: true }).focus();
-  await page.keyboard.type(canonicalAnswer, { delay: 20 }); // per-keystroke settling: zero-delay typing into the controlled input drops chars when a sibling re-render lands mid-type
+  await typeVerified(page, "Your answer to card 1", canonicalAnswer);
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await expect(panel.getByRole("button", { name: "Submit card 1 answer", exact: true })).toBeFocused();
@@ -506,8 +524,7 @@ test("practice set: multi-card keyboard-only journey, assisted label, fresh retr
   for (const probe of withheldProbes) expect(panelHtml).not.toContain(probe);
   // Card 1, keyboard-only, unaided: focus by label → type → Tab past the
   // assisted toggle → Enter on submit.
-  await page.getByLabel("Your answer to card 1", { exact: true }).focus();
-  await page.keyboard.type(canonicalAnswer, { delay: 20 }); // per-keystroke settling: zero-delay typing into the controlled input drops chars when a sibling re-render lands mid-type
+  await typeVerified(page, "Your answer to card 1", canonicalAnswer);
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await expect(panel.getByRole("button", { name: "Submit card 1 answer", exact: true })).toBeFocused();
@@ -525,7 +542,7 @@ test("practice set: multi-card keyboard-only journey, assisted label, fresh retr
   await page.keyboard.press("Space");
   await expect(assistedToggle).toBeChecked();
   await page.getByLabel("Your answer to card 2", { exact: true }).focus();
-  await page.keyboard.type(secondCardAnswer, { delay: 20 });
+  await typeVerified(page, "Your answer to card 2", secondCardAnswer);
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await expect(panel.getByRole("button", { name: "Submit card 2 answer", exact: true })).toBeFocused();
@@ -538,8 +555,7 @@ test("practice set: multi-card keyboard-only journey, assisted label, fresh retr
   const card3 = panel.locator(".practice-card").nth(2);
   await expect(card3.getByRole("textbox")).toBeVisible();
   await expect(card3.getByText("Canonical answer:", { exact: false })).toHaveCount(0);
-  await page.getByLabel("Your answer to card 3", { exact: true }).focus();
-  await page.keyboard.type(canonicalAnswer, { delay: 20 }); // per-keystroke settling: zero-delay typing into the controlled input drops chars when a sibling re-render lands mid-type
+  await typeVerified(page, "Your answer to card 3", canonicalAnswer);
   await page.keyboard.press("Tab");
   await page.keyboard.press("Tab");
   await page.keyboard.press("Enter");
