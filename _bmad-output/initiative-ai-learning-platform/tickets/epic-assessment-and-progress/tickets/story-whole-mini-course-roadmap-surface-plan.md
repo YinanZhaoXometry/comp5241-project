@@ -3,7 +3,7 @@ title: 'Whole-mini-course roadmap surface (3.6)'
 type: 'feature'
 ticket: 6
 created: '2026-10-29'
-status: 'planned'
+status: 'built'
 baseline_revision: '6b0398f2898ab92c3517bf240faec4b0d21c2015'
 route: 'full'
 route_source: 'auto'
@@ -84,15 +84,15 @@ deferred: []
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `src/contracts/assessment.ts` — story-6 roadmap + review-port contract types.
-- [ ] `src/modules/assessment-progress/review-port.ts` — versioned query port + unbound stub binding seam.
-- [ ] `src/modules/assessment-progress/roadmap.ts` — pure `deriveRoadmapView`.
-- [ ] `src/modules/assessment-progress/repository.ts` — owner-scoped batch reads.
-- [ ] `src/modules/assessment-progress/service.ts` — `getRoadmap`.
-- [ ] `src/app/api/v1/[...path]/route.ts` — `GET /api/v1/roadmap` branch.
-- [ ] `src/app/roadmap-panel.tsx` + `src/app/study-app.tsx` — the roadmap surface.
-- [ ] Tests: unit `roadmap.test.ts`, integration `roadmap.test.ts`, browser `roadmap.spec.ts`.
-- [ ] `docs/project-structure.md` — same-change update.
+- [x] `src/contracts/assessment.ts` — story-6 roadmap + review-port contract types.
+- [x] `src/modules/assessment-progress/review-port.ts` — versioned query port + unbound stub binding seam.
+- [x] `src/modules/assessment-progress/roadmap.ts` — pure `deriveRoadmapView`.
+- [x] `src/modules/assessment-progress/repository.ts` — owner-scoped batch reads.
+- [x] `src/modules/assessment-progress/service.ts` — `getRoadmap`.
+- [x] `src/app/api/v1/[...path]/route.ts` — `GET /api/v1/roadmap` branch.
+- [x] `src/app/roadmap-panel.tsx` + `src/app/study-app.tsx` — the roadmap surface.
+- [x] Tests: unit `roadmap.test.ts`, integration `roadmap.test.ts`, browser `roadmap.spec.ts`.
+- [x] `docs/project-structure.md` — same-change update.
 
 **Acceptance Criteria:**
 - Given a three-mini-course path (one awarded, one failed-group open, one untouched), the roadmap renders node states that follow completion awards exactly — Completed only from the award, the failed-group course In progress with a Needs practice pill, the completed sibling Completed, the untouched one Not started — in the manifest's recommended order.
@@ -109,7 +109,23 @@ Latitude taken (recorded per the house rule): (1) **No migration** — the roadm
 
 ## Auto Run Result
 
-**Status: PLANNED — not yet built.**
+**Status: BUILT (2026-10-29, lane-split worktree `project-new-e3s6`, commits 0b3a7ef plan → 93cc197 feat).** All targeted verification green in the lane's mandated scope; the serialized FULL gate (`npm run checks`) stays the orchestrator's, per the lane rule.
+
+**Exact commands and results** (every shell under nvm Node v24.22.0, `NPM_CONFIG_USERCONFIG=/dev/null`, `NEXT_TELEMETRY_DISABLED=1`):
+- `npm ci --no-audit --no-fund` — ok (254 packages; fresh worktree).
+- `npm run lint` — PASS: eslint 0 warnings/0 errors, oxlint clean on 187 files/151 rules, lint coverage 113 inventoried rules + 8 negative probes + JSX reference probe.
+- `npm run typecheck` — PASS (dev imports; production build exercised the generated production types).
+- `npm run typecheck:worker` — PASS.
+- `npm run boundaries` — PASS ("Module dependency-direction and transitive client/provider isolation checks passed").
+- `npm run test` — PASS: 15 files, **294/294** unit tests (baseline 278 + the new roadmap file's 16: award-following states, pre-award window, needs-practice matrix incl. suppression/cleared/other-release scoping, review-pill matrix incl. mismatched-pin rejection and never-removes-completion, manifest order/overlap, not-generated/pending/failed/superseded, empty roadmap).
+- `npm run db:start` — could NOT bind: port 55432 is already held by the SHARED cluster (the main worktree's postmaster, serving since 03:12). Disposition: the worktree's credential files authenticate against that running shared cluster (verified: migration URL auth OK, runtime URL auth OK; 24 migrations applied), which is exactly the lane's "shared local cluster … do not stop the DB afterwards" arrangement — nothing was stopped, nothing touched. `npm run migrate` — PASS ("Ordered auth → application → queue migrations complete"); 001–024 stand applied; 025 does not exist by this story's design (no stored-shape change — the documented 3.3 no-migration precedent).
+- `npx vitest run tests/integration/roadmap.test.ts tests/integration/assessment.test.ts --no-file-parallelism` — PASS: **18/18** across both files (roadmap 5: the three-mini-course path journey with award-exact states + Needs-practice pill beside the Completed sibling + pinned manifest order + parent award on the last required child, the honest not-generated node + unbound port, version-superseded through the REAL switch flow, cross-owner structural denial, and the bound-port seam journey proving the pill renders pinned while completion stays Completed; assessment 13 unchanged and green).
+- `npx playwright test tests/browser/roadmap.spec.ts` — PASS: **1/1** (2.1m) against the Playwright-spawned production server + worker (documented typegen dance run: `next typegen` → build with the dev cache removed → spec → dev state restored, prod cache removed, dev typecheck green again). The journey: 360px keyboard-only node states following the real verbs (not-generated → Not started → In progress + Needs practice at the honest 79.96% boundary → Completed), the planted recommended path in its pinned non-chronological order, free browsing via keyboard Enter and click on Open (nothing locked, including the ungenerated node), no Review due pill anywhere with the unbound-port note rendered, overflow-free at 360px and 1280px, and B's roadmap containing none of A's studies.
+- `npm run build` — PASS (production build inside the typegen dance; the 2 pre-existing Turbopack route warnings are the source-fetch dynamic-import legs, unchanged by this story).
+
+**Build summary.** The roadmap is a READ-TIME owner-scoped view — zero writes, zero tables, zero dispatch. `deriveRoadmapView` (pure, `roadmap.ts`) assembles per-study nodes (resolution honesty, the story-4 award rule through `deriveRoadmapNode`, the guidance-mirror needs-practice chain rule, supersession, the review pill) and the path layer (manifest pinned order + confirmation order for standalone studies). `getRoadmap` gathers facts in one owner-fenced transaction (8 new owner-scoped batch reads in the repository; the confirmation pointer reads `app.study_batch` — the batchRow precedent, NOT `app.material`, which carries no row for later studies) and calls the review-state port only AFTER the transaction closes. The versioned review-state port (`review-port.ts`) is an explicit bind seam whose default is the unbound no-op: `reviewPortBound: false` is served in words, no pill renders, and the derivation's state path structurally never reads the port. UI: `RoadmapPanel` in the tracer content area (the assessment-stage pattern — global classes only, no CSS changes, 3s eventual-consistency poll), one node per mini-course with states/pills in words and a quiet Open action on every node. The static `/roadmap` product page and `tests/browser/pages.spec.ts` are untouched.
+
+**Environment notes for the orchestrator.** (1) The non-interactive shells on this machine mishandle the user's zsh nvm lazy-load wrappers — every command here ran with the wrappers unset and `~/.nvm/versions/node/v24.22.0/bin` first on PATH (node -v verified v24.22.0 each time). (2) The fresh worktree lacked the compiled TXT helper; it was built from `src/worker/txt-extract.c` with the build-extractor script's EXACT clang flags and probed (`--probe` ok) — the parser image/admission stack was NOT touched. (3) The Playwright webServer log showed one unrelated `export-build-failed` event from a STALE export request another lane's data left on the shared cluster queue — no effect on this journey (passed), recorded for honesty. (4) `runtime-config.json` was copied from the main worktree's `.local/` per the lane instruction (never committed). No load flakes were encountered in any run; no skip, override or suppression exists anywhere.
 
 ## Verification
 
