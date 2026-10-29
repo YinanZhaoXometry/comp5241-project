@@ -3,7 +3,7 @@ title: 'Manual-course approval-enrollment tracer (5.1)'
 type: 'feature'
 ticket: '1'
 created: '2026-10-29'
-status: built
+status: done
 baseline_revision: '766a12485a99f760840982264b66730f00c6f036'
 route: 'full'
 route_source: 'auto'
